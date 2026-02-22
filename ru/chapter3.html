@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Глава 3: Консервативное Q-обучение (CQL)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right;margin-left:auto}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/en/chapter3.html">English</a>
+  </div>
+</header>
+<main>
+<h1>Глава 3: Консервативное Q-обучение (CQL)</h1>
+<blockquote>
+<p><em>«Не доверяй значениям, которых не видел. А если не видел — занижай их.»</em></p>
+</blockquote>
+<hr />
+<h2>Проблема, переформулированная</h2>
+<p>В главе 2 мы увидели, что стандартное Q-обучение на офлайн данных порождает катастрофически оптимистичные Q-значения для действий вне распределения (OOD). Жадная политика эксплуатирует эти завышенные значения, выбирая действия, которых в датасете никогда не было — и терпит неудачу при развёртывании.</p>
+<p>Корень проблемы: обновление Беллмана использует $\max_{a'} Q(s', a')$, перебирая все действия, включая ненаблюдавшиеся. Для таких действий Q-функция обобщается оптимистично.</p>
+<p><strong>Conservative Q-Learning (CQL)</strong> — Kumar et al., NeurIPS 2020 — исправляет это одной элегантной идеей: <strong>добавить регуляризационный член, явно штрафующий Q-значения для действий вне датасета</strong>.</p>
+<p>Результат: Q-функция, которая по построению пессимистична для OOD-действий. Жадная политика, видя более низкие значения вне датасета, естественным образом остаётся близко к поведенческой политике — без явного ограничения.</p>
+<hr />
+<h2>Идея</h2>
+<p>Стандартное TD-обучение минимизирует:</p>
+<p><div class="math-display">$$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar\theta}(s', a') - Q_\theta(s, a) \right)^2 \right]$$</div></p>
+<p>CQL добавляет к этой цели два члена:</p>
+<p><div class="math-display">$$\mathcal{L}_{CQL}(\theta) = \mathcal{L}_{TD}(\theta) + \alpha \cdot \underbrace{\left( \mathbb{E}_{s \sim \mathcal{D},\, a \sim \mu} \left[ Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right)}_{\text{консервативный штраф}}$$</div></p>
+<p>где:
+- $\mu$ — некоторое распределение над действиями (как правило, равномерное или текущая политика)
+- $\alpha > 0$ — гиперпараметр, управляющий силой консерватизма
+- Первое математическое ожидание <strong>занижает Q-значения</strong> для действий из $\mu$
+- Второе математическое ожидание <strong>завышает Q-значения</strong> для действий из датасета</p>
+<p>Иными словами: <strong>минимизировать Q-значения везде, но максимизировать их в точках датасета</strong>. Разрыв между двумя членами — то, что минимизирует CQL: действия из датасета выглядят лучше, чем OOD-действия.</p>
+<hr />
+<h2>Формализация</h2>
+<h3>Целевая функция CQL</h3>
+<p>Точнее, CQL минимизирует следующую регуляризованную ошибку Беллмана:</p>
+<p><div class="math-display">$$\min_\theta \, \alpha \left( \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right) + \frac{1}{2} \mathcal{L}_{TD}(\theta)$$</div></p>
+<p>Первый член — <strong>log-sum-exp</strong> по всем действиям — гладкая аппроксимация $\max_a Q(s,a)$. Он опускает всю Q-поверхность вниз. Второй член поднимает Q-значения именно в точках датасета.</p>
+<p>Определим:</p>
+<p><div class="math-display">$$\mathcal{R}_{CQL}(\theta) = \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right]$$</div></p>
+<p>Тогда: $\mathcal{L}_{CQL}(\theta) = \frac{1}{2}\mathcal{L}_{TD}(\theta) + \alpha \cdot \mathcal{R}_{CQL}(\theta)$</p>
+<h3>Почему Log-Sum-Exp?</h3>
+<p>Член logsumexp — это аппроксимация максимума через softmax:</p>
+<p><div class="math-display">$$\log \sum_a \exp Q(s, a) = \max_a Q(s, a) + \log \sum_a \exp(Q(s,a) - \max_a Q(s,a))$$</div></p>
+<p>При температуре → 0 это сходится к $\max_a Q(s,a)$. При конечной температуре выражение дифференцируемо и штрафует всё распределение Q-значений, а не только максимум.</p>
+<p>Для непрерывных пространств действий перебрать все $a$ невозможно. CQL аппроксимирует logsumexp через importance sampling:</p>
+<p><div class="math-display">$$\log \sum_a \exp Q(s, a) \approx \log \mathbb{E}_{a \sim \mu(a|s)} \left[ \frac{\exp Q(s,a)}{\mu(a|s)} \right]$$</div></p>
+<p>где $\mu$ — предложенное распределение. На практике $\mu$ — либо равномерное над пространством действий, либо текущая политика $\pi_\theta$.</p>
+<h3>Теоретическая гарантия</h3>
+<p><strong>Теорема (Kumar et al., 2020).</strong> Пусть $\hat{Q}^\pi$ — Q-функция, обученная CQL, а $Q^\pi$ — истинная Q-функция политики $\pi$. Тогда:</p>
+<p><div class="math-display">$$\hat{Q}^\pi(s, a) \leq Q^\pi(s, a) \quad \forall (s, a) \in \mathcal{D}$$</div></p>
+<p>при подходящих условиях на $\alpha$.</p>
+<p>Иными словами: <strong>CQL является нижней оценкой истинной Q-функции в точках датасета</strong>. Политика, обученная на этой пессимистичной Q-функции, гарантированно не эксплуатирует завышенные значения.</p>
+<p>Более практично, ожидаемая производительность политики удовлетворяет:</p>
+<p><div class="math-display">$$J(\hat\pi) \geq J(\pi_\beta) - \frac{\alpha}{1-\gamma} \cdot \mathbb{E}_{s \sim d^{\pi_\beta}} \left[ D_{CQL}(\hat\pi, \pi_\beta)(s) \right]$$</div></p>
+<p>Граница говорит: CQL не хуже BC, с поправкой, пропорциональной отклонению политики от поведенческой.</p>
+<hr />
+<h2>Реализация</h2>
+<blockquote>
+<p>📄 Полный код: <a href="../../code/cql.py"><code>cql.py</code></a></p>
+</blockquote>
+<h3>Сети</h3>
+<p>CQL обычно использует архитектуру в стиле SAC: два Q-networks (для снижения переоценки через double-Q), стохастический актор и регуляризацию энтропией.</p>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from copy import deepcopy
+
+class QNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),              nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+    def forward(self, state, action):
+        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)
+
+
+class GaussianPolicy(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim=256):
+        super().__init__()
+        self.trunk = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+        )
+        self.mean_head    = nn.Linear(hidden_dim, action_dim)
+        self.log_std_head = nn.Linear(hidden_dim, action_dim)
+
+    def sample(self, state):
+        h       = self.trunk(state)
+        mean    = self.mean_head(h)
+        log_std = self.log_std_head(h).clamp(-4, 2)
+        std     = log_std.exp()
+        eps     = torch.randn_like(mean)
+        raw     = mean + std * eps
+        action  = torch.tanh(raw)
+        log_prob = (
+            torch.distributions.Normal(mean, std).log_prob(raw)
+            - torch.log(1 - action.pow(2) + 1e-6)
+        ).sum(-1)
+        return action, log_prob
+</code></pre>
+<h3>Потеря CQL</h3>
+<pre><code class="language-python">def cql_loss(Q1, Q2, Q1_target, Q2_target, policy,
+             states, actions, rewards, next_states, dones,
+             alpha_cql=1.0, gamma=0.99, n_action_samples=10):
+    &quot;&quot;&quot;
+    CQL loss = стандартная TD-потеря + консервативный штраф.
+    alpha_cql: сила консерватизма. Больше = более пессимистично.
+    &quot;&quot;&quot;
+    batch_size = states.shape[0]
+
+    # ── 1. Стандартная TD-цель ────────────────────────────────────────────
+    with torch.no_grad():
+        next_actions, next_log_probs = policy.sample(next_states)
+        q_next  = torch.min(Q1_target(next_states, next_actions),
+                            Q2_target(next_states, next_actions))
+        q_next -= 0.1 * next_log_probs    # SAC: энтропийный бонус
+        td_target = rewards + gamma * (1 - dones) * q_next
+
+    td_loss = F.mse_loss(Q1(states, actions), td_target)
+
+    # ── 2. CQL штраф ──────────────────────────────────────────────────────
+    # Случайные OOD-действия из равномерного распределения
+    random_actions = torch.FloatTensor(
+        batch_size * n_action_samples, actions.shape[-1]
+    ).uniform_(-1, 1).to(states.device)
+
+    # Действия текущей политики
+    states_rep = states.unsqueeze(1).repeat(1, n_action_samples, 1).view(
+        batch_size * n_action_samples, -1)
+    policy_actions, _ = policy.sample(states_rep)
+
+    # Q-значения для случайных и policy-действий (OOD)
+    q_rand   = Q1(states.unsqueeze(1).repeat(1, n_action_samples, 1)
+                  .view(batch_size * n_action_samples, -1),
+                  random_actions).view(batch_size, n_action_samples)
+    q_policy = Q1(states_rep, policy_actions).view(batch_size, n_action_samples)
+
+    # Q-значения для действий из датасета
+    q_data = Q1(states, actions)
+
+    # logsumexp ≈ E_μ[Q(s,a)] — «опустить вниз»
+    q_ood      = torch.cat([q_rand, q_policy], dim=1)
+    logsumexp  = torch.logsumexp(q_ood, dim=1)
+
+    # Штраф: OOD вниз, датасет вверх
+    cql_penalty = (logsumexp - q_data).mean()
+
+    return td_loss + alpha_cql * cql_penalty, td_loss.item(), cql_penalty.item()
+</code></pre>
+<h3>Автоматическая настройка alpha</h3>
+<pre><code class="language-python"># Настройка alpha через двойственный градиентный спуск
+log_alpha_cql = torch.zeros(1, requires_grad=True, device=device)
+alpha_opt     = optim.Adam([log_alpha_cql], lr=1e-4)
+target_penalty = -2.0   # τ: желаемое значение E_μ[Q] - E_D[Q]
+
+# В шаге обновления:
+alpha_cql  = log_alpha_cql.exp().item()
+alpha_loss = -log_alpha_cql * (cql_penalty - target_penalty)
+alpha_opt.zero_grad()
+alpha_loss.backward()
+alpha_opt.step()
+</code></pre>
+<hr />
+<h2>Гиперпараметр alpha</h2>
+<p>$\alpha$ — важнейший гиперпараметр CQL. Он управляет компромиссом между консерватизмом и производительностью:</p>
+<table>
+<thead>
+<tr>
+<th>$\alpha$</th>
+<th>Поведение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$\alpha = 0$</td>
+<td>Стандартный SAC — нет консерватизма, эксплуатация OOD</td>
+</tr>
+<tr>
+<td>$\alpha$ мало (0.1–1.0)</td>
+<td>Мягкий консерватизм — допускает некоторое улучшение политики</td>
+</tr>
+<tr>
+<td>$\alpha$ велико (5–10)</td>
+<td>Сильный консерватизм — политика близка к $\pi_\beta$</td>
+</tr>
+<tr>
+<td>$\alpha \to \infty$</td>
+<td>Эквивалентно поведенческому клонированию</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Интуиция: ландшафт Q-функции</h2>
+<p>Представьте Q-функцию как ландшафт над пространством состояние-действие. Стандартное Q-обучение формирует этот ландшафт только через точки данных — между ними ландшафт не ограничен и стремится расти из-за оптимистичного обобщения.</p>
+<p>CQL добавляет гравитацию: тянет весь ландшафт вниз, пока TD-потеря удерживает его в точках данных. Результат — ландшафт, высокий в точках датасета и низкий везде остальном.</p>
+<p>Политика, действующая жадно по этому ландшафту, предпочитает действия из датасета — не потому что её явно ограничили, а потому что ландшафт естественно направляет её туда.</p>
+<hr />
+<h2>CQL vs TD3+BC</h2>
+<p>TD3+BC (Fujimoto &amp; Gu, 2021) — более простая альтернатива, добавляющая BC-член прямо в потерю политики:</p>
+<p><div class="math-display">$$\pi^* = \arg\max_\pi \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \lambda Q(s, \pi(s)) - (\pi(s) - a)^2 \right]$$</div></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>CQL</th>
+<th>TD3+BC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Где живёт пессимизм</td>
+<td>Q-функция</td>
+<td>Целевая функция политики</td>
+</tr>
+<tr>
+<td>OOD Q-значения</td>
+<td>Явно занижаются</td>
+<td>Не изменяются</td>
+</tr>
+<tr>
+<td>Теоретическая гарантия</td>
+<td>Да (нижняя оценка)</td>
+<td>Нет</td>
+</tr>
+<tr>
+<td>Гиперпараметры</td>
+<td>$\alpha$</td>
+<td>$\lambda$</td>
+</tr>
+<tr>
+<td>Сложность реализации</td>
+<td>Средняя</td>
+<td>Низкая</td>
+</tr>
+</tbody>
+</table>
+<p>TD3+BC — хорошая отправная точка для детерминированных политик. CQL более строго обоснован и обычно сильнее на сложных задачах.</p>
+<hr />
+<h2>Практические советы</h2>
+<p><strong>Нормализуйте наблюдения.</strong> CQL чувствителен к масштабу. Всегда нормализуйте состояния по статистикам датасета.</p>
+<p><strong>Начинайте с $\alpha = 1.0$.</strong> Безопасное значение по умолчанию. Если политика слишком консервативна — уменьшайте. Если Q-значения расходятся — увеличивайте.</p>
+<p><strong>Мониторьте CQL-штраф.</strong> Логируйте <code>E_μ[Q] - E_D[Q]</code> во время обучения. Он должен быть положительным и стабильным. Если уходит в минус — $\alpha$ слишком мало.</p>
+<p><strong>Совет для промышленных данных.</strong> Если датасет содержит несколько режимов работы (остановленный/медленный/быстрый), рассмотрите обучение отдельных агентов CQL для каждого режима или добавление режима как признака состояния.</p>
+<hr />
+<h2>Итоги</h2>
+<table>
+<thead>
+<tr>
+<th>Свойство</th>
+<th>CQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Необходимые данные</td>
+<td>Переходы $(s, a, r, s')$ с наградами</td>
+</tr>
+<tr>
+<td>Целевая функция</td>
+<td>TD-потеря + CQL штраф (logsumexp − Q датасета)</td>
+</tr>
+<tr>
+<td>Обработка OOD</td>
+<td>Явная: Q-значения занижаются для OOD-действий</td>
+</tr>
+<tr>
+<td>Теоретическая гарантия</td>
+<td>Нижняя оценка истинной Q-функции в датасете</td>
+</tr>
+<tr>
+<td>Ключевой гиперпараметр</td>
+<td>$\alpha$ (сила консерватизма)</td>
+</tr>
+</tbody>
+</table>
+<p>CQL закрывает разрыв между поведенческим клонированием и полным офлайн RL. Он использует информацию о награде для улучшения над поведенческой политикой, а пессимизм относительно OOD-действий предотвращает катастрофические отказы стандартного Q-обучения.</p>
+<p>Остающееся ограничение: CQL является <strong>безмодельным</strong>. Глава 4 (IQL) уточняет идею пессимизма по значениям. Глава 5 (MOPO) показывает, как обучение модели мира позволяет генерировать синтетические данные — расширяя эффективный датасет за пределы собранного.</p>
+<hr />
+<h2>Литература</h2>
+<ul>
+<li>Kumar, A., Zhou, A., Tucker, G., &amp; Levine, S. (2020). <em>Conservative Q-Learning for Offline Reinforcement Learning.</em> NeurIPS. arXiv:2006.04779.</li>
+<li>Fujimoto, S., &amp; Gu, S. (2021). <em>A Minimalist Approach to Offline RL (TD3+BC).</em> NeurIPS. arXiv:2106.06860.</li>
+<li>Haarnoja, T. et al. (2018). <em>Soft Actor-Critic.</em> ICML. arXiv:1801.01290.</li>
+<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> arXiv:2005.01643.</li>
+</ul></main>
+<nav class="chapter-nav">
+<a href="/offline-rl-book/ru/chapter2.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Задача Offline RL</span></a>
+</nav>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+  </div>
+</footer>
+</body>
+</html>
