@@ -289,9 +289,9 @@
   <div class="site-header-inner">
     <a class="site-title" href="{{ '/' | relative_url }}">Offline RL</a>
     {% if page.lang == 'ru' %}
-      <a class="lang-switch" href="{{ page.en_url | default: '/' }}">English</a>
+      <a class="lang-switch" href="{{ page.en_url | relative_url }}">English</a>
     {% else %}
-      <a class="lang-switch" href="{{ page.ru_url | default: '/ru/' }}">Русский</a>
+      <a class="lang-switch" href="{{ page.ru_url | relative_url }}">Русский</a>
     {% endif %}
   </div>
 </header>
@@ -302,14 +302,14 @@
   {% if page.prev_chapter or page.next_chapter %}
   <nav class="chapter-nav">
     {% if page.prev_chapter %}
-    <a href="{{ page.prev_chapter.url }}" class="prev">
+    <a href="{{ page.prev_chapter.url | relative_url }}" class="prev">
       <span class="nav-label">← Previous</span>
       <span class="nav-title">{{ page.prev_chapter.title }}</span>
     </a>
     {% else %}<span></span>{% endif %}
 
     {% if page.next_chapter %}
-    <a href="{{ page.next_chapter.url }}" class="next">
+    <a href="{{ page.next_chapter.url | relative_url }}" class="next">
       <span class="nav-label">Next →</span>
       <span class="nav-title">{{ page.next_chapter.title }}</span>
     </a>

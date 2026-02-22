@@ -19,13 +19,13 @@ Each chapter follows the same structure: **idea → formalization → code → l
 
 <ul class="toc">
   <li>
-    <a href="/en/chapter1/">
+    <a href="{{ '/en/chapter1/' | relative_url }}">
       <span><span class="ch-num">Ch 1</span>Behavioral Cloning</span>
       <span class="ch-status ready">ready</span>
     </a>
   </li>
   <li>
-    <a href="/en/chapter2/">
+    <a href="{{ '/en/chapter2/' | relative_url }}">
       <span><span class="ch-num">Ch 2</span>The Offline RL Problem: Extrapolation Error</span>
       <span class="ch-status ready">ready</span>
     </a>

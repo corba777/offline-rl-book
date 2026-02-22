@@ -1,7 +1,10 @@
 title: "Offline RL: From Theory to Industrial Practice"
 description: "A practical guide to offline reinforcement learning — from behavioral cloning to physics-informed control."
-url: ""
-baseurl: ""
+url: "https://corba777.github.io"
+baseurl: "/offline-rl-book"
+
+github_username: corba777
+github_repo: offline-rl-book
 
 theme: minima
 
@@ -17,10 +20,8 @@ kramdown:
 
 highlighter: rouge
 
-# MathJax
 mathjax: true
 
-# Navigation
 header_pages:
   - index.md
 
