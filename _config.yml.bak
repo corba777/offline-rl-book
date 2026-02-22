@@ -1,0 +1,32 @@
+title: "Offline RL: From Theory to Industrial Practice"
+description: "A practical guide to offline reinforcement learning — from behavioral cloning to physics-informed control."
+url: ""
+baseurl: ""
+
+theme: minima
+
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+
+markdown: kramdown
+kramdown:
+  math_engine: mathjax
+  input: GFM
+  syntax_highlighter: rouge
+
+highlighter: rouge
+
+# MathJax
+mathjax: true
+
+# Navigation
+header_pages:
+  - index.md
+
+defaults:
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "default"

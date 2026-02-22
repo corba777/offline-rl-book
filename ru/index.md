@@ -19,13 +19,13 @@ en_url: /
 
 <ul class="toc">
   <li>
-    <a href="/ru/chapter1/">
+    <a href="{{ '/ru/chapter1/' | relative_url }}">
       <span><span class="ch-num">Гл 1</span>Поведенческое клонирование</span>
       <span class="ch-status ready">готово</span>
     </a>
   </li>
   <li>
-    <a href="/ru/chapter2/">
+    <a href="{{ '/ru/chapter2/' | relative_url }}">
       <span><span class="ch-num">Гл 2</span>Задача Offline RL: ошибка экстраполяции</span>
       <span class="ch-status ready">готово</span>
     </a>
