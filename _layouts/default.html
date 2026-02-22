@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang | default: 'en' }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% if page.title %}{{ page.title }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- MathJax -->
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath:  [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        tags: 'ams',
+      },
+      options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+
+  <!-- Syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>hljs.highlightAll();</script>
+
+  <style>
+    :root {
+      --text:        #1a1a2e;
+      --text-light:  #555570;
+      --bg:          #fafaf8;
+      --bg-code:     #f4f4f0;
+      --accent:      #2563eb;
+      --accent-soft: #dbeafe;
+      --border:      #e2e2dc;
+      --serif:       'Source Serif 4', Georgia, serif;
+      --sans:        'Inter', system-ui, sans-serif;
+      --mono:        'JetBrains Mono', 'Fira Code', monospace;
+      --max-width:   720px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { font-size: 18px; scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--serif);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.75;
+      padding: 0 1rem;
+    }
+
+    /* ── Layout ── */
+    .site-header {
+      border-bottom: 1px solid var(--border);
+      padding: 1.2rem 0;
+      margin-bottom: 3rem;
+    }
+    .site-header-inner {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .site-title {
+      font-family: var(--sans);
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+    .lang-switch {
+      font-family: var(--sans);
+      font-size: 0.82rem;
+      color: var(--text-light);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      padding: 0.25rem 0.65rem;
+      border-radius: 4px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .lang-switch:hover { border-color: var(--accent); color: var(--accent); }
+
+    main {
+      max-width: var(--max-width);
+      margin: 0 auto 6rem;
+    }
+
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem 0;
+      text-align: center;
+      font-family: var(--sans);
+      font-size: 0.8rem;
+      color: var(--text-light);
+    }
+
+    /* ── Typography ── */
+    h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+    h2 {
+      font-family: var(--sans);
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin: 3rem 0 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    h3 {
+      font-family: var(--sans);
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 2rem 0 0.5rem;
+      color: var(--text);
+    }
+    p { margin-bottom: 1.2rem; }
+    strong { font-weight: 600; }
+    em { font-style: italic; }
+
+    a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { text-decoration-thickness: 2px; }
+
+    /* ── Chapter epigraph ── */
+    blockquote {
+      border-left: 3px solid var(--accent);
+      margin: 2rem 0;
+      padding: 0.75rem 0 0.75rem 1.5rem;
+      color: var(--text-light);
+      font-style: italic;
+    }
+    blockquote p { margin: 0; }
+
+    /* ── Code ── */
+    code {
+      font-family: var(--mono);
+      font-size: 0.84em;
+      background: var(--bg-code);
+      padding: 0.15em 0.35em;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+    }
+    pre {
+      background: var(--bg-code) !important;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      margin: 1.5rem 0 2rem;
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: inherit;
+    }
+
+    /* Code file link */
+    .code-ref {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--sans);
+      font-size: 0.82rem;
+      color: var(--text-light);
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.3rem 0.75rem;
+      margin-bottom: 0.75rem;
+      text-decoration: none;
+    }
+    .code-ref:hover { border-color: var(--accent); color: var(--accent); }
+    .code-ref::before { content: "📄"; }
+
+    /* ── Math display ── */
+    .MathJax { overflow-x: auto; }
+    mjx-container[display="true"] {
+      margin: 1.5rem 0 !important;
+      overflow-x: auto;
+    }
+
+    /* ── Tables ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--sans);
+      font-size: 0.88rem;
+      margin: 1.5rem 0 2rem;
+    }
+    th {
+      background: var(--bg-code);
+      font-weight: 600;
+      text-align: left;
+      padding: 0.6rem 1rem;
+      border-bottom: 2px solid var(--border);
+    }
+    td {
+      padding: 0.55rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    tr:last-child td { border-bottom: none; }
+
+    /* ── Chapter nav ── */
+    .chapter-nav {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      font-family: var(--sans);
+      font-size: 0.85rem;
+    }
+    .chapter-nav a {
+      color: var(--text-light);
+      text-decoration: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      max-width: 45%;
+    }
+    .chapter-nav a:hover { color: var(--accent); }
+    .chapter-nav .nav-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .chapter-nav .nav-title { font-weight: 500; }
+    .chapter-nav .next { text-align: right; }
+
+    /* ── TOC on index ── */
+    .toc { list-style: none; margin: 2rem 0; }
+    .toc li {
+      border-bottom: 1px solid var(--border);
+      padding: 0.9rem 0;
+    }
+    .toc li:first-child { border-top: 1px solid var(--border); }
+    .toc a {
+      font-family: var(--sans);
+      font-weight: 500;
+      text-decoration: none;
+      color: var(--text);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .toc a:hover { color: var(--accent); }
+    .toc .ch-num {
+      font-size: 0.78rem;
+      color: var(--text-light);
+      font-weight: 400;
+      margin-right: 0.75rem;
+      flex-shrink: 0;
+    }
+    .toc .ch-status {
+      font-size: 0.75rem;
+      color: var(--text-light);
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      padding: 0.15rem 0.5rem;
+      border-radius: 20px;
+      flex-shrink: 0;
+    }
+    .toc .ch-status.ready { background: #dcfce7; border-color: #86efac; color: #166534; }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      html { font-size: 16px; }
+      h1   { font-size: 1.6rem; }
+      pre  { font-size: 0.78rem; padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="{{ '/' | relative_url }}">Offline RL</a>
+    {% if page.lang == 'ru' %}
+      <a class="lang-switch" href="{{ page.en_url | default: '/' }}">English</a>
+    {% else %}
+      <a class="lang-switch" href="{{ page.ru_url | default: '/ru/' }}">Русский</a>
+    {% endif %}
+  </div>
+</header>
+
+<main>
+  {{ content }}
+
+  {% if page.prev_chapter or page.next_chapter %}
+  <nav class="chapter-nav">
+    {% if page.prev_chapter %}
+    <a href="{{ page.prev_chapter.url }}" class="prev">
+      <span class="nav-label">← Previous</span>
+      <span class="nav-title">{{ page.prev_chapter.title }}</span>
+    </a>
+    {% else %}<span></span>{% endif %}
+
+    {% if page.next_chapter %}
+    <a href="{{ page.next_chapter.url }}" class="next">
+      <span class="nav-label">Next →</span>
+      <span class="nav-title">{{ page.next_chapter.title }}</span>
+    </a>
+    {% endif %}
+  </nav>
+  {% endif %}
+</main>
+
+<footer class="site-footer">
+  <div style="max-width: 720px; margin: 0 auto;">
+    Offline RL: From Theory to Industrial Practice ·
+    <a href="https://github.com/{{ site.github_username }}/{{ site.github_repo }}">GitHub</a>
+  </div>
+</footer>
+
+</body>
+</html>
