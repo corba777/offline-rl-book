@@ -8,11 +8,9 @@ permalink: "/offline-rl-book/"
 
 # Offline RL: From Theory to Industrial Practice
 
-A practical guide to offline reinforcement learning — written for practitioners who know machine learning and want to apply RL to real-world systems without the ability to run live experiments.
+A practical guide to offline reinforcement learning — for practitioners who know ML and want to apply RL to real-world systems without live experiments.
 
-The book follows a single thread: start from the simplest possible approach (behavioral cloning), understand precisely why it fails, then build up the tools to fix it — conservative Q-learning, implicit Q-learning, model-based methods, and physics-informed constraints.
-
-Each chapter follows the same structure: **idea → formalization → code → limitations**.
+Each chapter: **idea → formalization → code → limitations**.
 
 ---
 
@@ -20,13 +18,13 @@ Each chapter follows the same structure: **idea → formalization → code → l
 
 <ul class="toc">
   <li>
-    <a href="{{ '/offline-rl-book/en/chapter1/' | relative_url }}">
+    <a href="/offline-rl-book/en/chapter1/">
       <span><span class="ch-num">Ch 1</span>Behavioral Cloning</span>
       <span class="ch-status ready">ready</span>
     </a>
   </li>
   <li>
-    <a href="{{ '/offline-rl-book/en/chapter2/' | relative_url }}">
+    <a href="/offline-rl-book/en/chapter2/">
       <span><span class="ch-num">Ch 2</span>The Offline RL Problem: Extrapolation Error</span>
       <span class="ch-status ready">ready</span>
     </a>
