@@ -6,6 +6,7 @@ ru_url: /ru/chapter1/
 next_chapter:
   url: /en/chapter2/
   title: "The Offline RL Problem: Extrapolation Error"
+permalink: "/offline-rl-book/en/chapter1/"
 ---
 
 # Chapter 1: Behavioral Cloning

@@ -3,6 +3,7 @@ layout: default
 title: "Offline RL: От теории к промышленной практике"
 lang: ru
 en_url: /
+permalink: "/offline-rl-book/ru/"
 ---
 
 # Offline RL: От теории к промышленной практике

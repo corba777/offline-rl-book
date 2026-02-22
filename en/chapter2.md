@@ -9,6 +9,7 @@ prev_chapter:
 next_chapter:
   url: /en/chapter3/
   title: "Conservative Q-Learning (CQL)"
+permalink: "/offline-rl-book/en/chapter2/"
 ---
 
 # Chapter 2: The Offline RL Problem

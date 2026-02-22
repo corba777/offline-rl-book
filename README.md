@@ -1,6 +1,6 @@
 # Offline RL: From Theory to Industrial Practice
 
-A practical book on offline reinforcement learning, published on GitHub Pages.
+A practical book on offline reinforcement learning.
 
 **English:** https://corba777.github.io/offline-rl-book/  
 **Russian:**  https://corba777.github.io/offline-rl-book/ru/
@@ -17,3 +17,45 @@ A practical book on offline reinforcement learning, published on GitHub Pages.
 | 6. Physics-Informed Offline RL | — | — | 🔜 |
 | 7. Industrial Applications | — | — | 🔜 |
 
+## Repository Structure
+
+```
+├── _config.yml              # Jekyll config (MathJax, theme)
+├── _layouts/
+│   └── default.html         # Custom layout with math + code highlighting
+├── index.md                 # English home page (TOC)
+├── en/
+│   ├── chapter1.md
+│   └── chapter2.md
+├── ru/
+│   ├── index.md             # Russian home page
+│   ├── chapter1.md
+│   └── chapter2.md
+└── code/
+    ├── behavioral_cloning.py
+    └── extrapolation_error.py
+```
+
+## Writing New Chapters
+
+Copy the front matter from any existing chapter:
+
+```yaml
+---
+layout: default
+title: "Chapter 3: Conservative Q-Learning"
+lang: en
+ru_url: /ru/chapter3/
+permalink: "/offline-rl-book/en/chapter3/"
+prev_chapter:
+  url: /en/chapter2/
+  title: "The Offline RL Problem"
+next_chapter:
+  url: /en/chapter4/
+  title: "Implicit Q-Learning (IQL)"
+---
+```
+
+Math: `$...$` inline, `$$...$$` display — rendered by MathJax.  
+Code: fenced blocks with `python` tag.  
+File refs: `> 📄 Full code: [filename.py](../../code/filename.py)`

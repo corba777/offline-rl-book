@@ -6,6 +6,7 @@ en_url: /en/chapter1/
 next_chapter:
   url: /ru/chapter2/
   title: "Задача Offline RL: ошибка экстраполяции"
+permalink: "/offline-rl-book/ru/chapter1/"
 ---
 
 # Глава 1: Поведенческое клонирование

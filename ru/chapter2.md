@@ -9,6 +9,7 @@ prev_chapter:
 next_chapter:
   url: /ru/chapter3/
   title: "Консервативное Q-обучение (CQL)"
+permalink: "/offline-rl-book/ru/chapter2/"
 ---
 
 # Глава 2: Задача Offline RL

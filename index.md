@@ -3,6 +3,7 @@ layout: default
 title: "Offline RL: From Theory to Industrial Practice"
 lang: en
 ru_url: /ru/
+permalink: "/offline-rl-book/"
 ---
 
 # Offline RL: From Theory to Industrial Practice
