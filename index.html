@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline RL: From Theory to Industrial Practice</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+
+  <style>
+    :root {
+      --text: #1a1a2e; --text-light: #555570; --bg: #fafaf8; --bg-code: #f4f4f0;
+      --accent: #2563eb; --border: #e2e2dc;
+      --serif: 'Source Serif 4', Georgia, serif;
+      --sans: 'Inter', system-ui, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+      --max-width: 720px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 18px; }
+    body { font-family: var(--serif); background: var(--bg); color: var(--text); line-height: 1.75; padding: 0 1rem; }
+    .site-header { border-bottom: 1px solid var(--border); padding: 1.2rem 0; margin-bottom: 3rem; }
+    .site-header-inner { max-width: var(--max-width); margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+    .site-title { font-family: var(--sans); font-weight: 600; font-size: 0.95rem; color: var(--text); text-decoration: none; }
+    .lang-switch { font-family: var(--sans); font-size: 0.82rem; color: var(--text-light); text-decoration: none; border: 1px solid var(--border); padding: 0.25rem 0.65rem; border-radius: 4px; }
+    .lang-switch:hover { border-color: var(--accent); color: var(--accent); }
+    main { max-width: var(--max-width); margin: 0 auto 6rem; }
+    h1 { font-size: 2rem; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; margin-bottom: 1rem; }
+    h2 { font-family: var(--sans); font-size: 1.15rem; font-weight: 600; margin: 3rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+    p { margin-bottom: 1.2rem; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+    .toc { list-style: none; margin: 2rem 0; }
+    .toc li { border-bottom: 1px solid var(--border); padding: 0.9rem 0; }
+    .toc li:first-child { border-top: 1px solid var(--border); }
+    .toc a { font-family: var(--sans); font-weight: 500; text-decoration: none; color: var(--text); display: flex; justify-content: space-between; align-items: center; }
+    .toc a:hover { color: var(--accent); }
+    .ch-num { font-size: 0.78rem; color: var(--text-light); font-weight: 400; margin-right: 0.75rem; flex-shrink: 0; }
+    .ch-status { font-size: 0.75rem; color: var(--text-light); background: var(--bg-code); border: 1px solid var(--border); padding: 0.15rem 0.5rem; border-radius: 20px; flex-shrink: 0; }
+    .ch-status.ready { background: #dcfce7; border-color: #86efac; color: #166534; }
+    .site-footer { border-top: 1px solid var(--border); padding: 2rem 0; text-align: center; font-family: var(--sans); font-size: 0.8rem; color: var(--text-light); }
+    .site-footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/ru.html">Русский</a>
+  </div>
+</header>
+
+<main>
+  <h1>Offline RL: From Theory to Industrial Practice</h1>
+
+  <p>A practical guide to offline reinforcement learning — for practitioners who know ML and want to apply RL to real-world systems without live experiments.</p>
+  <p>Each chapter: <strong>idea → formalization → code → limitations</strong>.</p>
+
+  <hr>
+
+  <h2>Contents</h2>
+
+  <ul class="toc">
+    <li>
+      <a href="/offline-rl-book/en/chapter1.html">
+        <span><span class="ch-num">Ch 1</span>Behavioral Cloning</span>
+        <span class="ch-status ready">ready</span>
+      </a>
+    </li>
+    <li>
+      <a href="/offline-rl-book/en/chapter2.html">
+        <span><span class="ch-num">Ch 2</span>The Offline RL Problem: Extrapolation Error</span>
+        <span class="ch-status ready">ready</span>
+      </a>
+    </li>
+    <li>
+      <a href="#">
+        <span><span class="ch-num">Ch 3</span>Conservative Q-Learning (CQL)</span>
+        <span class="ch-status">upcoming</span>
+      </a>
+    </li>
+    <li>
+      <a href="#">
+        <span><span class="ch-num">Ch 4</span>Implicit Q-Learning (IQL)</span>
+        <span class="ch-status">upcoming</span>
+      </a>
+    </li>
+    <li>
+      <a href="#">
+        <span><span class="ch-num">Ch 5</span>Model-Based Offline RL (MOPO, MOReL)</span>
+        <span class="ch-status">upcoming</span>
+      </a>
+    </li>
+    <li>
+      <a href="#">
+        <span><span class="ch-num">Ch 6</span>Physics-Informed Offline RL</span>
+        <span class="ch-status">upcoming</span>
+      </a>
+    </li>
+    <li>
+      <a href="#">
+        <span><span class="ch-num">Ch 7</span>Industrial Applications: Digital Twin &amp; Process Control</span>
+        <span class="ch-status">upcoming</span>
+      </a>
+    </li>
+  </ul>
+</main>
+
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice ·
+    <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+  </div>
+</footer>
+
+</body>
+</html>

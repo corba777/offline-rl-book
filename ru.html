@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline RL: От теории к промышленной практике</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root { --text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--max-width:720px; }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    p{margin-bottom:1.2rem}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .toc{list-style:none;margin:2rem 0}
+    .toc li{border-bottom:1px solid var(--border);padding:0.9rem 0}
+    .toc li:first-child{border-top:1px solid var(--border)}
+    .toc a{font-family:var(--sans);font-weight:500;text-decoration:none;color:var(--text);display:flex;justify-content:space-between;align-items:center}
+    .toc a:hover{color:var(--accent)}
+    .ch-num{font-size:0.78rem;color:var(--text-light);font-weight:400;margin-right:0.75rem;flex-shrink:0}
+    .ch-status{font-size:0.75rem;color:var(--text-light);background:var(--bg-code);border:1px solid var(--border);padding:0.15rem 0.5rem;border-radius:20px;flex-shrink:0}
+    .ch-status.ready{background:#dcfce7;border-color:#86efac;color:#166534}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/">English</a>
+  </div>
+</header>
+<main>
+  <h1>Offline RL: От теории к промышленной практике</h1>
+  <p>Практическое руководство по офлайн обучению с подкреплением — для практиков, которые знают ML и хотят применять RL к реальным системам без живых экспериментов.</p>
+  <p>Каждая глава: <strong>идея → формализация → код → ограничения</strong>.</p>
+  <hr>
+  <h2>Содержание</h2>
+  <ul class="toc">
+    <li><a href="/offline-rl-book/ru/chapter1.html"><span><span class="ch-num">Гл 1</span>Поведенческое клонирование</span><span class="ch-status ready">готово</span></a></li>
+    <li><a href="/offline-rl-book/ru/chapter2.html"><span><span class="ch-num">Гл 2</span>Задача Offline RL: ошибка экстраполяции</span><span class="ch-status ready">готово</span></a></li>
+    <li><a href="#"><span><span class="ch-num">Гл 3</span>Консервативное Q-обучение (CQL)</span><span class="ch-status">скоро</span></a></li>
+    <li><a href="#"><span><span class="ch-num">Гл 4</span>Неявное Q-обучение (IQL)</span><span class="ch-status">скоро</span></a></li>
+    <li><a href="#"><span><span class="ch-num">Гл 5</span>Модельный Offline RL</span><span class="ch-status">скоро</span></a></li>
+    <li><a href="#"><span><span class="ch-num">Гл 6</span>Физически-обоснованный Offline RL</span><span class="ch-status">скоро</span></a></li>
+    <li><a href="#"><span><span class="ch-num">Гл 7</span>Промышленные применения</span><span class="ch-status">скоро</span></a></li>
+  </ul>
+</main>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">Offline RL · <a href="https://github.com/corba777/offline-rl-book">GitHub</a></div>
+</footer>
+</body>
+</html>

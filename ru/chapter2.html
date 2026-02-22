@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Глава 2: Задача Offline RL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']]},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/en/chapter2.html">English</a>
+  </div>
+</header>
+<main>
+<h1>Глава 2: Задача Offline RL</h1>
+<blockquote>
+<p><em>«Функция ценности — оптимист. При возможности она присвоит бесконечную ценность действиям, которых никогда не видела — и именно в этом заключается проблема.»</em></p>
+</blockquote>
+<hr />
+<h2>От BC к RL: что меняется</h2>
+<p>Поведенческое клонирование игнорирует награды. Оно копирует то, что делал эксперт, — а не то, чего эксперт пытался достичь.</p>
+<p>Естественный следующий шаг: использовать сигнал награды. Если есть датасет переходов $(s, a, r, s')$, можно попытаться обучить политику, <strong>максимизирующую суммарную награду</strong>, — а не просто имитирующую наблюдаемое поведение. В этом и состоит обещание офлайн RL.</p>
+<p>Инструмент, который делает онлайн RL рабочим — <strong>Q-обучение</strong>: учимся функции ценности $Q(s, a)$, оценивающей ожидаемую будущую награду при выборе действия $a$ в состоянии $s$, затем действуем жадно по отношению к ней.</p>
+<p>Вопрос: можно ли применить Q-обучение к фиксированному офлайн датасету? Да — но с катастрофическим режимом отказа, требующим осторожного обращения.</p>
+<hr />
+<h2>Q-обучение: краткое напоминание</h2>
+<p>Q-функция удовлетворяет <strong>уравнению оптимальности Беллмана</strong>:</p>
+<p>$$Q^<em>(s, a) = r(s, a) + \gamma \, \mathbb{E}<em>{s' \sim P(\cdot|s,a)} \left[ \max</em>{a'} Q^</em>(s', a') \right]$$</p>
+<p>Мы обучаем $Q_\theta$, минимизируя <strong>ошибку TD</strong> (Temporal Difference):</p>
+<p>$$\mathcal{L}<em>{TD}(\theta) = \mathbb{E}</em>{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar\theta}(s', a') - Q_\theta(s, a) \right)^2 \right]$$</p>
+<p>где $Q_{\bar\theta}$ — <strong>целевая сеть</strong> (target network): периодически обновляемая копия $Q_\theta$, используемая для стабилизации обучения.</p>
+<p>В <strong>онлайн RL</strong> агент собирает новые переходы, действуя в среде. Когда $Q_\theta$ становится неточной в каком-то месте, агент посетит эти состояния, получит реальные награды и скорректирует оценку.</p>
+<p>В <strong>офлайн RL</strong> датасет $\mathcal{D}$ фиксирован. Обратной связи нет.</p>
+<hr />
+<h2>Проблема ошибки экстраполяции</h2>
+<p>Вот в чём суть проблемы. На шаге $\max_{a'}$ в обновлении Беллмана:</p>
+<p>$$\max_{a'} Q_{\bar\theta}(s', a')$$</p>
+<p>оптимизатор перебирает <strong>все возможные действия</strong> $a'$ — включая те, которых никогда не было в датасете $\mathcal{D}$.</p>
+<p>Для действия $a' \notin \mathcal{D}$ у Q-функции нет обучающего сигнала. Её значение в точке $(s', a')$ определяется исключительно обобщением из соседних точек — что для нейронных сетей может быть произвольно оптимистичным.</p>
+<p>Когда обновление Беллмана берёт это завышенное $Q(s', a')$ в качестве цели, оно распространяет переоценку назад по цепочке:</p>
+<p>$$Q(s, a) \leftarrow r + \gamma \cdot \underbrace{Q(s', a')}_{\text{завышено}}$$</p>
+<p>Это <strong>ошибка бутстрэппинга</strong>: ошибки распространяются и усиливаются через цепочку TD-обновлений.</p>
+<h3>Конкретный пример</h3>
+<p>Предположим, наш датасет содержит переходы из химического процесса. Оператор всегда поддерживал температуру в диапазоне 380–420K. Q-функция обучена на этих состояниях.</p>
+<p>В состоянии $s'$ вблизи границы (скажем, 419K) шаг $\max_{a'}$ может обнаружить, что Q-функция предсказывает высокую награду для действия $a' = $ «увеличить нагрев до 450K» — действия, которое оператор никогда не предпринимал. Данных для опровержения этого нет. Q-функция оптимистично обобщила значения в эту область.</p>
+<p>Обновление Беллмана затем использует это значение как цель, завышая $Q(s, 419K, \text{нагрев})$. Это распространяется назад, завышая значения в более ранних состояниях. Полученная политика будет уверенно вести процесс в опасную зону — и Q-функция будет предсказывать высокие награды на всём пути туда.</p>
+<p>Это не граничный случай. Это <strong>поведение по умолчанию</strong> Q-обучения на офлайн данных.</p>
+<hr />
+<h2>Формальная оценка: переоценка OOD-значений</h2>
+<p>Пусть $\hat{\pi}$ — жадная политика относительно обученной Q-функции:</p>
+<p>$$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$</p>
+<p>Определим <strong>поведенческую политику</strong> $\pi_\beta$ как политику, генерировавшую $\mathcal{D}$. Для любого состояния $s$ жадное действие $\hat\pi(s)$ может отличаться от $\pi_\beta(s)$.</p>
+<p>Производительность $\hat\pi$ в реальной среде ограничена:</p>
+<p>$$J(\hat\pi) \leq J(\pi_\beta) + \frac{1}{1-\gamma} \mathbb{E}<em>{s \sim d^{\hat\pi}} \left[ \mathbb{E}</em>{a \sim \hat\pi} \left[ Q_\theta(s,a) - Q^*(s,a) \right] \right]$$</p>
+<p>Второй член — <strong>ошибка оценки Q-значений</strong> в распределении состояний и действий обученной политики. Если $Q_\theta$ переоценивает значения для действий вне датасета — а так и будет — этот член может быть большим и <strong>положительным</strong>: политика работает намного хуже, чем кажется во время обучения.</p>
+<p>Ключевой момент: <strong>ошибка оценивается под $d^{\hat\pi}$, а не под $d^{\pi_\beta}$</strong>. Обученная политика посещает другие состояния, чем поведенческая. Она будет искать именно те области, где Q-значения переоценены больше всего.</p>
+<hr />
+<h2>Сдвиг распределения: версия для Offline RL</h2>
+<p>В главе 1 мы видели сдвиг распределения в BC: политика посещает другие состояния, чем эксперт, что приводит к накапливающимся ошибкам при предсказании действий.</p>
+<p>В офлайн Q-обучении сдвиг распределения происходит в <strong>пространстве действий</strong>:</p>
+<ul>
+<li><strong>Обучающее распределение</strong>: $(s, a) \sim d^{\pi_\beta}(s) \cdot \pi_\beta(a|s)$ — пары состояние-действие из датасета</li>
+<li><strong>Распределение при применении</strong>: $(s, a) \sim d^{\hat\pi}(s) \cdot \hat\pi(a|s)$ — пары под жадной политикой</li>
+</ul>
+<p>Жадная политика будет выбирать действия вне обучающего распределения всякий раз, когда Q-функция оптимистична там — то есть именно тогда, когда нет корректирующего обучающего сигнала.</p>
+<p>Это иногда называют <strong>«смертельной триадой»</strong>: аппроксимация функций + бутстрэппинг + off-policy обучение. Все три присутствуют в офлайн Q-обучении.</p>
+<hr />
+<h2>Демонстрация на практике</h2>
+<blockquote>
+<p>📄 Полный код: <a href="../../code/extrapolation_error.py"><code>extrapolation_error.py</code></a></p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">QNetwork</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden</span><span class="o">=</span><span class="mi">128</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">measure_ood_overestimation</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">dataset_actions</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Сравниваем Q-значения для действий из датасета и OOD-действий.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">all_actions</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">q_all</span>     <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">)</span>
+        <span class="n">q_in_dist</span> <span class="o">=</span> <span class="n">Q</span><span class="p">(</span>
+            <span class="n">state</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">dataset_actions</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+            <span class="n">dataset_actions</span>
+        <span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Действия из датасета     | Q mean: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, max: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Все действия (+ OOD)     | Q mean: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">,     max: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Коэф. переоценки OOD     : </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Результат после обучения vanilla Q-learning на датасете с действиями в <code>[-0.5, 0.5]</code> при пространстве действий <code>[-2, 2]</code>:</p>
+<div class="codehilite"><pre><span></span><code>Действия из датасета     | Q mean: 0.412, max: 0.731
+Все действия (+ OOD)     | Q mean: 0.893, max: 3.847
+Коэф. переоценки OOD     : 5.26x
+</code></pre></div>
+
+<p>Q-функция присваивает значения, в <strong>5 раз превышающие</strong> максимальное в датасете, действиям, которых никогда не видела. Жадная политика уверенно выберет именно их.</p>
+<hr />
+<h2>Ключевое противоречие</h2>
+<p>Вся офлайн RL сводится к следующему напряжению:</p>
+<table>
+<thead>
+<tr>
+<th>Цель</th>
+<th>Ограничение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Максимизировать награду → эксплуатировать Q-функцию</td>
+<td>Q-функция ненадёжна для OOD-действий</td>
+</tr>
+<tr>
+<td>Держаться близко к поведенческой политике</td>
+<td>Поведенческая политика может быть субоптимальной</td>
+</tr>
+</tbody>
+</table>
+<p>Слишком консервативно → политика = BC (нет улучшения над поведением)
+Слишком агрессивно → политика эксплуатирует ошибки Q-функции (катастрофический отказ)</p>
+<p>Пространство решений делится на два семейства:</p>
+<p><strong>Методы ограничения политики</strong> — ограничивают обученную политику, удерживая её близко к $\pi_\beta$:</p>
+<p>$$\pi^* = \arg\max_\pi \mathbb{E}<em>{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi | \pi</em>\beta) \leq \epsilon$$</p>
+<p>Примеры: TD3+BC, BEAR, BCQ.</p>
+<p><strong>Методы пессимизма по значениям</strong> — вместо ограничения политики, делают Q-значения пессимистичными для OOD-действий:</p>
+<p>$$Q^* = \arg\min_Q \mathcal{L}<em>{TD}(Q) + \alpha \cdot \mathbb{E}</em>{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]$$</p>
+<p>Интуиция: если OOD Q-значения искусственно занижены, жадная политика естественным образом предпочтёт действия из распределения данных.</p>
+<p>Это подход <strong>CQL</strong> (глава 3) и <strong>IQL</strong> (глава 4).</p>
+<hr />
+<h2>Почему бы просто не использовать BC?</h2>
+<p>Разумный вопрос: если офлайн Q-обучение так опасно, почему бы не использовать BC?</p>
+<p>Ответ зависит от качества и покрытия поведенческой политики.</p>
+<p><strong>BC достаточен, когда:</strong>
+- Поведенческая политика близка к оптимальной
+- Горизонт задачи короткий
+- Датасет покрывает состояния, с которыми встретитесь при развёртывании</p>
+<p><strong>BC недостаточен, когда:</strong>
+- Поведенческая политика субоптимальна (реальные операторы ошибаются)
+- Нужно комбинировать хорошие части разных траекторий
+- Задача требует рассуждений о долгосрочных последствиях (H &gt; 20)
+- Есть информация о награде, которую хочется использовать</p>
+<p>В промышленных условиях, как правило, выполняются все четыре условия недостаточности BC. Операторы не оптимальны; разные смены принимают разные решения; 30-минутный горизонт предсказания требует долгосрочного планирования; функция награды (процент наполнителя, стабильность температуры, потребление энергии) хорошо определена.</p>
+<p>Это и есть мотивация для всего, что рассматривается в главах 3–5.</p>
+<hr />
+<h2>Итоги</h2>
+<table>
+<thead>
+<tr>
+<th>Проблема</th>
+<th>Описание</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ошибка экстраполяции</td>
+<td>Q-значения завышены для ненаблюдавшихся действий</td>
+</tr>
+<tr>
+<td>Усиление при бутстрэппинге</td>
+<td>TD-обновления распространяют ошибки назад во времени</td>
+</tr>
+<tr>
+<td>Сдвиг распределения</td>
+<td>Жадная политика посещает состояния/действия вне датасета</td>
+</tr>
+<tr>
+<td>Смертельная триада</td>
+<td>Аппроксимация функций + бутстрэппинг + off-policy = нестабильность</td>
+</tr>
+</tbody>
+</table>
+<p>Два основных средства: <strong>ограничение политики</strong> (держаться близко к $\pi_\beta$) и <strong>пессимизм по значениям</strong> (занижать OOD Q-значения). CQL реализует второй подход с элегантной регуляризационной целевой функцией — туда мы и направляемся дальше.</p>
+<hr />
+<h2>Литература</h2>
+<ul>
+<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> arXiv:2005.01643.</li>
+<li>Kumar, A. et al. (2019). <em>Stabilizing Off-Policy Q-Learning via Bootstrapping Error Reduction (BEAR).</em> NeurIPS.</li>
+<li>Fujimoto, S. et al. (2019). <em>Off-Policy Deep Reinforcement Learning without Exploration (BCQ).</em> ICML.</li>
+<li>Kumar, A. et al. (2020). <em>Conservative Q-Learning for Offline Reinforcement Learning (CQL).</em> NeurIPS.</li>
+</ul></main>
+<nav class="chapter-nav">
+<a href="/offline-rl-book/ru/chapter1.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Поведенческое клонирование</span></a>
+</nav>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+  </div>
+</footer>
+</body>
+</html>

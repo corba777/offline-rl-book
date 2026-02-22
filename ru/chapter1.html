@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Глава 1: Поведенческое клонирование</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']]},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/en/chapter1.html">English</a>
+  </div>
+</header>
+<main>
+<h1>Глава 1: Поведенческое клонирование</h1>
+<blockquote>
+<p><em>«Простейшее решение, которое только может сработать — и понимание того, почему именно оно не работает, составляет фундамент всего остального.»</em></p>
+</blockquote>
+<hr />
+<h2>Постановка задачи</h2>
+<p>У вас есть датасет. Кто-то — оператор, контроллер, эксперт — месяцами принимал решения, а система логирования записывала всё: состояние процесса в каждый момент, какое действие было предпринято, что произошло дальше.</p>
+<div class="codehilite"><pre><span></span><code>D = {(s₁, a₁, s₂), (s₂, a₂, s₃), ..., (sₙ, aₙ, sₙ₊₁)}
+</code></pre></div>
+
+<p>Вы хотите построить политику — функцию π(s) → a — которая ведёт себя не хуже того, кто генерировал данные. Проводить эксперименты нельзя. Исследовать пространство нельзя. Есть только D.</p>
+<p>Самая естественная идея: <strong>научиться имитировать</strong>. Если эксперт выбрал действие <code>a</code> в состоянии <code>s</code>, то ваша политика должна делать то же самое. Это и есть Поведенческое клонирование (Behavioral Cloning, BC).</p>
+<hr />
+<h2>Идея</h2>
+<p>BC формулирует задачу как <strong>обучение с учителем</strong>. Забудьте о том, что это последовательное принятие решений. Забудьте о наградах. Просто обучите функцию, отображающую состояния в действия:</p>
+<p>$$\pi_\theta = \arg\min_\theta \mathbb{E}<em>{(s,a) \sim \mathcal{D}} \left[ \mathcal{L}(\pi</em>\theta(s), a) \right]$$</p>
+<p>Для <strong>непрерывных действий</strong> (крутящий момент, уставка температуры, частота вращения):</p>
+<p>$$\mathcal{L} = | \pi_\theta(s) - a |^2 \quad \text{(среднеквадратичная ошибка)}$$</p>
+<p>Для <strong>дискретных действий</strong> (открыть/закрыть клапан, выбор режима):</p>
+<p>$$\mathcal{L} = -\log \pi_\theta(a \mid s) \quad \text{(перекрёстная энтропия / максимальное правдоподобие)}$$</p>
+<p>Вот и всё. Обучаем нейронную сеть. На этапе применения наблюдаем состояние $s$, получаем действие $a = \pi_\theta(s)$.</p>
+<hr />
+<h2>Формализация</h2>
+<p>Пусть поведенческая политика, генерировавшая данные, обозначается $\pi_\beta$. Датасет $\mathcal{D}$ состоит из переходов, сэмплированных из <strong>поведенческого распределения</strong>:</p>
+<p>$$(s, a) \sim d^{\pi_\beta}(s) \cdot \pi_\beta(a \mid s)$$</p>
+<p>где $d^{\pi_\beta}(s)$ — <strong>распределение посещаемости состояний</strong>: как часто поведенческая политика оказывается в каждом состоянии.</p>
+<p>BC минимизирует <strong>потерю имитации</strong>:</p>
+<p>$$\mathcal{L}<em>{BC}(\theta) = \mathbb{E}</em>{(s,a) \sim d^{\pi_\beta}} \left[ -\log \pi_\theta(a \mid s) \right]$$</p>
+<p>В интерпретации максимального правдоподобия это эквивалентно минимизации KL-дивергенции между обученной политикой и поведенческой политикой <strong>в состояниях, посещаемых поведенческой политикой</strong>:</p>
+<p>$$\mathcal{L}<em>{BC}(\theta) = \mathbb{E}</em>{s \sim d^{\pi_\beta}} \left[ D_{KL}\left(\pi_\beta(\cdot \mid s) \,|\, \pi_\theta(\cdot \mid s)\right) \right] + \text{const}$$</p>
+<p>Ключевая фраза: <strong>в состояниях, посещаемых поведенческой политикой</strong>. Именно она станет источником всех проблем.</p>
+<hr />
+<h2>Реализация</h2>
+<blockquote>
+<p>📄 Полный код: <a href="../code/behavioral_cloning.py"><code>behavioral_cloning.py</code></a></p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch.optim</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">optim</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataLoader</span><span class="p">,</span> <span class="n">TensorDataset</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">BCPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Простая MLP-политика для непрерывных пространств действий.</span>
+<span class="sd">    Детерминированное отображение: состояние → действие.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">train_bc</span><span class="p">(</span>
+    <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>   <span class="c1"># (N, state_dim)</span>
+    <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># (N, action_dim)</span>
+    <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">n_epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span>
+    <span class="n">lr</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">3e-4</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BCPolicy</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Обучение BC-политики через MSE на непрерывных действиях.&quot;&quot;&quot;</span>
+
+    <span class="n">policy</span> <span class="o">=</span> <span class="n">BCPolicy</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">lr</span><span class="p">)</span>
+    <span class="n">dataset</span> <span class="o">=</span> <span class="n">TensorDataset</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
+    <span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_epochs</span><span class="p">):</span>
+        <span class="n">epoch_loss</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">for</span> <span class="n">s_batch</span><span class="p">,</span> <span class="n">a_batch</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
+            <span class="n">a_pred</span> <span class="o">=</span> <span class="n">policy</span><span class="p">(</span><span class="n">s_batch</span><span class="p">)</span>
+            <span class="n">loss</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">a_pred</span><span class="p">,</span> <span class="n">a_batch</span><span class="p">)</span>
+
+            <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+            <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+            <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+            <span class="n">epoch_loss</span> <span class="o">+=</span> <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">epoch</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">20</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Epoch </span><span class="si">{</span><span class="n">epoch</span><span class="o">+</span><span class="mi">1</span><span class="si">:</span><span class="s2">3d</span><span class="si">}</span><span class="s2"> | Loss: </span><span class="si">{</span><span class="n">epoch_loss</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">loader</span><span class="p">)</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">policy</span>
+</code></pre></div>
+
+<p><strong>Стохастическая политика</strong> (более устойчивая к шуму) — параметризуем гауссово распределение:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">StochasticBCPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Гауссова политика: предсказывает среднее и log_std.</span>
+<span class="sd">    Обучение: максимизация log-правдоподобия наблюдаемых действий.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">mean</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+        <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="o">-</span><span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">log_prob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">std</span> <span class="o">=</span> <span class="n">log_std</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">std</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">dist</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">action</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># суммируем по размерностям действия</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">deterministic</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">mean</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span><span class="o">.</span><span class="n">exp</span><span class="p">())</span><span class="o">.</span><span class="n">sample</span><span class="p">()</span>
+</code></pre></div>
+
+<hr />
+<h2>Когда BC работает?</h2>
+<p>BC хорошо работает при двух условиях:</p>
+<p><strong>1. Плотные, высококачественные данные.</strong> Если поведенческая политика близка к оптимальной и датасет покрывает состояния, которые встретятся при развёртывании — BC может работать на удивление хорошо. Эксперименты с робототехникой показывают, что BC с данными от эксперта-человека может превосходить model-free RL.</p>
+<p><strong>2. Короткий горизонт.</strong> Если задача решается за несколько шагов, ошибки не успевают накапливаться.</p>
+<p>На практике для задач с горизонтом $H \leq 20$ и качественным демонстратором BC — сильный baseline, который стоит попробовать до всего остального.</p>
+<hr />
+<h2>Почему BC не работает: проблема накопления ошибок</h2>
+<p>Вот в чём суть проблемы. Во время обучения BC видит состояния из $d^{\pi_\beta}$ — распределения состояний, которые посещает <em>поведенческая политика</em>. Во время применения обученная политика $\pi_\theta$ посещает <em>другое</em> распределение $d^{\pi_\theta}$.</p>
+<p>Даже если BC выучила $\pi_\theta \approx \pi_\beta$ в каждом обучающем состоянии, небольшие ошибки в выборе действий отклоняют траекторию в <strong>состояния, которых не было в датасете</strong>. В этих новых состояниях предсказания BC ненадёжны — и ошибки там вызывают ещё большее отклонение.</p>
+<p>Это <strong>сдвиг распределения</strong> (distribution shift), и он накапливается со временем.</p>
+<h3>Формальная оценка</h3>
+<p>Ross &amp; Bagnell (2010) доказали следующее. Предположим, что BC достигает средней ошибки имитации $\epsilon$ на каждом шаге:</p>
+<p>$$\mathbb{E}<em>{s \sim d^{\pi</em>\beta}} \left[ | \pi_\theta(s) - \pi_\beta(s) | \right] \leq \epsilon$$</p>
+<p>Тогда разрыв в производительности между обученной и поведенческой политикой ограничен:</p>
+<p>$$J(\pi_\beta) - J(\pi_\theta) \leq \epsilon H^2 \cdot C$$</p>
+<p>где:
+- $H$ — горизонт задачи (количество шагов)
+- $C$ — константа, зависящая от постоянной Липшица динамики и функции награды
+- Граница растёт как $\mathcal{O}(H^2)$</p>
+<p><strong>Именно член $H^2$ создаёт проблему.</strong> Для 30-минутного горизонта предсказания с шагом 10 секунд $H = 180$. Даже крошечная ошибка на шаге $\epsilon = 0.01$ даёт оценку $0.01 \times 180^2 = 324$. Граница на практике нежёсткая, но тренд реален.</p>
+<h3>Интуиция: снежный ком</h3>
+<p>Представьте автомобиль, движущийся по дороге. BC обучает политику управления рулём на примерах эксперта. Если политика делает небольшую ошибку и слегка отклоняется от центра, она оказывается в состоянии, которое эксперт никогда не демонстрировал — чуть сбоку от дороги. Предсказания там ненадёжны, что вызывает ещё большую ошибку коррекции, дальнейшее отклонение — пока автомобиль полностью не съезжает с дороги.</p>
+<p>Это называется <strong>ковариатный сдвиг</strong> (covariate shift): распределение входных данных во время применения не совпадает с распределением во время обучения.</p>
+<div class="codehilite"><pre><span></span><code><span class="err">Обучение</span><span class="o">:</span><span class="w">  </span><span class="n">s₁</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₂</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₃</span><span class="w">   </span><span class="o">(</span><span class="err">траектория</span><span class="w"> </span><span class="err">эксперта</span><span class="o">,</span><span class="w"> </span><span class="err">состояния</span><span class="w"> </span><span class="err">хорошо</span><span class="w"> </span><span class="err">покрыты</span><span class="o">)</span>
+<span class="err">Применение</span><span class="o">:</span><span class="w"> </span><span class="n">s₁</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₂</span><span class="s1">&#39; → s₃&#39;</span><span class="err">&#39;</span><span class="w">  </span><span class="o">(</span><span class="err">малые</span><span class="w"> </span><span class="err">ошибки</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">незнакомые</span><span class="w"> </span><span class="err">состояния</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">большие</span><span class="w"> </span><span class="err">ошибки</span><span class="o">)</span>
+<span class="w">                    </span><span class="err">↑</span>
+<span class="w">        </span><span class="err">вне</span><span class="w"> </span><span class="err">обучающего</span><span class="w"> </span><span class="err">распределения</span>
+</code></pre></div>
+
+<hr />
+<h2>Практические ограничения для промышленных процессов</h2>
+<p>Для такого процесса, как нанесение асфальтного покрытия с переменными состояния (процент наполнителя, температура, вязкость) и горизонтом 30 минут, у BC есть специфические режимы отказа:</p>
+<p><strong>Мультимодальное поведение.</strong> Операторы-люди принимают разные решения в одном и том же состоянии в зависимости от контекста, не отражённого в векторе состояния (предстоящий заказ, график технического обслуживания, усталость). BC усредняет по этим модам, обучая политику, которая субоптимальна во всех из них.</p>
+<p><strong>Пробелы в покрытии.</strong> Операторы редко исследуют граничные случаи. Если возмущение выводит процесс за пределы нормального рабочего диапазона, у BC нет обучающих данных для этих состояний, и поведение становится неопределённым.</p>
+<p><strong>Отсутствие учёта наград.</strong> BC копирует то, что оператор <em>делал</em>, а не то, что ему <em>следовало</em> делать. Если исторические данные содержат субоптимальные решения (ручные коррекции, консервативные уставки), BC добросовестно воспроизводит эти ошибки.</p>
+<p><strong>Отсутствие контрфактического рассуждения.</strong> BC не может ответить на вопрос «что произошло бы, если бы частота вращения была на 20% выше?». Она предсказывает действие, а не результат.</p>
+<hr />
+<h2>Мост от BC к RL: DAgger</h2>
+<p>Теоретическое решение проблемы накопления ошибок — <strong>DAgger</strong> (Dataset Aggregation, Ross et al. 2011):</p>
+<ol>
+<li>Обучаем $\pi_\theta$ на текущем датасете $\mathcal{D}$</li>
+<li>Выполняем роллаут $\pi_\theta$ в среде, посещаем состояния $s \sim d^{\pi_\theta}$</li>
+<li><strong>Запрашиваем эксперта</strong> в этих состояниях для получения правильных меток $a = \pi_\beta(s)$</li>
+<li>Добавляем $(s, a)$ в $\mathcal{D}$, переходим к шагу 1</li>
+</ol>
+<p>DAgger достигает оценки $\mathcal{O}(H)$ вместо $\mathcal{O}(H^2)$, потому что политика теперь обучается на состояниях, которые она реально посещает.</p>
+<p>Проблема: шаг 3 требует <strong>опроса эксперта в онлайн-режиме</strong>. В промышленных условиях это означает просьбу к оператору размечать состояния во время работы — дорого и зачастую нереализуемо.</p>
+<p>Именно поэтому существует <strong>офлайн RL</strong>: мы хотим улучшить результат сверх BC без дополнительного сбора данных.</p>
+<hr />
+<h2>Итоги</h2>
+<table>
+<thead>
+<tr>
+<th>Свойство</th>
+<th>Поведенческое клонирование</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Необходимые данные</td>
+<td>Переходы $(s, a)$ — награды не нужны</td>
+</tr>
+<tr>
+<td>Целевая функция</td>
+<td>Обучение с учителем (MSE или NLL)</td>
+</tr>
+<tr>
+<td>Масштабирование по горизонту</td>
+<td>Рост ошибки $\mathcal{O}(H^2)$</td>
+</tr>
+<tr>
+<td>Обработка OOD</td>
+<td>Отсутствует — тихий отказ на незнакомых состояниях</td>
+</tr>
+<tr>
+<td>Оптимизация наград</td>
+<td>Нет — копирует поведение, а не цели</td>
+</tr>
+<tr>
+<td>Сложность реализации</td>
+<td>Низкая</td>
+</tr>
+</tbody>
+</table>
+<p><strong>BC — правильная отправная точка.</strong> Прежде чем обучать CQL или строить модели мира, всегда обучите базовый вариант BC. Если BC уже достигает приемлемой производительности, более сложные методы могут не понадобиться. Если нет — понимание <em>почему</em> (в каких состояниях происходят отказы, как накапливаются ошибки) подскажет, что именно офлайн RL должен исправить.</p>
+<hr />
+<h2>Что дальше</h2>
+<p>BC терпит неудачу, потому что рассматривает задачу как i.i.d. обучение с учителем и игнорирует последовательную структуру. Следующий вопрос: можно ли использовать информацию о наградах для улучшения результата, оставаясь при этом в рамках фиксированного датасета?</p>
+<p>Это и есть задача офлайн RL. Глава 2 формализует её и показывает, почему наивное применение Q-обучения к офлайн данным даёт катастрофически оптимистичные оценки ценности — проблема <strong>ошибки экстраполяции</strong>, которая мотивирует всё содержание глав 3–5.</p>
+<hr />
+<h2>Литература</h2>
+<ul>
+<li>Ross, S., &amp; Bagnell, D. (2010). <em>Efficient Reductions for Imitation Learning.</em> AISTATS.</li>
+<li>Ross, S., Gordon, G., &amp; Bagnell, D. (2011). <em>A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning.</em> AISTATS. <em>(DAgger)</em></li>
+<li>Pomerleau, D. (1989). <em>ALVINN: An Autonomous Land Vehicle in a Neural Network.</em> NeurIPS. <em>(Оригинальный BC)</em></li>
+<li>Levine, S., Kumar, A., Tucker, G., &amp; Fu, J. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.</em> arXiv:2005.01643.</li>
+</ul></main>
+<nav class="chapter-nav">
+<span></span>
+<a href="/offline-rl-book/ru/chapter2.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Задача Offline RL</span></a>
+</nav>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+  </div>
+</footer>
+</body>
+</html>

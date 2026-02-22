@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chapter 1: Behavioral Cloning</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']]},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/ru/chapter1.html">Русский</a>
+  </div>
+</header>
+<main>
+<h1>Chapter 1: Behavioral Cloning</h1>
+<blockquote>
+<p><em>"The simplest thing that could possibly work — and understanding exactly why it doesn't is the foundation of everything that follows."</em></p>
+</blockquote>
+<hr />
+<h2>The Setting</h2>
+<p>You have a dataset. Someone — an operator, a controller, an expert — has been making decisions for months, and a logging system recorded everything: the state of the process at each moment, what action was taken, what happened next.</p>
+<div class="codehilite"><pre><span></span><code>D = {(s₁, a₁, s₂), (s₂, a₂, s₃), ..., (sₙ, aₙ, sₙ₊₁)}
+</code></pre></div>
+
+<p>You want to build a policy — a function π(s) → a — that behaves at least as well as whoever generated the data. You cannot run experiments. You cannot explore. You only have D.</p>
+<p>The most natural idea: <strong>learn to imitate</strong>. If the expert chose action <code>a</code> in state <code>s</code>, then your policy should too. This is Behavioral Cloning (BC).</p>
+<hr />
+<h2>The Idea</h2>
+<p>BC treats the problem as <strong>supervised learning</strong>. Forget that this is sequential decision-making. Forget rewards. Just fit a function that maps states to actions:</p>
+<p>$$\pi_\theta = \arg\min_\theta \mathbb{E}<em>{(s,a) \sim \mathcal{D}} \left[ \mathcal{L}(\pi</em>\theta(s), a) \right]$$</p>
+<p>For <strong>continuous actions</strong> (motor torque, temperature setpoint, RPM):</p>
+<p>$$\mathcal{L} = | \pi_\theta(s) - a |^2 \quad \text{(Mean Squared Error)}$$</p>
+<p>For <strong>discrete actions</strong> (valve open/close, regime selection):</p>
+<p>$$\mathcal{L} = -\log \pi_\theta(a \mid s) \quad \text{(Cross-Entropy / Maximum Likelihood)}$$</p>
+<p>That's it. Train a neural network. At inference time, observe state $s$, output action $a = \pi_\theta(s)$.</p>
+<hr />
+<h2>Formalization</h2>
+<p>Let the behavior policy that generated the data be $\pi_\beta$. The dataset $\mathcal{D}$ consists of transitions sampled from the <strong>behavior distribution</strong>:</p>
+<p>$$(s, a) \sim d^{\pi_\beta}(s) \cdot \pi_\beta(a \mid s)$$</p>
+<p>where $d^{\pi_\beta}(s)$ is the <strong>state visitation distribution</strong> — how often the behavior policy visits each state.</p>
+<p>BC minimizes the <strong>imitation loss</strong>:</p>
+<p>$$\mathcal{L}<em>{BC}(\theta) = \mathbb{E}</em>{(s,a) \sim d^{\pi_\beta}} \left[ -\log \pi_\theta(a \mid s) \right]$$</p>
+<p>Under the MLE interpretation, this is equivalent to minimizing KL divergence between the learned policy and the behavior policy <strong>at states visited by the behavior policy</strong>:</p>
+<p>$$\mathcal{L}<em>{BC}(\theta) = \mathbb{E}</em>{s \sim d^{\pi_\beta}} \left[ D_{KL}\left(\pi_\beta(\cdot \mid s) \,|\, \pi_\theta(\cdot \mid s)\right) \right] + \text{const}$$</p>
+<p>This is the key phrase: <strong>at states visited by the behavior policy</strong>. It will become the source of all problems.</p>
+<hr />
+<h2>Implementation</h2>
+<blockquote>
+<p>📄 Full code: <a href="../code/behavioral_cloning.py"><code>behavioral_cloning.py</code></a></p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch.optim</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">optim</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataLoader</span><span class="p">,</span> <span class="n">TensorDataset</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">BCPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Simple MLP policy for continuous action spaces.</span>
+<span class="sd">    Maps state → action directly (deterministic BC).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">train_bc</span><span class="p">(</span>
+    <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>   <span class="c1"># (N, state_dim)</span>
+    <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># (N, action_dim)</span>
+    <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">n_epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span>
+    <span class="n">lr</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">3e-4</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BCPolicy</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Train a BC policy via MSE on continuous actions.&quot;&quot;&quot;</span>
+
+    <span class="n">policy</span> <span class="o">=</span> <span class="n">BCPolicy</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">lr</span><span class="p">)</span>
+    <span class="n">dataset</span> <span class="o">=</span> <span class="n">TensorDataset</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
+    <span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_epochs</span><span class="p">):</span>
+        <span class="n">epoch_loss</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">for</span> <span class="n">s_batch</span><span class="p">,</span> <span class="n">a_batch</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
+            <span class="n">a_pred</span> <span class="o">=</span> <span class="n">policy</span><span class="p">(</span><span class="n">s_batch</span><span class="p">)</span>
+            <span class="n">loss</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">a_pred</span><span class="p">,</span> <span class="n">a_batch</span><span class="p">)</span>
+
+            <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+            <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+            <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+            <span class="n">epoch_loss</span> <span class="o">+=</span> <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">epoch</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">20</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Epoch </span><span class="si">{</span><span class="n">epoch</span><span class="o">+</span><span class="mi">1</span><span class="si">:</span><span class="s2">3d</span><span class="si">}</span><span class="s2"> | Loss: </span><span class="si">{</span><span class="n">epoch_loss</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">loader</span><span class="p">)</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">policy</span>
+</code></pre></div>
+
+<p><strong>For stochastic policy</strong> (better for robustness), output a Gaussian:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">StochasticBCPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Gaussian policy: outputs mean and log_std.</span>
+<span class="sd">    Training: maximize log-likelihood of observed actions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">mean</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+        <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="o">-</span><span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">log_prob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">std</span> <span class="o">=</span> <span class="n">log_std</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">std</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">dist</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">action</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># sum over action dims</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">deterministic</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">mean</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span><span class="o">.</span><span class="n">exp</span><span class="p">())</span><span class="o">.</span><span class="n">sample</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">train_stochastic_bc</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+    <span class="n">policy</span> <span class="o">=</span> <span class="n">StochasticBCPolicy</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">3e-4</span><span class="p">)</span>
+    <span class="n">dataset</span> <span class="o">=</span> <span class="n">TensorDataset</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
+    <span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_epochs</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">s_batch</span><span class="p">,</span> <span class="n">a_batch</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
+            <span class="c1"># Negative log-likelihood loss</span>
+            <span class="n">loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">policy</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">s_batch</span><span class="p">,</span> <span class="n">a_batch</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+            <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+            <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+            <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">policy</span>
+</code></pre></div>
+
+<hr />
+<h2>When Does BC Work?</h2>
+<p>BC works well under two conditions:</p>
+<p><strong>1. Dense, high-quality data.</strong> If the behavior policy is near-optimal and the dataset covers the states you'll encounter at deployment, BC can perform remarkably well. Imitation learning results on robotic manipulation tasks show BC matching or exceeding model-free RL when the demonstrator is expert-level.</p>
+<p><strong>2. Short horizons.</strong> If the task requires only a few steps to complete, errors don't have time to compound.</p>
+<p>In practice, for tasks with horizon $H \leq 20$ and a high-quality demonstrator, BC is a strong baseline that's worth trying before anything more complex.</p>
+<hr />
+<h2>Why BC Fails: The Compounding Error Problem</h2>
+<p>Here is the core issue. During training, BC sees states from $d^{\pi_\beta}$ — the distribution of states the <em>behavior policy</em> visits. At test time, the learned policy $\pi_\theta$ visits a <em>different</em> distribution $d^{\pi_\theta}$.</p>
+<p>Even if BC learns $\pi_\theta \approx \pi_\beta$ at every training state, small errors in action selection cause the trajectory to drift into <strong>states not seen in the dataset</strong>. At these new states, BC has no reliable predictions — and its errors there cause further drift.</p>
+<p>This is <strong>distribution shift</strong>, and it compounds over time.</p>
+<h3>The Formal Bound</h3>
+<p>Ross &amp; Bagnell (2010) proved the following. Suppose BC achieves average per-step imitation error $\epsilon$:</p>
+<p>$$\mathbb{E}<em>{s \sim d^{\pi</em>\beta}} \left[ | \pi_\theta(s) - \pi_\beta(s) | \right] \leq \epsilon$$</p>
+<p>Then the performance gap between the learned policy and the behavior policy is bounded by:</p>
+<p>$$J(\pi_\beta) - J(\pi_\theta) \leq \epsilon H^2 \cdot C$$</p>
+<p>where:
+- $H$ is the task horizon (number of steps)
+- $C$ is a constant depending on the Lipschitz constant of the dynamics and reward
+- The bound grows as $\mathcal{O}(H^2)$</p>
+<p><strong>The $H^2$ term is the problem.</strong> For a 30-minute prediction horizon at 10-second intervals, $H = 180$. Even tiny per-step error $\epsilon = 0.01$ produces a bound of $0.01 \times 180^2 = 324$. The bound is loose in practice, but the trend is real.</p>
+<h3>Intuition: The Snowball</h3>
+<p>Imagine a car following a road. BC trains the steering policy on expert demonstrations. If the policy makes a small error and drifts slightly off-center, it now faces a state the expert never demonstrated — slightly off-road. Its predictions there are unreliable, causing a bigger correction error, drifting further, until the car leaves the road entirely.</p>
+<p>This is called <strong>covariate shift</strong>: the input distribution at test time doesn't match training time.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">Training</span><span class="o">:</span><span class="w">  </span><span class="n">s₁</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₂</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₃</span><span class="w">  </span><span class="o">(</span><span class="n">expert</span><span class="w"> </span><span class="n">trajectory</span><span class="o">,</span><span class="w"> </span><span class="n">states</span><span class="w"> </span><span class="n">well</span><span class="o">-</span><span class="n">covered</span><span class="o">)</span>
+<span class="n">Testing</span><span class="o">:</span><span class="w">   </span><span class="n">s₁</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₂</span><span class="s1">&#39; → s₃&#39;</span><span class="err">&#39;</span><span class="w">  </span><span class="o">(</span><span class="n">small</span><span class="w"> </span><span class="n">errors</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">unseen</span><span class="w"> </span><span class="n">states</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">larger</span><span class="w"> </span><span class="n">errors</span><span class="o">)</span>
+<span class="w">                   </span><span class="err">↑</span>
+<span class="w">           </span><span class="n">outside</span><span class="w"> </span><span class="n">training</span><span class="w"> </span><span class="n">distribution</span>
+</code></pre></div>
+
+<hr />
+<h2>Practical Limitations for Industrial Processes</h2>
+<p>For a process like asphalt coating with state variables (filler%, temperature, viscosity) and a 30-minute horizon, BC has specific failure modes:</p>
+<p><strong>Multi-modal behavior.</strong> Human operators make different decisions in the same state depending on context not captured in the state vector (upcoming order, maintenance schedule, fatigue). BC averages over these modes, learning a policy that is suboptimal in all of them.</p>
+<p><strong>Coverage gaps.</strong> Operators rarely explore edge cases. If a disturbance drives the process outside the normal operating band, BC has no training data for those states and produces undefined behavior.</p>
+<p><strong>No reward awareness.</strong> BC copies what the operator <em>did</em>, not what they <em>should have done</em>. If the historical data contains suboptimal decisions (manual corrections, conservative setpoints), BC faithfully imitates those mistakes.</p>
+<p><strong>No counterfactual reasoning.</strong> BC cannot answer "what would happen if RPM were 20% higher?" It predicts the action, not the outcome.</p>
+<hr />
+<h2>The BC-to-RL Bridge: DAgger</h2>
+<p>The theoretical fix for compounding error is <strong>DAgger</strong> (Dataset Aggregation, Ross et al. 2011):</p>
+<ol>
+<li>Train $\pi_\theta$ on current dataset $\mathcal{D}$</li>
+<li>Roll out $\pi_\theta$ in the environment, visit states $s \sim d^{\pi_\theta}$</li>
+<li><strong>Query the expert</strong> at those states to get correct labels $a = \pi_\beta(s)$</li>
+<li>Add $(s, a)$ to $\mathcal{D}$, go to step 1</li>
+</ol>
+<p>DAgger achieves an $\mathcal{O}(H)$ bound instead of $\mathcal{O}(H^2)$, because the policy is now trained on the states it actually visits.</p>
+<p>The problem: step 3 requires <strong>querying the expert online</strong>. In industrial settings, this means asking a human operator to label states during deployment — expensive and often impractical.</p>
+<p>This is precisely why <strong>offline RL</strong> exists: we want to improve beyond BC without additional data collection.</p>
+<hr />
+<h2>Summary</h2>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Behavioral Cloning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Data required</td>
+<td>Transitions $(s, a)$ — no rewards needed</td>
+</tr>
+<tr>
+<td>Training objective</td>
+<td>Supervised imitation (MSE or NLL)</td>
+</tr>
+<tr>
+<td>Horizon scaling</td>
+<td>$\mathcal{O}(H^2)$ error growth</td>
+</tr>
+<tr>
+<td>OOD handling</td>
+<td>None — fails silently on unseen states</td>
+</tr>
+<tr>
+<td>Reward optimization</td>
+<td>No — copies behavior, not objectives</td>
+</tr>
+<tr>
+<td>Implementation complexity</td>
+<td>Low</td>
+</tr>
+</tbody>
+</table>
+<p><strong>BC is the right starting point.</strong> Before training CQL or building world models, always fit a BC baseline. If BC already achieves acceptable performance, you may not need anything more complex. If it doesn't, understanding <em>why</em> — which states it fails on, how error compounds — tells you exactly what offline RL needs to fix.</p>
+<hr />
+<h2>What Comes Next</h2>
+<p>BC fails because it treats the problem as i.i.d. supervised learning and ignores sequential structure. The next question: can we use reward information to do better, while still learning only from a fixed dataset?</p>
+<p>This is the offline RL problem. Chapter 2 defines it formally and shows why naively applying Q-learning to offline data produces catastrophically overoptimistic value estimates — the <strong>extrapolation error</strong> problem that motivates everything in Chapters 3–5.</p>
+<hr />
+<h2>References</h2>
+<ul>
+<li>Ross, S., &amp; Bagnell, D. (2010). <em>Efficient Reductions for Imitation Learning.</em> AISTATS.</li>
+<li>Ross, S., Gordon, G., &amp; Bagnell, D. (2011). <em>A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning.</em> AISTATS. <em>(DAgger)</em></li>
+<li>Pomerleau, D. (1989). <em>ALVINN: An Autonomous Land Vehicle in a Neural Network.</em> NeurIPS. <em>(Original BC)</em></li>
+<li>Levine, S., Kumar, A., Tucker, G., &amp; Fu, J. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.</em> arXiv:2005.01643.</li>
+</ul></main>
+<nav class="chapter-nav">
+<span></span>
+<a href="/offline-rl-book/en/chapter2.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">The Offline RL Problem</span></a>
+</nav>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+  </div>
+</footer>
+</body>
+</html>
