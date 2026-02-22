@@ -6,7 +6,7 @@
   <title>Chapter 1: Behavioral Cloning</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']]},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -44,7 +44,7 @@
     .chapter-nav a:hover{color:var(--accent)}
     .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
     .nav-title{font-weight:500}
-    .next{text-align:right}
+    .next{text-align:right;margin-left:auto}
     .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
     .site-footer a{color:var(--accent)}
     @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
@@ -65,143 +65,140 @@
 <hr />
 <h2>The Setting</h2>
 <p>You have a dataset. Someone — an operator, a controller, an expert — has been making decisions for months, and a logging system recorded everything: the state of the process at each moment, what action was taken, what happened next.</p>
-<div class="codehilite"><pre><span></span><code>D = {(s₁, a₁, s₂), (s₂, a₂, s₃), ..., (sₙ, aₙ, sₙ₊₁)}
-</code></pre></div>
-
+<pre><code>D = {(s₁, a₁, s₂), (s₂, a₂, s₃), ..., (sₙ, aₙ, sₙ₊₁)}
+</code></pre>
 <p>You want to build a policy — a function π(s) → a — that behaves at least as well as whoever generated the data. You cannot run experiments. You cannot explore. You only have D.</p>
 <p>The most natural idea: <strong>learn to imitate</strong>. If the expert chose action <code>a</code> in state <code>s</code>, then your policy should too. This is Behavioral Cloning (BC).</p>
 <hr />
 <h2>The Idea</h2>
 <p>BC treats the problem as <strong>supervised learning</strong>. Forget that this is sequential decision-making. Forget rewards. Just fit a function that maps states to actions:</p>
-<p>$$\pi_\theta = \arg\min_\theta \mathbb{E}<em>{(s,a) \sim \mathcal{D}} \left[ \mathcal{L}(\pi</em>\theta(s), a) \right]$$</p>
+<p><div class="math-display">$$\pi_\theta = \arg\min_\theta \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \mathcal{L}(\pi_\theta(s), a) \right]$$</div></p>
 <p>For <strong>continuous actions</strong> (motor torque, temperature setpoint, RPM):</p>
-<p>$$\mathcal{L} = | \pi_\theta(s) - a |^2 \quad \text{(Mean Squared Error)}$$</p>
+<p><div class="math-display">$$\mathcal{L} = \| \pi_\theta(s) - a \|^2 \quad \text{(Mean Squared Error)}$$</div></p>
 <p>For <strong>discrete actions</strong> (valve open/close, regime selection):</p>
-<p>$$\mathcal{L} = -\log \pi_\theta(a \mid s) \quad \text{(Cross-Entropy / Maximum Likelihood)}$$</p>
+<p><div class="math-display">$$\mathcal{L} = -\log \pi_\theta(a \mid s) \quad \text{(Cross-Entropy / Maximum Likelihood)}$$</div></p>
 <p>That's it. Train a neural network. At inference time, observe state $s$, output action $a = \pi_\theta(s)$.</p>
 <hr />
 <h2>Formalization</h2>
 <p>Let the behavior policy that generated the data be $\pi_\beta$. The dataset $\mathcal{D}$ consists of transitions sampled from the <strong>behavior distribution</strong>:</p>
-<p>$$(s, a) \sim d^{\pi_\beta}(s) \cdot \pi_\beta(a \mid s)$$</p>
+<p><div class="math-display">$$(s, a) \sim d^{\pi_\beta}(s) \cdot \pi_\beta(a \mid s)$$</div></p>
 <p>where $d^{\pi_\beta}(s)$ is the <strong>state visitation distribution</strong> — how often the behavior policy visits each state.</p>
 <p>BC minimizes the <strong>imitation loss</strong>:</p>
-<p>$$\mathcal{L}<em>{BC}(\theta) = \mathbb{E}</em>{(s,a) \sim d^{\pi_\beta}} \left[ -\log \pi_\theta(a \mid s) \right]$$</p>
+<p><div class="math-display">$$\mathcal{L}_{BC}(\theta) = \mathbb{E}_{(s,a) \sim d^{\pi_\beta}} \left[ -\log \pi_\theta(a \mid s) \right]$$</div></p>
 <p>Under the MLE interpretation, this is equivalent to minimizing KL divergence between the learned policy and the behavior policy <strong>at states visited by the behavior policy</strong>:</p>
-<p>$$\mathcal{L}<em>{BC}(\theta) = \mathbb{E}</em>{s \sim d^{\pi_\beta}} \left[ D_{KL}\left(\pi_\beta(\cdot \mid s) \,|\, \pi_\theta(\cdot \mid s)\right) \right] + \text{const}$$</p>
+<p><div class="math-display">$$\mathcal{L}_{BC}(\theta) = \mathbb{E}_{s \sim d^{\pi_\beta}} \left[ D_{KL}\left(\pi_\beta(\cdot \mid s) \,\|\, \pi_\theta(\cdot \mid s)\right) \right] + \text{const}$$</div></p>
 <p>This is the key phrase: <strong>at states visited by the behavior policy</strong>. It will become the source of all problems.</p>
 <hr />
 <h2>Implementation</h2>
 <blockquote>
 <p>📄 Full code: <a href="../code/behavioral_cloning.py"><code>behavioral_cloning.py</code></a></p>
 </blockquote>
-<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">torch.optim</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">optim</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataLoader</span><span class="p">,</span> <span class="n">TensorDataset</span>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
-<span class="k">class</span><span class="w"> </span><span class="nc">BCPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Simple MLP policy for continuous action spaces.</span>
-<span class="sd">    Maps state → action directly (deterministic BC).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">),</span>
-        <span class="p">)</span>
+class BCPolicy(nn.Module):
+    &quot;&quot;&quot;
+    Simple MLP policy for continuous action spaces.
+    Maps state → action directly (deterministic BC).
+    &quot;&quot;&quot;
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),
+        )
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+    def forward(self, state: torch.Tensor) -&gt; torch.Tensor:
+        return self.net(state)
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">train_bc</span><span class="p">(</span>
-    <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>   <span class="c1"># (N, state_dim)</span>
-    <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># (N, action_dim)</span>
-    <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">n_epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
-    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span>
-    <span class="n">lr</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">3e-4</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BCPolicy</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Train a BC policy via MSE on continuous actions.&quot;&quot;&quot;</span>
+def train_bc(
+    states: torch.Tensor,   # (N, state_dim)
+    actions: torch.Tensor,  # (N, action_dim)
+    state_dim: int,
+    action_dim: int,
+    n_epochs: int = 100,
+    batch_size: int = 256,
+    lr: float = 3e-4,
+) -&gt; BCPolicy:
+    &quot;&quot;&quot;Train a BC policy via MSE on continuous actions.&quot;&quot;&quot;
 
-    <span class="n">policy</span> <span class="o">=</span> <span class="n">BCPolicy</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
-    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">lr</span><span class="p">)</span>
-    <span class="n">dataset</span> <span class="o">=</span> <span class="n">TensorDataset</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
-    <span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    policy = BCPolicy(state_dim, action_dim)
+    optimizer = optim.Adam(policy.parameters(), lr=lr)
+    dataset = TensorDataset(states, actions)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_epochs</span><span class="p">):</span>
-        <span class="n">epoch_loss</span> <span class="o">=</span> <span class="mf">0.0</span>
-        <span class="k">for</span> <span class="n">s_batch</span><span class="p">,</span> <span class="n">a_batch</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
-            <span class="n">a_pred</span> <span class="o">=</span> <span class="n">policy</span><span class="p">(</span><span class="n">s_batch</span><span class="p">)</span>
-            <span class="n">loss</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">a_pred</span><span class="p">,</span> <span class="n">a_batch</span><span class="p">)</span>
+    for epoch in range(n_epochs):
+        epoch_loss = 0.0
+        for s_batch, a_batch in loader:
+            a_pred = policy(s_batch)
+            loss = nn.functional.mse_loss(a_pred, a_batch)
 
-            <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
-            <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-            <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
-            <span class="n">epoch_loss</span> <span class="o">+=</span> <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
 
-        <span class="k">if</span> <span class="p">(</span><span class="n">epoch</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">20</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Epoch </span><span class="si">{</span><span class="n">epoch</span><span class="o">+</span><span class="mi">1</span><span class="si">:</span><span class="s2">3d</span><span class="si">}</span><span class="s2"> | Loss: </span><span class="si">{</span><span class="n">epoch_loss</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">loader</span><span class="p">)</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        if (epoch + 1) % 20 == 0:
+            print(f&quot;Epoch {epoch+1:3d} | Loss: {epoch_loss/len(loader):.5f}&quot;)
 
-    <span class="k">return</span> <span class="n">policy</span>
-</code></pre></div>
-
+    return policy
+</code></pre>
 <p><strong>For stochastic policy</strong> (better for robustness), output a Gaussian:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">StochasticBCPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Gaussian policy: outputs mean and log_std.</span>
-<span class="sd">    Training: maximize log-likelihood of observed actions.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-        <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+<pre><code class="language-python">class StochasticBCPolicy(nn.Module):
+    &quot;&quot;&quot;
+    Gaussian policy: outputs mean and log_std.
+    Training: maximize log-likelihood of observed actions.
+    &quot;&quot;&quot;
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self.trunk = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+        )
+        self.mean_head    = nn.Linear(hidden_dim, action_dim)
+        self.log_std_head = nn.Linear(hidden_dim, action_dim)
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
-        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-        <span class="n">mean</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
-        <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="o">-</span><span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span>
+    def forward(self, state):
+        h = self.trunk(state)
+        mean    = self.mean_head(h)
+        log_std = self.log_std_head(h).clamp(-4, 2)
+        return mean, log_std
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">log_prob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
-        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-        <span class="n">std</span> <span class="o">=</span> <span class="n">log_std</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
-        <span class="n">dist</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">std</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">dist</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">action</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># sum over action dims</span>
+    def log_prob(self, state, action):
+        mean, log_std = self.forward(state)
+        std = log_std.exp()
+        dist = torch.distributions.Normal(mean, std)
+        return dist.log_prob(action).sum(-1)  # sum over action dims
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">deterministic</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">mean</span>
-        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span><span class="o">.</span><span class="n">exp</span><span class="p">())</span><span class="o">.</span><span class="n">sample</span><span class="p">()</span>
+    def act(self, state, deterministic=True):
+        mean, log_std = self.forward(state)
+        if deterministic:
+            return mean
+        return torch.distributions.Normal(mean, log_std.exp()).sample()
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">train_stochastic_bc</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
-    <span class="n">policy</span> <span class="o">=</span> <span class="n">StochasticBCPolicy</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
-    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">3e-4</span><span class="p">)</span>
-    <span class="n">dataset</span> <span class="o">=</span> <span class="n">TensorDataset</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
-    <span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+def train_stochastic_bc(states, actions, state_dim, action_dim, n_epochs=100):
+    policy = StochasticBCPolicy(state_dim, action_dim)
+    optimizer = optim.Adam(policy.parameters(), lr=3e-4)
+    dataset = TensorDataset(states, actions)
+    loader = DataLoader(dataset, batch_size=256, shuffle=True)
 
-    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_epochs</span><span class="p">):</span>
-        <span class="k">for</span> <span class="n">s_batch</span><span class="p">,</span> <span class="n">a_batch</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
-            <span class="c1"># Negative log-likelihood loss</span>
-            <span class="n">loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">policy</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">s_batch</span><span class="p">,</span> <span class="n">a_batch</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-            <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
-            <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-            <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+    for epoch in range(n_epochs):
+        for s_batch, a_batch in loader:
+            # Negative log-likelihood loss
+            loss = -policy.log_prob(s_batch, a_batch).mean()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-    <span class="k">return</span> <span class="n">policy</span>
-</code></pre></div>
-
+    return policy
+</code></pre>
 <hr />
 <h2>When Does BC Work?</h2>
 <p>BC works well under two conditions:</p>
@@ -215,9 +212,9 @@
 <p>This is <strong>distribution shift</strong>, and it compounds over time.</p>
 <h3>The Formal Bound</h3>
 <p>Ross &amp; Bagnell (2010) proved the following. Suppose BC achieves average per-step imitation error $\epsilon$:</p>
-<p>$$\mathbb{E}<em>{s \sim d^{\pi</em>\beta}} \left[ | \pi_\theta(s) - \pi_\beta(s) | \right] \leq \epsilon$$</p>
+<p><div class="math-display">$$\mathbb{E}_{s \sim d^{\pi_\beta}} \left[ \| \pi_\theta(s) - \pi_\beta(s) \| \right] \leq \epsilon$$</div></p>
 <p>Then the performance gap between the learned policy and the behavior policy is bounded by:</p>
-<p>$$J(\pi_\beta) - J(\pi_\theta) \leq \epsilon H^2 \cdot C$$</p>
+<p><div class="math-display">$$J(\pi_\beta) - J(\pi_\theta) \leq \epsilon H^2 \cdot C$$</div></p>
 <p>where:
 - $H$ is the task horizon (number of steps)
 - $C$ is a constant depending on the Lipschitz constant of the dynamics and reward
@@ -226,12 +223,11 @@
 <h3>Intuition: The Snowball</h3>
 <p>Imagine a car following a road. BC trains the steering policy on expert demonstrations. If the policy makes a small error and drifts slightly off-center, it now faces a state the expert never demonstrated — slightly off-road. Its predictions there are unreliable, causing a bigger correction error, drifting further, until the car leaves the road entirely.</p>
 <p>This is called <strong>covariate shift</strong>: the input distribution at test time doesn't match training time.</p>
-<div class="codehilite"><pre><span></span><code><span class="n">Training</span><span class="o">:</span><span class="w">  </span><span class="n">s₁</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₂</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₃</span><span class="w">  </span><span class="o">(</span><span class="n">expert</span><span class="w"> </span><span class="n">trajectory</span><span class="o">,</span><span class="w"> </span><span class="n">states</span><span class="w"> </span><span class="n">well</span><span class="o">-</span><span class="n">covered</span><span class="o">)</span>
-<span class="n">Testing</span><span class="o">:</span><span class="w">   </span><span class="n">s₁</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₂</span><span class="s1">&#39; → s₃&#39;</span><span class="err">&#39;</span><span class="w">  </span><span class="o">(</span><span class="n">small</span><span class="w"> </span><span class="n">errors</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">unseen</span><span class="w"> </span><span class="n">states</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">larger</span><span class="w"> </span><span class="n">errors</span><span class="o">)</span>
-<span class="w">                   </span><span class="err">↑</span>
-<span class="w">           </span><span class="n">outside</span><span class="w"> </span><span class="n">training</span><span class="w"> </span><span class="n">distribution</span>
-</code></pre></div>
-
+<pre><code>Training:  s₁ → s₂ → s₃  (expert trajectory, states well-covered)
+Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger errors)
+                   ↑
+           outside training distribution
+</code></pre>
 <hr />
 <h2>Practical Limitations for Industrial Processes</h2>
 <p>For a process like asphalt coating with state variables (filler%, temperature, viscosity) and a 30-minute horizon, BC has specific failure modes:</p>

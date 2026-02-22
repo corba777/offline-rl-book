@@ -6,7 +6,7 @@
   <title>Глава 1: Поведенческое клонирование</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']]},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -44,7 +44,7 @@
     .chapter-nav a:hover{color:var(--accent)}
     .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
     .nav-title{font-weight:500}
-    .next{text-align:right}
+    .next{text-align:right;margin-left:auto}
     .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
     .site-footer a{color:var(--accent)}
     @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
@@ -65,126 +65,123 @@
 <hr />
 <h2>Постановка задачи</h2>
 <p>У вас есть датасет. Кто-то — оператор, контроллер, эксперт — месяцами принимал решения, а система логирования записывала всё: состояние процесса в каждый момент, какое действие было предпринято, что произошло дальше.</p>
-<div class="codehilite"><pre><span></span><code>D = {(s₁, a₁, s₂), (s₂, a₂, s₃), ..., (sₙ, aₙ, sₙ₊₁)}
-</code></pre></div>
-
+<pre><code>D = {(s₁, a₁, s₂), (s₂, a₂, s₃), ..., (sₙ, aₙ, sₙ₊₁)}
+</code></pre>
 <p>Вы хотите построить политику — функцию π(s) → a — которая ведёт себя не хуже того, кто генерировал данные. Проводить эксперименты нельзя. Исследовать пространство нельзя. Есть только D.</p>
 <p>Самая естественная идея: <strong>научиться имитировать</strong>. Если эксперт выбрал действие <code>a</code> в состоянии <code>s</code>, то ваша политика должна делать то же самое. Это и есть Поведенческое клонирование (Behavioral Cloning, BC).</p>
 <hr />
 <h2>Идея</h2>
 <p>BC формулирует задачу как <strong>обучение с учителем</strong>. Забудьте о том, что это последовательное принятие решений. Забудьте о наградах. Просто обучите функцию, отображающую состояния в действия:</p>
-<p>$$\pi_\theta = \arg\min_\theta \mathbb{E}<em>{(s,a) \sim \mathcal{D}} \left[ \mathcal{L}(\pi</em>\theta(s), a) \right]$$</p>
+<p><div class="math-display">$$\pi_\theta = \arg\min_\theta \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \mathcal{L}(\pi_\theta(s), a) \right]$$</div></p>
 <p>Для <strong>непрерывных действий</strong> (крутящий момент, уставка температуры, частота вращения):</p>
-<p>$$\mathcal{L} = | \pi_\theta(s) - a |^2 \quad \text{(среднеквадратичная ошибка)}$$</p>
+<p><div class="math-display">$$\mathcal{L} = \| \pi_\theta(s) - a \|^2 \quad \text{(среднеквадратичная ошибка)}$$</div></p>
 <p>Для <strong>дискретных действий</strong> (открыть/закрыть клапан, выбор режима):</p>
-<p>$$\mathcal{L} = -\log \pi_\theta(a \mid s) \quad \text{(перекрёстная энтропия / максимальное правдоподобие)}$$</p>
+<p><div class="math-display">$$\mathcal{L} = -\log \pi_\theta(a \mid s) \quad \text{(перекрёстная энтропия / максимальное правдоподобие)}$$</div></p>
 <p>Вот и всё. Обучаем нейронную сеть. На этапе применения наблюдаем состояние $s$, получаем действие $a = \pi_\theta(s)$.</p>
 <hr />
 <h2>Формализация</h2>
 <p>Пусть поведенческая политика, генерировавшая данные, обозначается $\pi_\beta$. Датасет $\mathcal{D}$ состоит из переходов, сэмплированных из <strong>поведенческого распределения</strong>:</p>
-<p>$$(s, a) \sim d^{\pi_\beta}(s) \cdot \pi_\beta(a \mid s)$$</p>
+<p><div class="math-display">$$(s, a) \sim d^{\pi_\beta}(s) \cdot \pi_\beta(a \mid s)$$</div></p>
 <p>где $d^{\pi_\beta}(s)$ — <strong>распределение посещаемости состояний</strong>: как часто поведенческая политика оказывается в каждом состоянии.</p>
 <p>BC минимизирует <strong>потерю имитации</strong>:</p>
-<p>$$\mathcal{L}<em>{BC}(\theta) = \mathbb{E}</em>{(s,a) \sim d^{\pi_\beta}} \left[ -\log \pi_\theta(a \mid s) \right]$$</p>
+<p><div class="math-display">$$\mathcal{L}_{BC}(\theta) = \mathbb{E}_{(s,a) \sim d^{\pi_\beta}} \left[ -\log \pi_\theta(a \mid s) \right]$$</div></p>
 <p>В интерпретации максимального правдоподобия это эквивалентно минимизации KL-дивергенции между обученной политикой и поведенческой политикой <strong>в состояниях, посещаемых поведенческой политикой</strong>:</p>
-<p>$$\mathcal{L}<em>{BC}(\theta) = \mathbb{E}</em>{s \sim d^{\pi_\beta}} \left[ D_{KL}\left(\pi_\beta(\cdot \mid s) \,|\, \pi_\theta(\cdot \mid s)\right) \right] + \text{const}$$</p>
+<p><div class="math-display">$$\mathcal{L}_{BC}(\theta) = \mathbb{E}_{s \sim d^{\pi_\beta}} \left[ D_{KL}\left(\pi_\beta(\cdot \mid s) \,\|\, \pi_\theta(\cdot \mid s)\right) \right] + \text{const}$$</div></p>
 <p>Ключевая фраза: <strong>в состояниях, посещаемых поведенческой политикой</strong>. Именно она станет источником всех проблем.</p>
 <hr />
 <h2>Реализация</h2>
 <blockquote>
 <p>📄 Полный код: <a href="../code/behavioral_cloning.py"><code>behavioral_cloning.py</code></a></p>
 </blockquote>
-<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">torch.optim</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">optim</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataLoader</span><span class="p">,</span> <span class="n">TensorDataset</span>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
-<span class="k">class</span><span class="w"> </span><span class="nc">BCPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Простая MLP-политика для непрерывных пространств действий.</span>
-<span class="sd">    Детерминированное отображение: состояние → действие.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">),</span>
-        <span class="p">)</span>
+class BCPolicy(nn.Module):
+    &quot;&quot;&quot;
+    Простая MLP-политика для непрерывных пространств действий.
+    Детерминированное отображение: состояние → действие.
+    &quot;&quot;&quot;
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),
+        )
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+    def forward(self, state: torch.Tensor) -&gt; torch.Tensor:
+        return self.net(state)
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">train_bc</span><span class="p">(</span>
-    <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>   <span class="c1"># (N, state_dim)</span>
-    <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># (N, action_dim)</span>
-    <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">n_epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
-    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span>
-    <span class="n">lr</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">3e-4</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BCPolicy</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Обучение BC-политики через MSE на непрерывных действиях.&quot;&quot;&quot;</span>
+def train_bc(
+    states: torch.Tensor,   # (N, state_dim)
+    actions: torch.Tensor,  # (N, action_dim)
+    state_dim: int,
+    action_dim: int,
+    n_epochs: int = 100,
+    batch_size: int = 256,
+    lr: float = 3e-4,
+) -&gt; BCPolicy:
+    &quot;&quot;&quot;Обучение BC-политики через MSE на непрерывных действиях.&quot;&quot;&quot;
 
-    <span class="n">policy</span> <span class="o">=</span> <span class="n">BCPolicy</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
-    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">lr</span><span class="p">)</span>
-    <span class="n">dataset</span> <span class="o">=</span> <span class="n">TensorDataset</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
-    <span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    policy = BCPolicy(state_dim, action_dim)
+    optimizer = optim.Adam(policy.parameters(), lr=lr)
+    dataset = TensorDataset(states, actions)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_epochs</span><span class="p">):</span>
-        <span class="n">epoch_loss</span> <span class="o">=</span> <span class="mf">0.0</span>
-        <span class="k">for</span> <span class="n">s_batch</span><span class="p">,</span> <span class="n">a_batch</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
-            <span class="n">a_pred</span> <span class="o">=</span> <span class="n">policy</span><span class="p">(</span><span class="n">s_batch</span><span class="p">)</span>
-            <span class="n">loss</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">a_pred</span><span class="p">,</span> <span class="n">a_batch</span><span class="p">)</span>
+    for epoch in range(n_epochs):
+        epoch_loss = 0.0
+        for s_batch, a_batch in loader:
+            a_pred = policy(s_batch)
+            loss = nn.functional.mse_loss(a_pred, a_batch)
 
-            <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
-            <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-            <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
-            <span class="n">epoch_loss</span> <span class="o">+=</span> <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
 
-        <span class="k">if</span> <span class="p">(</span><span class="n">epoch</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">20</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Epoch </span><span class="si">{</span><span class="n">epoch</span><span class="o">+</span><span class="mi">1</span><span class="si">:</span><span class="s2">3d</span><span class="si">}</span><span class="s2"> | Loss: </span><span class="si">{</span><span class="n">epoch_loss</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">loader</span><span class="p">)</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        if (epoch + 1) % 20 == 0:
+            print(f&quot;Epoch {epoch+1:3d} | Loss: {epoch_loss/len(loader):.5f}&quot;)
 
-    <span class="k">return</span> <span class="n">policy</span>
-</code></pre></div>
-
+    return policy
+</code></pre>
 <p><strong>Стохастическая политика</strong> (более устойчивая к шуму) — параметризуем гауссово распределение:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">StochasticBCPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Гауссова политика: предсказывает среднее и log_std.</span>
-<span class="sd">    Обучение: максимизация log-правдоподобия наблюдаемых действий.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-        <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+<pre><code class="language-python">class StochasticBCPolicy(nn.Module):
+    &quot;&quot;&quot;
+    Гауссова политика: предсказывает среднее и log_std.
+    Обучение: максимизация log-правдоподобия наблюдаемых действий.
+    &quot;&quot;&quot;
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self.trunk = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+        )
+        self.mean_head    = nn.Linear(hidden_dim, action_dim)
+        self.log_std_head = nn.Linear(hidden_dim, action_dim)
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
-        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-        <span class="n">mean</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
-        <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="o">-</span><span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span>
+    def forward(self, state):
+        h = self.trunk(state)
+        mean    = self.mean_head(h)
+        log_std = self.log_std_head(h).clamp(-4, 2)
+        return mean, log_std
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">log_prob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
-        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-        <span class="n">std</span> <span class="o">=</span> <span class="n">log_std</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
-        <span class="n">dist</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">std</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">dist</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">action</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># суммируем по размерностям действия</span>
+    def log_prob(self, state, action):
+        mean, log_std = self.forward(state)
+        std = log_std.exp()
+        dist = torch.distributions.Normal(mean, std)
+        return dist.log_prob(action).sum(-1)  # суммируем по размерностям действия
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">deterministic</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">mean</span>
-        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span><span class="o">.</span><span class="n">exp</span><span class="p">())</span><span class="o">.</span><span class="n">sample</span><span class="p">()</span>
-</code></pre></div>
-
+    def act(self, state, deterministic=True):
+        mean, log_std = self.forward(state)
+        if deterministic:
+            return mean
+        return torch.distributions.Normal(mean, log_std.exp()).sample()
+</code></pre>
 <hr />
 <h2>Когда BC работает?</h2>
 <p>BC хорошо работает при двух условиях:</p>
@@ -198,9 +195,9 @@
 <p>Это <strong>сдвиг распределения</strong> (distribution shift), и он накапливается со временем.</p>
 <h3>Формальная оценка</h3>
 <p>Ross &amp; Bagnell (2010) доказали следующее. Предположим, что BC достигает средней ошибки имитации $\epsilon$ на каждом шаге:</p>
-<p>$$\mathbb{E}<em>{s \sim d^{\pi</em>\beta}} \left[ | \pi_\theta(s) - \pi_\beta(s) | \right] \leq \epsilon$$</p>
+<p><div class="math-display">$$\mathbb{E}_{s \sim d^{\pi_\beta}} \left[ \| \pi_\theta(s) - \pi_\beta(s) \| \right] \leq \epsilon$$</div></p>
 <p>Тогда разрыв в производительности между обученной и поведенческой политикой ограничен:</p>
-<p>$$J(\pi_\beta) - J(\pi_\theta) \leq \epsilon H^2 \cdot C$$</p>
+<p><div class="math-display">$$J(\pi_\beta) - J(\pi_\theta) \leq \epsilon H^2 \cdot C$$</div></p>
 <p>где:
 - $H$ — горизонт задачи (количество шагов)
 - $C$ — константа, зависящая от постоянной Липшица динамики и функции награды
@@ -209,12 +206,11 @@
 <h3>Интуиция: снежный ком</h3>
 <p>Представьте автомобиль, движущийся по дороге. BC обучает политику управления рулём на примерах эксперта. Если политика делает небольшую ошибку и слегка отклоняется от центра, она оказывается в состоянии, которое эксперт никогда не демонстрировал — чуть сбоку от дороги. Предсказания там ненадёжны, что вызывает ещё большую ошибку коррекции, дальнейшее отклонение — пока автомобиль полностью не съезжает с дороги.</p>
 <p>Это называется <strong>ковариатный сдвиг</strong> (covariate shift): распределение входных данных во время применения не совпадает с распределением во время обучения.</p>
-<div class="codehilite"><pre><span></span><code><span class="err">Обучение</span><span class="o">:</span><span class="w">  </span><span class="n">s₁</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₂</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₃</span><span class="w">   </span><span class="o">(</span><span class="err">траектория</span><span class="w"> </span><span class="err">эксперта</span><span class="o">,</span><span class="w"> </span><span class="err">состояния</span><span class="w"> </span><span class="err">хорошо</span><span class="w"> </span><span class="err">покрыты</span><span class="o">)</span>
-<span class="err">Применение</span><span class="o">:</span><span class="w"> </span><span class="n">s₁</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">s₂</span><span class="s1">&#39; → s₃&#39;</span><span class="err">&#39;</span><span class="w">  </span><span class="o">(</span><span class="err">малые</span><span class="w"> </span><span class="err">ошибки</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">незнакомые</span><span class="w"> </span><span class="err">состояния</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">большие</span><span class="w"> </span><span class="err">ошибки</span><span class="o">)</span>
-<span class="w">                    </span><span class="err">↑</span>
-<span class="w">        </span><span class="err">вне</span><span class="w"> </span><span class="err">обучающего</span><span class="w"> </span><span class="err">распределения</span>
-</code></pre></div>
-
+<pre><code>Обучение:  s₁ → s₂ → s₃   (траектория эксперта, состояния хорошо покрыты)
+Применение: s₁ → s₂' → s₃''  (малые ошибки → незнакомые состояния → большие ошибки)
+                    ↑
+        вне обучающего распределения
+</code></pre>
 <hr />
 <h2>Практические ограничения для промышленных процессов</h2>
 <p>Для такого процесса, как нанесение асфальтного покрытия с переменными состояния (процент наполнителя, температура, вязкость) и горизонтом 30 минут, у BC есть специфические режимы отказа:</p>

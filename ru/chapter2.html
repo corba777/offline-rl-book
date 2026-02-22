@@ -6,7 +6,7 @@
   <title>Глава 2: Задача Offline RL</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']]},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -44,7 +44,7 @@
     .chapter-nav a:hover{color:var(--accent)}
     .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
     .nav-title{font-weight:500}
-    .next{text-align:right}
+    .next{text-align:right;margin-left:auto}
     .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
     .site-footer a{color:var(--accent)}
     @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
@@ -71,20 +71,20 @@
 <hr />
 <h2>Q-обучение: краткое напоминание</h2>
 <p>Q-функция удовлетворяет <strong>уравнению оптимальности Беллмана</strong>:</p>
-<p>$$Q^<em>(s, a) = r(s, a) + \gamma \, \mathbb{E}<em>{s' \sim P(\cdot|s,a)} \left[ \max</em>{a'} Q^</em>(s', a') \right]$$</p>
+<p><div class="math-display">$$Q^*(s, a) = r(s, a) + \gamma \, \mathbb{E}_{s' \sim P(\cdot|s,a)} \left[ \max_{a'} Q^*(s', a') \right]$$</div></p>
 <p>Мы обучаем $Q_\theta$, минимизируя <strong>ошибку TD</strong> (Temporal Difference):</p>
-<p>$$\mathcal{L}<em>{TD}(\theta) = \mathbb{E}</em>{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar\theta}(s', a') - Q_\theta(s, a) \right)^2 \right]$$</p>
+<p><div class="math-display">$$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar\theta}(s', a') - Q_\theta(s, a) \right)^2 \right]$$</div></p>
 <p>где $Q_{\bar\theta}$ — <strong>целевая сеть</strong> (target network): периодически обновляемая копия $Q_\theta$, используемая для стабилизации обучения.</p>
 <p>В <strong>онлайн RL</strong> агент собирает новые переходы, действуя в среде. Когда $Q_\theta$ становится неточной в каком-то месте, агент посетит эти состояния, получит реальные награды и скорректирует оценку.</p>
 <p>В <strong>офлайн RL</strong> датасет $\mathcal{D}$ фиксирован. Обратной связи нет.</p>
 <hr />
 <h2>Проблема ошибки экстраполяции</h2>
 <p>Вот в чём суть проблемы. На шаге $\max_{a'}$ в обновлении Беллмана:</p>
-<p>$$\max_{a'} Q_{\bar\theta}(s', a')$$</p>
+<p><div class="math-display">$$\max_{a'} Q_{\bar\theta}(s', a')$$</div></p>
 <p>оптимизатор перебирает <strong>все возможные действия</strong> $a'$ — включая те, которых никогда не было в датасете $\mathcal{D}$.</p>
 <p>Для действия $a' \notin \mathcal{D}$ у Q-функции нет обучающего сигнала. Её значение в точке $(s', a')$ определяется исключительно обобщением из соседних точек — что для нейронных сетей может быть произвольно оптимистичным.</p>
 <p>Когда обновление Беллмана берёт это завышенное $Q(s', a')$ в качестве цели, оно распространяет переоценку назад по цепочке:</p>
-<p>$$Q(s, a) \leftarrow r + \gamma \cdot \underbrace{Q(s', a')}_{\text{завышено}}$$</p>
+<p><div class="math-display">$$Q(s, a) \leftarrow r + \gamma \cdot \underbrace{Q(s', a')}_{\text{завышено}}$$</div></p>
 <p>Это <strong>ошибка бутстрэппинга</strong>: ошибки распространяются и усиливаются через цепочку TD-обновлений.</p>
 <h3>Конкретный пример</h3>
 <p>Предположим, наш датасет содержит переходы из химического процесса. Оператор всегда поддерживал температуру в диапазоне 380–420K. Q-функция обучена на этих состояниях.</p>
@@ -94,10 +94,10 @@
 <hr />
 <h2>Формальная оценка: переоценка OOD-значений</h2>
 <p>Пусть $\hat{\pi}$ — жадная политика относительно обученной Q-функции:</p>
-<p>$$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$</p>
+<p><div class="math-display">$$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$</div></p>
 <p>Определим <strong>поведенческую политику</strong> $\pi_\beta$ как политику, генерировавшую $\mathcal{D}$. Для любого состояния $s$ жадное действие $\hat\pi(s)$ может отличаться от $\pi_\beta(s)$.</p>
 <p>Производительность $\hat\pi$ в реальной среде ограничена:</p>
-<p>$$J(\hat\pi) \leq J(\pi_\beta) + \frac{1}{1-\gamma} \mathbb{E}<em>{s \sim d^{\hat\pi}} \left[ \mathbb{E}</em>{a \sim \hat\pi} \left[ Q_\theta(s,a) - Q^*(s,a) \right] \right]$$</p>
+<p><div class="math-display">$$J(\hat\pi) \leq J(\pi_\beta) + \frac{1}{1-\gamma} \mathbb{E}_{s \sim d^{\hat\pi}} \left[ \mathbb{E}_{a \sim \hat\pi} \left[ Q_\theta(s,a) - Q^*(s,a) \right] \right]$$</div></p>
 <p>Второй член — <strong>ошибка оценки Q-значений</strong> в распределении состояний и действий обученной политики. Если $Q_\theta$ переоценивает значения для действий вне датасета — а так и будет — этот член может быть большим и <strong>положительным</strong>: политика работает намного хуже, чем кажется во время обучения.</p>
 <p>Ключевой момент: <strong>ошибка оценивается под $d^{\hat\pi}$, а не под $d^{\pi_\beta}$</strong>. Обученная политика посещает другие состояния, чем поведенческая. Она будет искать именно те области, где Q-значения переоценены больше всего.</p>
 <hr />
@@ -115,45 +115,43 @@
 <blockquote>
 <p>📄 Полный код: <a href="../../code/extrapolation_error.py"><code>extrapolation_error.py</code></a></p>
 </blockquote>
-<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+<pre><code class="language-python">import torch
+import torch.nn as nn
 
-<span class="k">class</span><span class="w"> </span><span class="nc">QNetwork</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden</span><span class="o">=</span><span class="mi">128</span><span class="p">):</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
-        <span class="p">)</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+class QNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden=128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden), nn.ReLU(),
+            nn.Linear(hidden, hidden), nn.ReLU(),
+            nn.Linear(hidden, 1),
+        )
+    def forward(self, s, a):
+        return self.net(torch.cat([s, a], dim=-1)).squeeze(-1)
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">measure_ood_overestimation</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">dataset_actions</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Сравниваем Q-значения для действий из датасета и OOD-действий.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">s</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">all_actions</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+def measure_ood_overestimation(Q, dataset_actions, all_actions, state):
+    &quot;&quot;&quot;
+    Сравниваем Q-значения для действий из датасета и OOD-действий.
+    &quot;&quot;&quot;
+    s = state.unsqueeze(0).expand(len(all_actions), -1)
 
-    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-        <span class="n">q_all</span>     <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">)</span>
-        <span class="n">q_in_dist</span> <span class="o">=</span> <span class="n">Q</span><span class="p">(</span>
-            <span class="n">state</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">dataset_actions</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
-            <span class="n">dataset_actions</span>
-        <span class="p">)</span>
+    with torch.no_grad():
+        q_all     = Q(s, all_actions)
+        q_in_dist = Q(
+            state.unsqueeze(0).expand(len(dataset_actions), -1),
+            dataset_actions
+        )
 
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Действия из датасета     | Q mean: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, max: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Все действия (+ OOD)     | Q mean: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">,     max: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Коэф. переоценки OOD     : </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">)</span>
-</code></pre></div>
-
+    print(f&quot;Действия из датасета     | Q mean: {q_in_dist.mean():.3f}, max: {q_in_dist.max():.3f}&quot;)
+    print(f&quot;Все действия (+ OOD)     | Q mean: {q_all.mean():.3f},     max: {q_all.max():.3f}&quot;)
+    print(f&quot;Коэф. переоценки OOD     : {q_all.max().item() / q_in_dist.max().item():.2f}x&quot;)
+</code></pre>
 <p>Результат после обучения vanilla Q-learning на датасете с действиями в <code>[-0.5, 0.5]</code> при пространстве действий <code>[-2, 2]</code>:</p>
-<div class="codehilite"><pre><span></span><code>Действия из датасета     | Q mean: 0.412, max: 0.731
+<pre><code>Действия из датасета     | Q mean: 0.412, max: 0.731
 Все действия (+ OOD)     | Q mean: 0.893, max: 3.847
 Коэф. переоценки OOD     : 5.26x
-</code></pre></div>
-
+</code></pre>
 <p>Q-функция присваивает значения, в <strong>5 раз превышающие</strong> максимальное в датасете, действиям, которых никогда не видела. Жадная политика уверенно выберет именно их.</p>
 <hr />
 <h2>Ключевое противоречие</h2>
@@ -180,10 +178,10 @@
 Слишком агрессивно → политика эксплуатирует ошибки Q-функции (катастрофический отказ)</p>
 <p>Пространство решений делится на два семейства:</p>
 <p><strong>Методы ограничения политики</strong> — ограничивают обученную политику, удерживая её близко к $\pi_\beta$:</p>
-<p>$$\pi^* = \arg\max_\pi \mathbb{E}<em>{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi | \pi</em>\beta) \leq \epsilon$$</p>
+<p><div class="math-display">$$\pi^* = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \| \pi_\beta) \leq \epsilon$$</div></p>
 <p>Примеры: TD3+BC, BEAR, BCQ.</p>
 <p><strong>Методы пессимизма по значениям</strong> — вместо ограничения политики, делают Q-значения пессимистичными для OOD-действий:</p>
-<p>$$Q^* = \arg\min_Q \mathcal{L}<em>{TD}(Q) + \alpha \cdot \mathbb{E}</em>{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]$$</p>
+<p><div class="math-display">$$Q^* = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]$$</div></p>
 <p>Интуиция: если OOD Q-значения искусственно занижены, жадная политика естественным образом предпочтёт действия из распределения данных.</p>
 <p>Это подход <strong>CQL</strong> (глава 3) и <strong>IQL</strong> (глава 4).</p>
 <hr />
