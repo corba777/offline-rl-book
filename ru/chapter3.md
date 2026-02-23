@@ -395,7 +395,7 @@ CQL закрывает разрыв между поведенческим кло
 
 ## Литература
 
-- Kumar, A., Zhou, A., Tucker, G., & Levine, S. (2020). *Conservative Q-Learning for Offline Reinforcement Learning.* NeurIPS. arXiv:2006.04779.
-- Fujimoto, S., & Gu, S. (2021). *A Minimalist Approach to Offline RL (TD3+BC).* NeurIPS. arXiv:2106.06860.
-- Haarnoja, T. et al. (2018). *Soft Actor-Critic.* ICML. arXiv:1801.01290.
-- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* arXiv:2005.01643.
+- Kumar, A., Zhou, A., Tucker, G., & Levine, S. (2020). *Conservative Q-Learning for Offline Reinforcement Learning.* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
+- Fujimoto, S., & Gu, S. (2021). *A Minimalist Approach to Offline RL (TD3+BC).* NeurIPS. [arXiv:2106.06860](https://arxiv.org/abs/2106.06860).
+- Haarnoja, T. et al. (2018). *Soft Actor-Critic.* ICML. [arXiv:1801.01290](https://arxiv.org/abs/1801.01290).
+- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).

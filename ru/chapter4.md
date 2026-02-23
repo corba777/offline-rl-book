@@ -485,8 +485,8 @@ IQL — наиболее чистое решение задачи офлайн R
 
 ## Литература
 
-- Kostrikov, I., Nair, A., & Levine, S. (2022). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR. arXiv:2110.06169.
-- Peng, X., Kumar, A., Zhang, G., & Levine, S. (2019). *Advantage-Weighted Regression.* arXiv:1910.00177.
+- Kostrikov, I., Nair, A., & Levine, S. (2022). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169).
+- Peng, X., Kumar, A., Zhang, G., & Levine, S. (2019). *Advantage-Weighted Regression.* [arXiv:1910.00177](https://arxiv.org/abs/1910.00177).
 - Newey, W., & Powell, J. (1987). *Asymmetric Least Squares Estimation and Testing.* Econometrica.
-- Kumar, A. et al. (2020). *Conservative Q-Learning for Offline RL.* NeurIPS. arXiv:2006.04779.
-- Levine, S. et al. (2020). *Offline RL: Tutorial, Review, and Perspectives.* arXiv:2005.01643.
+- Kumar, A. et al. (2020). *Conservative Q-Learning for Offline RL.* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
+- Levine, S. et al. (2020). *Offline RL: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).

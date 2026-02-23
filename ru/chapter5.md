@@ -350,10 +350,10 @@ print(f"Откалиброванный epsilon = {epsilon:.4f}")
 
 ## Литература
 
-- Yu, T., Thomas, G., Yu, L., Ermon, S., Zou, J., Levine, S., Finn, C., & Ma, T. (2020). *MOPO: Model-Based Offline Policy Optimization.* NeurIPS. arXiv:2005.13239.
-- Kidambi, R., Rajeswaran, A., Netrapalli, P., & Kakade, S. (2020). *MOReL: Model-Based Offline Reinforcement Learning.* NeurIPS. arXiv:2005.05951.
-- Janner, M., Fu, J., Zhang, M., & Levine, S. (2019). *When to Trust Your Model: Model-Based Policy Optimization.* NeurIPS. arXiv:1906.08253.
-- Chua, K., Calandra, R., McAllister, R., & Levine, S. (2018). *Deep Reinforcement Learning in a Handful of Trials using Probabilistic Dynamics Models.* NeurIPS. arXiv:1805.12114.
-- Lakshminarayanan, B., Pritzel, A., & Blundell, C. (2017). *Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles.* NeurIPS. arXiv:1612.01474.
-- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* arXiv:2005.01643.
-- Fu, J. et al. (2020). *D4RL: Datasets for Deep Data-Driven Reinforcement Learning.* arXiv:2004.07219.
+- Yu, T., Thomas, G., Yu, L., Ermon, S., Zou, J., Levine, S., Finn, C., & Ma, T. (2020). *MOPO: Model-Based Offline Policy Optimization.* NeurIPS. [arXiv:2005.13239](https://arxiv.org/abs/2005.13239).
+- Kidambi, R., Rajeswaran, A., Netrapalli, P., & Kakade, S. (2020). *MOReL: Model-Based Offline Reinforcement Learning.* NeurIPS. [arXiv:2005.05951](https://arxiv.org/abs/2005.05951).
+- Janner, M., Fu, J., Zhang, M., & Levine, S. (2019). *When to Trust Your Model: Model-Based Policy Optimization.* NeurIPS. [arXiv:1906.08253](https://arxiv.org/abs/1906.08253).
+- Chua, K., Calandra, R., McAllister, R., & Levine, S. (2018). *Deep Reinforcement Learning in a Handful of Trials using Probabilistic Dynamics Models.* NeurIPS. [arXiv:1805.12114](https://arxiv.org/abs/1805.12114).
+- Lakshminarayanan, B., Pritzel, A., & Blundell, C. (2017). *Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles.* NeurIPS. [arXiv:1612.01474](https://arxiv.org/abs/1612.01474).
+- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
+- Fu, J. et al. (2020). *D4RL: Datasets for Deep Data-Driven Reinforcement Learning.* [arXiv:2004.07219](https://arxiv.org/abs/2004.07219).

@@ -247,8 +247,8 @@ The two main remedies: **policy constraints** (stay near $\pi_\beta$) and **valu
 
 ## References
 
-- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* arXiv:2005.01643.
-- Kumar, A. et al. (2019). *Stabilizing Off-Policy Q-Learning via Bootstrapping Error Reduction (BEAR).* NeurIPS.
-- Fujimoto, S. et al. (2019). *Off-Policy Deep Reinforcement Learning without Exploration (BCQ).* ICML.
-- Kumar, A. et al. (2020). *Conservative Q-Learning for Offline Reinforcement Learning (CQL).* NeurIPS.
+- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
+- Kumar, A. et al. (2019). *Stabilizing Off-Policy Q-Learning via Bootstrapping Error Reduction (BEAR).* NeurIPS. [arXiv:1906.00949](https://arxiv.org/abs/1906.00949).
+- Fujimoto, S. et al. (2019). *Off-Policy Deep Reinforcement Learning without Exploration (BCQ).* ICML. [arXiv:1902.08754](https://arxiv.org/abs/1902.08754).
+- Kumar, A. et al. (2020). *Conservative Q-Learning for Offline Reinforcement Learning (CQL).* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
 - Sutton, R. et al. (1999). *Policy Gradient Methods for Reinforcement Learning.* NeurIPS. *(deadly triad discussion)*

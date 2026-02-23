@@ -309,9 +309,9 @@ shap_physical = results['q_shap'][:, :S] * s_std
 
 ## Ссылки
 
-- Lundberg, S.M., & Lee, S.I. (2017). *A Unified Approach to Interpreting Model Predictions.* NeurIPS. arXiv:1705.07874.
-- Lundberg, S.M., Erion, G., Chen, H. et al. (2020). *From Local Explanations to Global Understanding with Explainable AI for Trees.* Nature Machine Intelligence. arXiv:1905.04610.
+- Lundberg, S.M., & Lee, S.I. (2017). *A Unified Approach to Interpreting Model Predictions.* NeurIPS. [arXiv:1705.07874](https://arxiv.org/abs/1705.07874).
+- Lundberg, S.M., Erion, G., Chen, H. et al. (2020). *From Local Explanations to Global Understanding with Explainable AI for Trees.* Nature Machine Intelligence. [arXiv:1905.04610](https://arxiv.org/abs/1905.04610).
 - Shapley, L.S. (1953). *A Value for n-Person Games.* In Contributions to the Theory of Games.
-- Ribeiro, M.T., Singh, S., & Guestrin, C. (2016). *"Why Should I Trust You?": Explaining the Predictions of Any Classifier.* KDD. arXiv:1602.04938.
-- Molnar, C. (2022). *Interpretable Machine Learning.* 2nd ed.
-- Doshi-Velez, F., & Kim, B. (2017). *Towards a Rigorous Science of Interpretable Machine Learning.* arXiv:1702.08608.
+- Ribeiro, M.T., Singh, S., & Guestrin, C. (2016). *"Why Should I Trust You?": Explaining the Predictions of Any Classifier.* KDD. [arXiv:1602.04938](https://arxiv.org/abs/1602.04938).
+- Molnar, C. (2022). *[Interpretable Machine Learning](https://interpretable-ml.github.io/).* 2nd ed.
+- Doshi-Velez, F., & Kim, B. (2017). *Towards a Rigorous Science of Interpretable Machine Learning.* [arXiv:1702.08608](https://arxiv.org/abs/1702.08608).

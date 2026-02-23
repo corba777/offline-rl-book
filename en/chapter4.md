@@ -468,8 +468,8 @@ The next step beyond model-free methods: learn a model of the world and use it t
 
 ## References
 
-- Kostrikov, I., Nair, A., & Levine, S. (2022). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR. arXiv:2110.06169.
-- Peng, X., Kumar, A., Zhang, G., & Levine, S. (2019). *Advantage-Weighted Regression: Simple and Scalable Off-Policy RL.* arXiv:1910.00177. *(AWR policy extraction)*
+- Kostrikov, I., Nair, A., & Levine, S. (2022). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169).
+- Peng, X., Kumar, A., Zhang, G., & Levine, S. (2019). *Advantage-Weighted Regression: Simple and Scalable Off-Policy RL.* [arXiv:1910.00177](https://arxiv.org/abs/1910.00177). *(AWR policy extraction)*
 - Newey, W., & Powell, J. (1987). *Asymmetric Least Squares Estimation and Testing.* Econometrica. *(expectile regression origin)*
-- Kumar, A. et al. (2020). *Conservative Q-Learning for Offline RL.* NeurIPS. arXiv:2006.04779.
-- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* arXiv:2005.01643.
+- Kumar, A. et al. (2020). *Conservative Q-Learning for Offline RL.* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
+- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).

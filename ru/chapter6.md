@@ -431,11 +431,11 @@ Physics-informed методы — это модульный слой, а не з
 ## Ссылки
 
 - Altman, E. (1999). *Constrained Markov Decision Processes.* CRC Press.
-- Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* arXiv:2309.01909.
-- Paternain, S., Calvo-Fullana, M., Chamon, L., & Ribeiro, A. (2022). *Safe Policies for Factored MDPs.* JMLR.
-- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics.
+- Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* [arXiv:2309.01909](https://arxiv.org/abs/2309.01909).
+- Paternain, S., Calvo-Fullana, M., Chamon, L., & Ribeiro, A. (2022). *Safe Policies for Factored MDPs.* JMLR. [arXiv:2106.09155](https://arxiv.org/abs/2106.09155).
+- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1811.10561](https://arxiv.org/abs/1811.10561).
 - Lusch, B., Kutz, J.N., & Brunton, S.L. (2018). *Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.* Nature Communications.
-- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* arXiv:2005.01643.
+- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
 
 ---
 

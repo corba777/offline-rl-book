@@ -211,43 +211,43 @@ The field will continue to develop — diffusion transformers will scale, offlin
 
 **Decision Transformers and Sequence Models**
 
-- Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., & Mordatch, I. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. arXiv:2106.01345.
-- Janner, M., Li, Q., & Levine, S. (2021). *Offline Reinforcement Learning as One Big Sequence Modeling Problem.* NeurIPS. arXiv:2106.02039. *(Trajectory Transformer)*
-- Yamagata, T., Khalil, A., & Santos-Rodriguez, R. (2023). *Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.* arXiv:2309.10150.
+- Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., & Mordatch, I. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
+- Janner, M., Li, Q., & Levine, S. (2021). *Offline Reinforcement Learning as One Big Sequence Modeling Problem.* NeurIPS. [arXiv:2106.02039](https://arxiv.org/abs/2106.02039). *(Trajectory Transformer)*
+- Yamagata, T., Khalil, A., & Santos-Rodriguez, R. (2023). *Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.* [arXiv:2309.10150](https://arxiv.org/abs/2309.10150).
 
 **Diffusion Models for Offline RL**
 
-- Janner, M., Du, Y., Tenenbaum, J., & Levine, S. (2022). *Planning with Diffusion Models.* ICML. arXiv:2205.09991. *(Diffuser)*
-- Ajay, A., Du, Y., Gupta, A., Tenenbaum, J., Jaakkola, T., & Agrawal, P. (2023). *Is Conditional Generative Modeling all you need for Decision-Making?* ICLR. arXiv:2211.15657. *(Decision Diffuser)*
-- Chi, C., Feng, S., Du, Y., Xu, Z., Cousineau, E., Burchfiel, B., & Song, S. (2023). *Diffusion Policy: Visuomotor Policy Learning via Action Diffusion.* RSS. arXiv:2303.04137.
+- Janner, M., Du, Y., Tenenbaum, J., & Levine, S. (2022). *Planning with Diffusion Models.* ICML. [arXiv:2205.09991](https://arxiv.org/abs/2205.09991). *(Diffuser)*
+- Ajay, A., Du, Y., Gupta, A., Tenenbaum, J., Jaakkola, T., & Agrawal, P. (2023). *Is Conditional Generative Modeling all you need for Decision-Making?* ICLR. [arXiv:2211.15657](https://arxiv.org/abs/2211.15657). *(Decision Diffuser)*
+- Chi, C., Feng, S., Du, Y., Xu, Z., Cousineau, E., Burchfiel, B., & Song, S. (2023). *Diffusion Policy: Visuomotor Policy Learning via Action Diffusion.* RSS. [arXiv:2303.04137](https://arxiv.org/abs/2303.04137).
 
 **Diffusion Models and Transformers for Offline RL**
 
-- Peebles, W., & Xie, S. (2023). *Scalable Diffusion Models with Transformers.* ICCV. arXiv:2212.09748. *(DiT architecture — the backbone trend)*
-- Wang, Z., Hunt, J.J., & Zhou, M. (2023). *Diffusion Policies as an Expressive Policy Class for Offline Reinforcement Learning.* ICLR. arXiv:2208.06193. *(DQL — diffusion as policy class)*
-- Chen, T., Wang, Z., & Zhou, M. (2024). *Diffusion Policies creating a Trust Region for Offline Reinforcement Learning.* NeurIPS. arXiv:2405.19690. *(DTQL — fast inference)*
+- Peebles, W., & Xie, S. (2023). *Scalable Diffusion Models with Transformers.* ICCV. [arXiv:2212.09748](https://arxiv.org/abs/2212.09748). *(DiT architecture — the backbone trend)*
+- Wang, Z., Hunt, J.J., & Zhou, M. (2023). *Diffusion Policies as an Expressive Policy Class for Offline Reinforcement Learning.* ICLR. [arXiv:2208.06193](https://arxiv.org/abs/2208.06193). *(DQL — diffusion as policy class)*
+- Chen, T., Wang, Z., & Zhou, M. (2024). *Diffusion Policies creating a Trust Region for Offline Reinforcement Learning.* NeurIPS. [arXiv:2405.19690](https://arxiv.org/abs/2405.19690). *(DTQL — fast inference)*
 - Venkatraman, S., Khaitan, S., Akella, R.T., Dolan, J., Schneider, J., & Berseth, G. (2024). *Reasoning with Latent Diffusion in Offline Reinforcement Learning.* ICLR. *(diffusion in latent world model space)*
 
 **Flow Matching and Consistency Models**
 
-- Lipman, Y., Chen, R.T.Q., Ben-Hamu, H., Nickel, M., & Le, M. (2022). *Flow Matching for Generative Modeling.* arXiv:2210.02747.
-- Song, Y., Dhariwal, P., Chen, M., & Sutskever, I. (2023). *Consistency Models.* ICML. arXiv:2303.01469.
+- Lipman, Y., Chen, R.T.Q., Ben-Hamu, H., Nickel, M., & Le, M. (2022). *Flow Matching for Generative Modeling.* [arXiv:2210.02747](https://arxiv.org/abs/2210.02747).
+- Song, Y., Dhariwal, P., Chen, M., & Sutskever, I. (2023). *Consistency Models.* ICML. [arXiv:2303.01469](https://arxiv.org/abs/2303.01469).
 
 **Offline-to-Online RL**
 
-- Kostrikov, I., Nair, A., & Levine, S. (2021). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR 2022. arXiv:2110.06169. *(IQL + online fine-tuning)*
-- Nakamoto, M., Zhai, Y., Singh, A., Mark, M.S., Ma, Y., Finn, C., Kumar, A., & Levine, S. (2023). *Cal-QL: Calibrated Offline RL Pre-Training for Efficient Online Fine-Tuning.* NeurIPS. arXiv:2303.05479.
+- Kostrikov, I., Nair, A., & Levine, S. (2021). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR 2022. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169). *(IQL + online fine-tuning)*
+- Nakamoto, M., Zhai, Y., Singh, A., Mark, M.S., Ma, Y., Finn, C., Kumar, A., & Levine, S. (2023). *Cal-QL: Calibrated Offline RL Pre-Training for Efficient Online Fine-Tuning.* NeurIPS. [arXiv:2303.05479](https://arxiv.org/abs/2303.05479).
 
 **Safe Offline RL**
 
-- Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., & Zhao, D. (2022). *Constrained Variational Policy Optimization for Safe Reinforcement Learning.* ICML. arXiv:2201.11927. *(CVPO)*
-- Berkenkamp, F., Turchetta, M., Schoellig, A., & Krause, A. (2017). *Safe Model-based Reinforcement Learning with Stability Guarantees.* NeurIPS. arXiv:1705.08551.
+- Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., & Zhao, D. (2022). *Constrained Variational Policy Optimization for Safe Reinforcement Learning.* ICML. [arXiv:2201.11927](https://arxiv.org/abs/2201.11927). *(CVPO)*
+- Berkenkamp, F., Turchetta, M., Schoellig, A., & Krause, A. (2017). *Safe Model-based Reinforcement Learning with Stability Guarantees.* NeurIPS. [arXiv:1705.08551](https://arxiv.org/abs/1705.08551).
 
 **LLM-Based Reward Design**
 
-- Ma, Y.J., Liang, W., Wang, G., Huang, D.A., Bastani, O., Jayaraman, D., Zhu, Y., Fan, L., & Anandkumar, A. (2023). *Eureka: Human-Level Reward Design via Coding Large Language Models.* arXiv:2310.12931.
+- Ma, Y.J., Liang, W., Wang, G., Huang, D.A., Bastani, O., Jayaraman, D., Zhu, Y., Fan, L., & Anandkumar, A. (2023). *Eureka: Human-Level Reward Design via Coding Large Language Models.* [arXiv:2310.12931](https://arxiv.org/abs/2310.12931).
 
 **Surveys and Foundations**
 
-- Levine, S., Kumar, A., Tucker, G., & Fu, J. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.* arXiv:2005.01643.
-- Prudencio, R.F., Maximo, M.R.O.A., & Colombini, E.L. (2023). *A Survey on Offline Reinforcement Learning.* IEEE TNNLS. arXiv:2203.01387.
+- Levine, S., Kumar, A., Tucker, G., & Fu, J. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
+- Prudencio, R.F., Maximo, M.R.O.A., & Colombini, E.L. (2023). *A Survey on Offline Reinforcement Learning.* IEEE TNNLS. [arXiv:2203.01387](https://arxiv.org/abs/2203.01387).

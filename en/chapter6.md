@@ -442,9 +442,9 @@ Chapter 7 works through a complete industrial case study showing how these piece
 
 ## References
 
-- Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* Expert Systems with Applications. arXiv:2309.01909.
-- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics.
-- Liu, Y., & Wang, X. (2021). *Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.* arXiv:2008.05598.
+- Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* Expert Systems with Applications. [arXiv:2309.01909](https://arxiv.org/abs/2309.01909).
+- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1811.10561](https://arxiv.org/abs/1811.10561).
+- Liu, Y., & Wang, X. (2021). *Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.* [arXiv:2008.05598](https://arxiv.org/abs/2008.05598).
 - Lusch, B., Kutz, J.N., & Brunton, S.L. (2018). *Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.* Nature Communications. *(Koopman)*
 - García, J., & Fernández, F. (2015). *A Comprehensive Survey on Safe Reinforcement Learning.* JMLR. *(constraint methods)*
-- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* arXiv:2005.01643.
+- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).

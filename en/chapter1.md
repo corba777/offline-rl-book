@@ -295,4 +295,4 @@ This is the offline RL problem. Chapter 2 defines it formally and shows why naiv
 - Ross, S., & Bagnell, D. (2010). *Efficient Reductions for Imitation Learning.* AISTATS.
 - Ross, S., Gordon, G., & Bagnell, D. (2011). *A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning.* AISTATS. *(DAgger)*
 - Pomerleau, D. (1989). *ALVINN: An Autonomous Land Vehicle in a Neural Network.* NeurIPS. *(Original BC)*
-- Levine, S., Kumar, A., Tucker, G., & Fu, J. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.* arXiv:2005.01643.
+- Levine, S., Kumar, A., Tucker, G., & Fu, J. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
