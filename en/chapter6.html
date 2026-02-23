@@ -89,7 +89,7 @@
 <p>This converts the original <strong>Constrained MDP</strong> (CMDP) — maximize reward subject to constraints — into a standard unconstrained MDP with a modified reward, which any offline RL algorithm can solve directly.</p>
 <h3>The Optimality Gap</h3>
 <p>There is always a gap between solving the penalized problem and solving the original constrained problem. How large is it?</p>
-<p><strong>Theorem 6.1 (Optimality Gap).</strong> Let $\hat\pi_\lambda$ be the optimal policy in the penalized MDP. Suppose the constraint satisfies $|g|<em max="max">\infty \leq C</em>$, the CMDP is feasible, and $\hat\pi_\lambda$ is feasible. Then:</p>
+<p><strong>Theorem 6.1 (Optimality Gap).</strong> Let $\hat\pi_\lambda$ be the optimal policy in the penalized MDP. Suppose the constraint satisfies $\|g\|_\infty \leq C_{max}$, the CMDP is feasible, and $\hat\pi_\lambda$ is feasible. Then:</p>
 <div class="math-display">$$J(\pi^*) - J(\hat\pi_\lambda) \leq \frac{2\,C_{max}}{(1-\gamma)\,\lambda}$$</div>
 
 <p><em>Proof in Appendix 6.A.</em></p>
@@ -346,7 +346,7 @@ def make_first_order_physics(tau, K, dt=1.0):
 <p><strong>Theorem 6.3 (Strong Duality, Altman 1999).</strong> For any finite-state CMDP with bounded rewards and costs:</p>
 <div class="math-display">$$\max_{\pi \in \Pi_C} J(\pi) = \min_{\lambda \geq 0}\; \max_\pi\; L(\pi, \lambda)$$</div>
 
-<p>The optimal multipliers satisfy complementary slackness: $\lambda_i^<em>(J_{C_i}(\pi^</em>) - d_i) = 0$. A constraint that is slack at the optimum has $\lambda_i^* = 0$.</p>
+<p>The optimal multipliers satisfy complementary slackness: $\lambda_i^* (J_{C_i}(\pi^*) - d_i) = 0$. A constraint that is slack at the optimum has $\lambda_i^* = 0$.</p>
 <p><em>Proof via LP duality on the occupancy measure formulation in Appendix 6.C.</em></p>
 <p><strong>What this means in practice.</strong> Solving the unconstrained minimax over $(\pi, \lambda)$ gives the exact constrained optimum. The multiplier $\lambda_i$ acts as a price: it increases when the constraint is violated (constraint too expensive → policy avoids it) and decreases when the policy is under-budget (constraint cheap → policy can afford it).</p>
 <h3>Offline Saddle-Point Algorithm</h3>
@@ -520,13 +520,13 @@ erage          │  (Ch. 3–4)     │               │                │
 <p><strong>Proof.</strong> Since $\hat\pi_\lambda$ is optimal in the penalized MDP:</p>
 <div class="math-display">$$J(\hat\pi_\lambda) - \lambda(1-\gamma) V_+(\hat\pi_\lambda) \geq J(\pi^*) - \lambda(1-\gamma) V_+(\pi^*)$$</div>
 
-<p>Since $\pi^<em> \in \Pi_C$, $g \leq 0$ along its trajectories, so $V_+(\pi^</em>) = 0$:</p>
+<p>Since $\pi^* \in \Pi_C$, $g \leq 0$ along its trajectories, so $V_+(\pi^*) = 0$:</p>
 <div class="math-display">$$J(\hat\pi_\lambda) - \lambda(1-\gamma) V_+(\hat\pi_\lambda) \geq J(\pi^*)$$</div>
 
 <p>Rearranging:</p>
 <div class="math-display">$$J(\pi^*) - J(\hat\pi_\lambda) \leq -\lambda(1-\gamma) V_+(\hat\pi_\lambda) \leq 0$$</div>
 
-<p>This would imply $J(\hat\pi_\lambda) \geq J(\pi^*)$ — but we assumed $\hat\pi_\lambda$ is feasible, meaning $V_+(\hat\pi_\lambda) = 0$ approximately. For finite $\lambda$, exact feasibility does not hold; $\hat\pi_\lambda$ incurs a small positive violation. Using $|g|<em max="max">\infty \leq C</em>$:</p>
+<p>This would imply $J(\hat\pi_\lambda) \geq J(\pi^*)$ — but we assumed $\hat\pi_\lambda$ is feasible, meaning $V_+(\hat\pi_\lambda) = 0$ approximately. For finite $\lambda$, exact feasibility does not hold; $\hat\pi_\lambda$ incurs a small positive violation. Using $\|g\|_\infty \leq C_{max}$:</p>
 <div class="math-display">$$V_+(\hat\pi_\lambda) \leq \frac{C_{max}}{(1-\gamma)} \cdot \frac{1}{\lambda(1-\gamma)}$$</div>
 
 <p>Substituting and using the optimality inequality symmetrically (see Paternain et al., 2019, Prop. 1 for the two-sided bound):</p>
@@ -534,7 +534,7 @@ erage          │  (Ch. 3–4)     │               │                │
 
 <hr />
 <h2>Appendix 6.B — Hybrid Model Error Bound (Proposition 6.2)</h2>
-<p><strong>Setup.</strong> Let $f^<em>$ be the true dynamics. The physics model has error $\epsilon_{phys}(s,a) = f_{phys}(s,a) - f^</em>(s,a)$ and the residual network has error $\epsilon_{res}(s,a) = \hat f_{NN}(s,a) - (f^*(s,a) - f_{phys}(s,a))$.</p>
+<p><strong>Setup.</strong> Let $f^*$ be the true dynamics. The physics model has error $\epsilon_{phys}(s,a) = f_{phys}(s,a) - f^*(s,a)$ and the residual network has error $\epsilon_{res}(s,a) = \hat f_{NN}(s,a) - (f^*(s,a) - f_{phys}(s,a))$.</p>
 <p><strong>Proof.</strong> By definition:</p>
 <div class="math-display">$$f_{hybrid}(s,a) - f^*(s,a) = f_{phys}(s,a) + \hat f_{NN}(s,a) - f^*(s,a)$$</div>
 <div class="math-display">$$= \hat f_{NN}(s,a) - (f^*(s,a) - f_{phys}(s,a)) = \epsilon_{res}(s,a)$$</div>
@@ -542,8 +542,8 @@ erage          │  (Ch. 3–4)     │               │                │
 <p>Taking norms and expectations over any test distribution $\rho$:</p>
 <div class="math-display">$$\mathbb{E}_\rho[\|f_{hybrid} - f^*\|] = \mathbb{E}_\rho[\|\epsilon_{res}\|]$$</div>
 
-<p>The residual target $\delta^<em> = f^</em> - f_{phys}$ satisfies $|\delta^<em>| \leq |f^</em>| + |f_{phys}|$ but more importantly has <strong>smaller effective variation</strong> wherever $f_{phys}$ is accurate: $\text{Var}(\delta^<em>) = \text{Var}(f^</em>) - 2\text{Cov}(f^<em>, f_{phys}) + \text{Var}(f_{phys})$, which is $&lt; \text{Var}(f^</em>)$ whenever $f_{phys}$ is positively correlated with $f^*$.</p>
-<p>By standard function approximation theory (Rademacher complexity bounds), generalization error scales with the target's function class complexity. Since $\delta^<em>$ lies in a lower-complexity class than $f^</em>$ (smaller Lipschitz constant, lower amplitude), $\epsilon_{res} &lt; \epsilon_{BB}$ on the same training set and model capacity. In OOD regions, $\hat f_{NN} \to 0$ (network outputs near-zero residuals where training data is absent), so $f_{hybrid} \to f_{phys}$ — a physically meaningful fallback rather than an arbitrary neural network extrapolation. $\square$</p>
+<p>The residual target $\delta^* = f^* - f_{phys}$ satisfies $|\delta^*| \leq |f^*| + |f_{phys}|$ but more importantly has <strong>smaller effective variation</strong> wherever $f_{phys}$ is accurate: $\text{Var}(\delta^*) = \text{Var}(f^*) - 2\text{Cov}(f^*, f_{phys}) + \text{Var}(f_{phys})$, which is $&lt; \text{Var}(f^*)$ whenever $f_{phys}$ is positively correlated with $f^*$.</p>
+<p>By standard function approximation theory (Rademacher complexity bounds), generalization error scales with the target's function class complexity. Since $\delta^*$ lies in a lower-complexity class than $f^*$ (smaller Lipschitz constant, lower amplitude), $\epsilon_{res} &lt; \epsilon_{BB}$ on the same training set and model capacity. In OOD regions, $\hat f_{NN} \to 0$ (network outputs near-zero residuals where training data is absent), so $f_{hybrid} \to f_{phys}$ — a physically meaningful fallback rather than an arbitrary neural network extrapolation. $\square$</p>
 <hr />
 <h2>Appendix 6.C — Proof of Theorem 6.3 (Strong Duality via LP)</h2>
 <p><strong>Occupancy measure reformulation.</strong> Define the normalized discounted state-action occupancy:</p>
@@ -560,7 +560,7 @@ erage          │  (Ch. 3–4)     │               │                │
 
 <p>This is the Bellman inequality for the modified reward $r - \sum_i \lambda_i C_i$.</p>
 <p><strong>Strong duality.</strong> The primal LP is feasible (by assumption) and bounded (rewards and costs are bounded). By LP strong duality (the Farkas–Minkowski theorem), primal and dual optima coincide. The dual variables $\lambda_i \geq 0$ are exactly the Lagrange multipliers for the cost constraints.</p>
-<p><strong>Complementary slackness.</strong> At optimality, $\lambda_i^<em> (\langle d^</em>, C_i \rangle - d_i) = 0$ for all $i$. This means $\lambda_i^<em> &gt; 0$ only when constraint $i$ is active ($J_{C_i}(\pi^</em>) = d_i$). Inactive constraints have $\lambda_i^* = 0$ and do not affect the optimal policy. $\square$</p>
+<p><strong>Complementary slackness.</strong> At optimality, $\lambda_i^* (\langle d^*, C_i \rangle - d_i) = 0$ for all $i$. This means $\lambda_i^* &gt; 0$ only when constraint $i$ is active ($J_{C_i}(\pi^*) = d_i$). Inactive constraints have $\lambda_i^* = 0$ and do not affect the optimal policy. $\square$</p>
 
 <nav class="chapter-nav">
 <a href="/offline-rl-book/en/chapter5.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Model-Based Offline RL (MOPO, MOReL)</span></a>

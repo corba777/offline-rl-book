@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chapter 7: Industrial Applications</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right;margin-left:auto}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/ru/chapter7.html">Русский</a>
+  </div>
+</header>
+<main>
+<h1>Chapter 7: Industrial Applications</h1>
+<blockquote>
+<p><em>"The gap between a working benchmark result and a working industrial deployment is not a gap in algorithms — it is a gap in understanding the data."</em></p>
+</blockquote>
+<hr />
+<h2>From Benchmarks to Industry</h2>
+<p>The preceding six chapters built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on <code>ThermalProcessEnv</code> — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.</p>
+<p>Real industrial processes differ from that environment in every dimension that matters.</p>
+<p><strong>More variables, more coupling.</strong> A realistic coating process has dozens of sensor readings. Even a simplified model has temperature, filler fraction, viscosity, bulk density, and a surge tank level — five variables with physical dependencies between all of them. The level is an integrating state that drifts without active control; viscosity is a nonlinear function of temperature and filler that the agent cannot observe independently of its inputs.</p>
+<p><strong>Non-uniform data coverage.</strong> Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.</p>
+<p><strong>Lag and delay.</strong> Material fed into a coating line takes 30–90 minutes to appear at the quality measurement point. Within the dynamic model, this manifests as a transport delay: the agent's action at time $t$ affects the output at time $t + k$. A pure first-order model ignoring the delay will have systematic prediction errors whenever the feed rate changes.</p>
+<p><strong>Hard physical constraints.</strong> Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.</p>
+<p>This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–6. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.</p>
+<blockquote>
+<p>📄 Full code: <a href="../../code/chapter7.py"><code>chapter7.py</code></a></p>
+</blockquote>
+<hr />
+<h2>The Coating Process</h2>
+<h3>Environment</h3>
+<p>The <code>CoatingProcessEnv</code> models a continuous thermal coating line with five state variables and two control inputs.</p>
+<p><strong>State</strong> $s \in \mathbb{R}^5$ (all normalized to $[0,1]$):</p>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Variable</th>
+<th>Physical meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$s_0$</td>
+<td><code>temperature</code></td>
+<td>Process temperature in the coating zone</td>
+</tr>
+<tr>
+<td>$s_1$</td>
+<td><code>filler_fraction</code></td>
+<td>Fraction of filler material in the blend</td>
+</tr>
+<tr>
+<td>$s_2$</td>
+<td><code>viscosity</code></td>
+<td>Blend viscosity — nonlinear function of $T$ and filler</td>
+</tr>
+<tr>
+<td>$s_3$</td>
+<td><code>density</code></td>
+<td>Bulk material density</td>
+</tr>
+<tr>
+<td>$s_4$</td>
+<td><code>level</code></td>
+<td>Surge tank fill level — integrating dynamics</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Actions</strong> $a \in [-1,1]^2$:</p>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Action</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$a_0$</td>
+<td><code>heat_input</code></td>
+<td>Heater setpoint delta</td>
+</tr>
+<tr>
+<td>$a_1$</td>
+<td><code>flow_input</code></td>
+<td>Filler feed rate delta</td>
+</tr>
+</tbody>
+</table>
+<p><strong>True dynamics</strong> (unknown to the agent):</p>
+<p>$$T_{t+1} = \left(1 - \frac{\Delta t}{\tau_T}\right)T_t + \frac{\Delta t}{\tau_T} K_T u_T + \underbrace{0.03 \cdot f_t \cdot u_T}_{\text{cross-coupling}} + \epsilon_T$$</p>
+<p>$$f_{t+1} = \left(1 - \frac{\Delta t}{\tau_f}\right)f_t + \frac{\Delta t}{\tau_f} K_f \cdot \underbrace{u_{f,t-2}}_{\text{delay}} + \epsilon_f$$</p>
+<p>$$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \epsilon_v$$</p>
+<p>$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_f}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_T}_{\text{outflow}}\right) + \epsilon_L$$</p>
+<p>Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$.</p>
+<p>Three things are deliberately hidden from the agent's physics model:
+1. The cross-coupling term $0.03 f_t u_T$ in the temperature equation
+2. The two-step transport delay in the filler equation
+3. The quadratic term $0.12 f(1-T)$ in the viscosity relationship</p>
+<p>These represent the gap between first-principles engineering knowledge and reality.</p>
+<p><strong>Reward</strong> function targets temperature, filler fraction, and level stability:</p>
+<p>$$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$</p>
+<p>with setpoints $T^* = 0.60$, $f^* = 0.50$, $L^* = 0.50$.</p>
+<p><strong>Hard constraints</strong> (violation = irreversible equipment damage or shutdown):</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Lower</th>
+<th>Upper</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>temperature</td>
+<td>0.35</td>
+<td>0.85</td>
+</tr>
+<tr>
+<td>filler fraction</td>
+<td>0.20</td>
+<td>0.75</td>
+</tr>
+<tr>
+<td>viscosity</td>
+<td>0.10</td>
+<td>0.90</td>
+</tr>
+<tr>
+<td>density</td>
+<td>0.30</td>
+<td>0.80</td>
+</tr>
+<tr>
+<td>level</td>
+<td>0.15</td>
+<td>0.85</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python">class CoatingProcessEnv:
+    STATE_DIM  = 5
+    ACTION_DIM = 2
+
+    T_TARGET     = 0.60
+    F_TARGET     = 0.50
+    LEVEL_TARGET = 0.50
+
+    BOUNDS = [
+        (0.35, 0.85),  # temperature
+        (0.20, 0.75),  # filler_fraction
+        (0.10, 0.90),  # viscosity
+        (0.30, 0.80),  # density
+        (0.15, 0.85),  # level
+    ]
+
+    TAU_T, TAU_F = 12.0, 8.0
+    K_T,   K_F   = 0.85, 0.90
+    DT           = 1.0
+</code></pre>
+<h3>Why the Level Variable is the Hardest</h3>
+<p>The first four state variables are <strong>self-regulating</strong>: if the heater is turned off, temperature eventually returns to ambient. The level variable is <strong>integrating</strong>: it has no natural setpoint. Left alone, it drifts in the direction of net flow imbalance. Controlling an integrating state requires the agent to predict the sign and magnitude of its own long-term effect — which is exactly what offline RL struggles with when data is sparse near the constraint boundaries.</p>
+<p>This is not a contrived difficulty. Surge tanks, buffer silos, and intermediate storage vessels are integrating elements in nearly every continuous manufacturing process.</p>
+<hr />
+<h2>The Dataset: Operating Regimes</h2>
+<p>Industrial data is not uniformly distributed. <code>collect_industrial_dataset</code> simulates three operating regimes that appear in real historical logs:</p>
+<p><strong>Normal operation (60% of episodes):</strong> The process runs near its setpoints. The behavior policy is a proportional controller with moderate exploration noise. This is the bulk of the data — the region where all algorithms will perform reasonably.</p>
+<p><strong>Setpoint transitions (25%):</strong> Episodes start away from the nominal operating point. Higher noise, shifted initial states. These transitions stress-test the agent's ability to drive the process back to setpoint rather than just maintaining it.</p>
+<p><strong>Disturbances (15%):</strong> Unusual initial conditions — specifically, level disturbances where the surge tank starts far below normal. These are the episodes where constraint violations are most likely and where the physics model is most valuable.</p>
+<pre><code class="language-python">dataset = collect_industrial_dataset(
+    n_episodes=400,
+    episode_len=100,
+    noise_scale=0.30,
+    regime_split=(0.60, 0.25, 0.15),
+)
+</code></pre>
+<p>This distribution creates the characteristic industrial imbalance: the trained agents will encounter disturbance scenarios rarely during evaluation but must handle them correctly. An agent that learned only from normal-operation data will be systematically undertrained for the 15% of situations that matter most.</p>
+<hr />
+<h2>Evaluation: Industrial Metrics</h2>
+<p>Standard RL metrics — episode return, normalized score — are insufficient for industrial evaluation. <code>IndustrialEvaluator</code> computes five metrics that matter in practice.</p>
+<h3>Directional Accuracy (DA)</h3>
+<p>$$\text{DA}_x = \frac{1}{T}\sum_{t=1}^T \mathbf{1}\!\left[\Delta x_t \cdot (x^* - x_{t-1}) \geq 0\right]$$</p>
+<p>DA measures whether the controlled variable moved <em>toward</em> its setpoint at each step, regardless of how far it moved. A policy that always moves in the right direction but slowly has DA = 1.0. A policy that systematically pushes variables the wrong way has DA &lt; 0.5 (worse than random).</p>
+<p>DA is often more informative than RMSE in industrial settings because:
+- A slow policy with DA ≈ 1.0 can be sped up by tuning the action scaling
+- A fast policy with DA ≈ 0.4 requires fundamental retraining
+- Operators can visually verify DA from trend plots without numerical analysis</p>
+<h3>RMSE and Constraint Violation Rate</h3>
+<p>RMSE from setpoint is computed per variable:</p>
+<p>$$\text{RMSE}_x = \sqrt{\frac{1}{T}\sum_t (x_t - x^*)^2}$$</p>
+<p>Constraint violation rate is the fraction of time steps where any state variable falls outside its hard bounds. Severity measures the mean violation magnitude <em>given</em> that a violation occurred:</p>
+<p>$$\text{severity} = \frac{\sum_t \max(0,\, g(s_t))}{\sum_t \mathbf{1}[g(s_t) &gt; 0]}$$</p>
+<pre><code class="language-python">class IndustrialEvaluator:
+    &quot;&quot;&quot;
+    Computes: reward_mean, reward_std, T_rmse, f_rmse, level_rmse,
+              da_T, da_f, da_mean, constraint_viol_rate,
+              constraint_viol_severity
+    &quot;&quot;&quot;
+
+    def evaluate(self, agent) -&gt; Dict[str, float]:
+        for ep in range(self.n_episodes):
+            obs = self.env.reset(seed=8000 + ep)
+            while not done:
+                prev_T, prev_f = obs[0], obs[1]
+                s_t  = torch.FloatTensor(
+                    (obs - self.s_mean) / self.s_std).unsqueeze(0)
+                act  = agent.policy.act(s_t, deterministic=True)
+                obs, r, done, info = self.env.step(act)
+
+                # Directional accuracy
+                da_T = 1.0 if (obs[0]-prev_T)*(env.T_TARGET-prev_T) &gt;= 0 else 0.0
+                da_f = 1.0 if (obs[1]-prev_f)*(env.F_TARGET-prev_f) &gt;= 0 else 0.0
+
+                # Constraint tracking
+                viol = info['constraint_violation']   # sum of boundary overruns
+</code></pre>
+<hr />
+<h2>The Physics Model</h2>
+<p>The known physics for the coating process is encoded in <code>coating_physics_fn</code>. It implements the first-order responses and the mass balance exactly, but omits the cross-coupling, transport delay, and viscosity nonlinearity:</p>
+<pre><code class="language-python">def coating_physics_fn(state: torch.Tensor,
+                        action: torch.Tensor) -&gt; torch.Tensor:
+    T, f, L = state[:, 0], state[:, 1], state[:, 4]
+    heat_in  = action[:, 0] * 0.5 + 0.5
+    flow_in  = action[:, 1] * 0.5 + 0.5
+
+    T_new = (1 - DT/TAU_T) * T + (DT/TAU_T) * K_T * heat_in
+    f_new = (1 - DT/TAU_F) * f + (DT/TAU_F) * K_F * flow_in
+
+    # Linearized viscosity (true is nonlinear)
+    v_new = (0.75 - 0.45*T_new + 0.38*f_new).clamp(0.0, 1.0)
+    d_new = (0.55 + 0.25*f_new - 0.10*T_new).clamp(0.0, 1.0)
+
+    # Mass balance — good approximation of true level dynamics
+    inflow  = flow_in * 0.4
+    outflow = L * 0.35 + 0.05 * heat_in
+    L_new   = (L + DT * (inflow - outflow)).clamp(0.0, 1.0)
+
+    return torch.stack([T_new, f_new, v_new, d_new, L_new], dim=1)
+</code></pre>
+<p>Before training the hybrid ensemble, it is essential to run <code>diagnose_physics_coverage</code> to verify that the physics model is actually useful:</p>
+<pre><code class="language-python">ensemble.diagnose_physics_coverage(norm_dataset)
+
+# Expected output:
+#   Physics model coverage (fraction of variance explained):
+#   state dim 0 (temperature):     91.3%  ██████████████████░░
+#   state dim 1 (filler_fraction): 83.7%  ████████████████░░░░
+#   state dim 2 (viscosity):       64.2%  ████████████░░░░░░░░
+#   state dim 3 (density):         79.8%  ████████████████░░░░
+#   state dim 4 (level):           93.1%  ██████████████████░░
+#   Overall: 82.4%
+</code></pre>
+<p>Coverage above 80% overall means the residual network needs to learn a 20%-amplitude correction — roughly one quarter the network capacity of a pure black-box model at the same prediction accuracy.</p>
+<hr />
+<h2>Algorithm 1: Behavioral Cloning</h2>
+<p>BC is the baseline: clone the behavior policy directly. Its failure mode on industrial data is predictable — compounding error during setpoint transitions and disturbances, where the agent encounters states it never saw during training.</p>
+<pre><code class="language-python">bc = CQLBCAgent(STATE_DIM, ACTION_DIM, device=device)
+train_bc(bc, loader, n_epochs=60)
+</code></pre>
+<p>BC's DA will be high in normal-operation episodes (the behavior policy was a competent proportional controller) and low during disturbance recovery. Constraint violations are rare in normal operation and frequent in disturbances — exactly the scenarios BC was least trained for.</p>
+<hr />
+<h2>Algorithm 2: CQL</h2>
+<p>CQL (Chapter 3) adds conservatism via the penalty on out-of-distribution Q-values. On industrial data it consistently outperforms BC in disturbance scenarios because the pessimistic Q-function prevents the policy from taking actions that look good under the learned Q but are rare in the dataset.</p>
+<pre><code class="language-python">cql = CQLAgent(STATE_DIM, ACTION_DIM, alpha_cql=1.0, device=device)
+train_cql_agent(cql, loader, n_epochs=80)
+</code></pre>
+<p>CQL's remaining weakness: it has no mechanism to avoid physically inconsistent actions. A setpoint command that CQL's Q-function rates highly may still violate a mass balance or push the level toward a constraint boundary.</p>
+<hr />
+<h2>Algorithm 3: CQL + Physics Reward Shaping</h2>
+<p><code>PhysicsInformedCQL</code> wraps <code>CQLAgent</code> with <code>PhysicsRewardWrapper</code> (Chapter 6). The modification to the training loop is exactly one line: replace the batch reward <code>r</code> with <code>r - penalty</code> before calling <code>CQLAgent.update</code>.</p>
+<pre><code class="language-python">constraints, lambdas = make_coating_constraints(dataset, device)
+
+class PhysicsInformedCQL:
+    def update(self, batch):
+        s, a, r, s2, d = [x.to(self.device) for x in batch]
+        with torch.no_grad():
+            penalty = sum(
+                lam * g(s, a, s2)
+                for g, lam in zip(self.constraints, self.lambdas)
+            )
+        return self.cql.update((s, a, r - penalty, s2, d))
+</code></pre>
+<p>The <code>lambdas</code> are calibrated via <code>calibrate_lambda</code> (Theorem 6.1): set $\lambda$ so that the Theorem 6.1 optimality gap is at most 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.</p>
+<p>Three constraints are active:
+1. <strong>Operating bounds</strong> — all five state variables within hard limits
+2. <strong>Temperature first-order consistency</strong> — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
+3. <strong>Filler fraction first-order consistency</strong> — same for filler</p>
+<p>The first-order consistency constraints do not punish the agent for choosing unusual setpoints — they punish the dynamics model for predicting physically impossible transitions, which indirectly constrains the policy to stay in regions where dynamics are predictable.</p>
+<hr />
+<h2>Algorithm 4: HybridMOReL</h2>
+<p><code>HybridMOReL</code> combines the model-based approach from Chapter 5 with the hybrid dynamics model from Chapter 6. The structure is a two-phase training loop.</p>
+<p><strong>Phase 1 — Dynamics training:</strong></p>
+<pre><code class="language-python">hm = HybridMOReL(
+    state_dim   = STATE_DIM,
+    action_dim  = ACTION_DIM,
+    physics_fn  = coating_physics_fn,
+    n_ensemble  = 4,
+    hidden_dim  = 128,
+    halt_thresh = 0.15,
+)
+hm.train_dynamics(norm_dataset, n_epochs=30)
+# Output:
+#   Physics coverage: 82.4% — strong
+#   Training hybrid ensemble: 4 models × 30 epochs
+#   ✓ HybridEnsemble installed in MOReL
+</code></pre>
+<p>After training, the hybrid ensemble is installed in the MOReL agent by swapping <code>morel_agent.ensemble</code>. The MOReL rollout generator (<code>generate_synthetic_data</code>) continues to call <code>ensemble.predict_with_uncertainty</code> — it does not know or care whether the ensemble is pure black-box or hybrid.</p>
+<p><strong>Phase 2 — Policy training via MOReL:</strong></p>
+<pre><code class="language-python">train_morel(
+    agent               = hm.morel_agent,
+    dataset             = norm_dataset,
+    env                 = env,         # real env for evaluation only
+    n_outer_iters       = 15,
+    sac_steps_per_iter  = 300,
+)
+</code></pre>
+<p>MOReL's P-MDP construction applies the HALT penalty whenever ensemble uncertainty exceeds <code>halt_thresh</code>. With the hybrid ensemble, uncertainty estimates are better calibrated: in OOD regions where the residual network has no training data, the physics term keeps the prediction physically plausible rather than arbitrary. This reduces spurious HALT events caused by the pure black-box ensemble producing nonsensical predictions in physically reachable but data-sparse states.</p>
+<hr />
+<h2>Results</h2>
+<p>Running the full benchmark:</p>
+<pre><code class="language-python">results = run_industrial_benchmark(
+    device       = 'cpu',
+    n_train_ep   = 400,
+    n_bc_epochs  = 60,
+    n_cql_epochs = 80,
+    n_morel_iters= 15,
+    n_eval_ep    = 20,
+)
+</code></pre>
+<p>Typical output (exact numbers depend on random seed):</p>
+<pre><code>══════════════════════════════════════════════════════════════
+  CHAPTER 7 — INDUSTRIAL BENCHMARK RESULTS
+══════════════════════════════════════════════════════════════
+Metric                BC      CQL   CQL+Phys  HybridMOReL
+──────────────────────────────────────────────────────────────
+Reward (mean)       -18.4   -14.2    -13.8   ▶  -12.1
+DA (mean)            61.3%   71.8%   73.4%  ▶   79.2%
+DA temperature       64.1%   73.5%   75.1%  ▶   81.3%
+DA filler            58.4%   70.1%   71.6%  ▶   77.1%
+T RMSE               0.0921  0.0712  0.0698  ▶  0.0581
+f RMSE               0.1043  0.0834  0.0811  ▶  0.0693
+Level RMSE           0.0874  0.0748  0.0701  ▶  0.0612
+Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+══════════════════════════════════════════════════════════════
+</code></pre>
+<h3>Reading the Results</h3>
+<p><strong>BC</strong> performs adequately in normal operation but fails during disturbances. Its DA is just above 60% — better than random, but below the 80% industrial threshold. Constraint violations occur because BC never saw the level variable near its bounds during training.</p>
+<p><strong>CQL</strong> improves across all metrics. Conservatism in the Q-function prevents the worst extrapolation failures. But violation rate remains at 2.8% — CQL has no mechanism to specifically avoid constraint boundaries.</p>
+<p><strong>CQL+Physics</strong> reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions. The violation severity also drops even more than the rate, meaning that when violations do occur they are shallower.</p>
+<p><strong>HybridMOReL</strong> achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.</p>
+<h3>The Complementary Structure</h3>
+<p>These results reveal a complementary structure worth understanding.</p>
+<p><strong>CQL+Physics</strong> is the violation minimizer: it explicitly penalizes constraint approaches and achieves the lowest violation rate. But it uses only real data — its synthetic experience is zero.</p>
+<p><strong>HybridMOReL</strong> is the performance maximizer: model-based rollouts push the policy to higher reward and DA, but without explicit constraint penalties the violation rate is slightly elevated.</p>
+<p>In a real deployment, the natural combination is <strong>HybridMOReL + physics reward shaping</strong> — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to <code>train_hybrid_morel_agent</code>: pass the <code>PhysicsRewardWrapper</code> into the rollout generator. Chapter 6 showed exactly how to do this.</p>
+<hr />
+<h2>Engineering Decisions Revisited</h2>
+<p>Working through this case study surfaces several decisions that do not appear in benchmark papers.</p>
+<h3>The Transport Delay Problem</h3>
+<p>The filler equation has a two-step delay: the agent's flow input at time $t$ affects the filler fraction at time $t+2$, not $t+1$. The physics model ignores this delay — it predicts an immediate first-order response.</p>
+<p>This means the hybrid ensemble's residual must learn the delay effect from data. With enough transitions, it can. The tell-tale sign of a delay mismatch is a systematic residual that is positive when flow_input recently increased and negative when it recently decreased. If <code>diagnose_physics_coverage</code> shows low coverage for the filler dimension (below 60%), the likely cause is an unmodeled delay.</p>
+<p>The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model account for them. The engineering knowledge required is only the approximate delay length — the exact value can be learned from the residual.</p>
+<h3>Constraint Calibration</h3>
+<p><code>make_coating_constraints</code> uses <code>calibrate_lambda</code> for the bounds constraint and sets $\lambda = 2.0$ manually for the first-order consistency constraints. The manual values are reasonable starting points but should be verified:</p>
+<pre><code class="language-python"># Check constraint violation rates on the training dataset
+for g, lam in zip(constraints, lambdas):
+    violations = g(s_train, a_train, s2_train)
+    print(f&quot;  λ={lam:.2f} | violations: {(violations &gt; 0).float().mean():.1%} &quot;
+          f&quot;| mean_magnitude: {violations.mean():.5f}&quot;)
+</code></pre>
+<p>If a constraint is violated on more than 20% of training transitions, either the tolerance is too tight or the physics model is inaccurate for that variable. In both cases, increasing the tolerance or loosening the manual $\lambda$ is better than tightening the constraint — a constraint that fires too often becomes a second reward signal rather than a physics correction.</p>
+<h3>Normalizing the 5D State</h3>
+<p>Five variables with different physical scales and variances require per-dimension normalization. The provided <code>normalize_dataset</code> normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — centering the reward would remove the sign information that distinguishes good states from bad.</p>
+<hr />
+<h2>Summary</h2>
+<p>This chapter translated the tools from Chapters 1–6 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
+<p>The comparison across four algorithms reveals a clean hierarchy:</p>
+<table>
+<thead>
+<tr>
+<th>Algorithm</th>
+<th>Relies on</th>
+<th>Strength</th>
+<th>Weakness</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BC</td>
+<td>Data imitation</td>
+<td>Simple, interpretable</td>
+<td>Compounding error; constraint-blind</td>
+</tr>
+<tr>
+<td>CQL</td>
+<td>Conservative Q-values</td>
+<td>Better OOD generalization</td>
+<td>No physical constraint mechanism</td>
+</tr>
+<tr>
+<td>CQL+Physics</td>
+<td>CQL + penalty</td>
+<td>Lowest violation rate</td>
+<td>Uses only real data</td>
+</tr>
+<tr>
+<td>HybridMOReL</td>
+<td>Model-based + hybrid</td>
+<td>Best reward and DA</td>
+<td>Higher violation rate without explicit penalty</td>
+</tr>
+</tbody>
+</table>
+<p>The practical recommendation for industrial deployment: <strong>start with CQL+Physics</strong> (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, <strong>add the hybrid ensemble</strong> as a source of diverse synthetic experience.</p>
+<p>Chapter 8 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.</p>
+<hr />
+<h2>References</h2>
+<ul>
+<li>All references from Chapters 1–6 apply to the algorithms used here.</li>
+<li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(PID baseline, first-order process models)</em></li>
+<li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(industrial process control, transport delay)</em></li>
+<li>Rawlings, J.B., Mayne, D.Q., &amp; Diehl, M. (2017). <em>Model Predictive Control.</em> Nob Hill. <em>(MPC for comparison context)</em></li>
+</ul>
+<nav class="chapter-nav">
+<a href="/offline-rl-book/en/chapter6.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Physics-Informed Offline RL</span></a>
+<span></span>
+</nav>
+</main>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+  </div>
+</footer>
+</body>
+</html>
