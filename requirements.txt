@@ -1,0 +1,15 @@
+# Offline RL Book — dependencies for all chapter code
+# Ch1: behavioral_cloning.py
+# Ch2: extrapolation_error.py
+# Ch3: cql.py
+# Ch4: iql.py
+# Ch5: mopo.py, morel.py
+# Ch6: physics_informed.py
+# Ch7: chapter7.py (uses cql, morel, physics_informed)
+# Ch8: chapter8.py (uses cql, morel, chapter7; adds shap, scipy)
+
+numpy>=1.21,<3
+torch>=1.12
+matplotlib>=3.5
+shap>=0.42
+scipy>=1.9
