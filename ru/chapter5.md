@@ -199,31 +199,46 @@ $$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^
 
 ### Реализация
 
+> 📄 Полный код: [`morel.py`](../../code/morel.py)
+
+MOReL использует ту же архитектуру ансамбля что и MOPO (`ProbabilisticDynamicsNet`, `DynamicsEnsemble`). Специфичные для MOReL дополнения:
+
+**Шаг 1 — Калибровка epsilon по данным in-distribution:**
+
 ```python
-def generate_morel_rollouts(ensemble, policy, real_states,
-                             epsilon, kappa, horizon, device):
-    """
-    Ролл-ауты в стиле MOReL: жёсткое завершение в поглощающее состояние.
-    """
-    state = real_states[random_idx]
-
-    for step in range(horizon):
-        action, _ = policy.sample(state)
-        next_state, uncertainty = ensemble.predict_with_uncertainty(state, action)
-
-        ood_mask = uncertainty > epsilon          # (batch,) bool
-        reward   = model_reward(state, action, next_state)
-
-        # In-distribution: нормальная награда. OOD: жёсткий штраф, done=True
-        reward = torch.where(ood_mask,
-                             -kappa * torch.ones_like(reward),
-                             reward)
-        done = ood_mask.float()
-        # Продолжаем только не завершённые ролл-ауты
-        state = torch.where(ood_mask.unsqueeze(-1), state, next_state)
+# После обучения ансамбля — установить epsilon на 80-м перцентиле
+# неопределённости на реальных переходах из датасета.
+epsilon = ensemble.calibrate_epsilon(dataset, percentile=80.0)
 ```
 
-Ключевое отличие от MOPO: вместо вычитания непрерывного штрафа OOD-переходы немедленно завершаются с `done=True` и наградой $-\kappa$.
+**Шаг 2 — Ролл-ауты в P-MDP с жёстким HALT:**
+
+```python
+# Внутри MOReLAgent.generate_synthetic_data():
+for step in range(self.rollout_horizon):
+    action, _ = self.policy.sample(state[active])
+    next_state, uncertainty = self.ensemble.predict_with_uncertainty(
+        state[active], action)
+
+    # Жёсткая граница: если OOD — завершить с штрафом
+    ood = uncertainty > self.epsilon
+
+    reward = torch.where(
+        ood,
+        -self.kappa * torch.ones(ood.shape[0], device=device),
+        self._model_reward(state[active], action, next_state)
+    )
+    done = ood.float()
+
+    # Поглощающее состояние: остановленные ролл-ауты остаются на месте
+    next_state_out = torch.where(
+        ood.unsqueeze(-1), state[active], next_state)
+
+    # Деактивировать остановленные ролл-ауты
+    active[active.nonzero(as_tuple=True)[0][ood]] = False
+```
+
+Ключевое отличие от MOPO: вместо вычитания непрерывного штрафа OOD-переходы немедленно завершаются с `done=True` и наградой $-\kappa$. Q-функция видит нулевое будущее вознаграждение после таких переходов.
 
 ### Выбор $\epsilon$
 

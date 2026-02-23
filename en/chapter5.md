@@ -232,31 +232,46 @@ This is a stronger guarantee than MOPO's: it is **distribution-free** and does n
 
 ### Implementation
 
-MOReL can be layered on top of any offline RL algorithm. The ensemble is trained exactly as in MOPO. The key difference is how synthetic rollouts handle OOD transitions:
+> 📄 Full code: [`morel.py`](../../code/morel.py)
+
+MOReL shares the ensemble architecture with MOPO (`ProbabilisticDynamicsNet`, `DynamicsEnsemble`) — see `mopo.py` for those details. The key MOReL-specific additions are:
+
+**Step 1 — Calibrate epsilon from in-distribution data:**
 
 ```python
-def generate_morel_rollouts(ensemble, policy, real_states,
-                             epsilon, kappa, horizon, device):
-    """
-    MOReL-style rollouts: hard termination into absorbing state.
+# After training the ensemble, set epsilon at the 80th percentile
+# of uncertainty on *actual dataset transitions*.
+# This ensures 80% of real data is labelled KNOWN.
+epsilon = ensemble.calibrate_epsilon(dataset, percentile=80.0)
+```
 
-    Unlike MOPO's soft penalty, MOReL terminates the rollout and assigns
-    a fixed large penalty when uncertainty exceeds epsilon.
-    """
-    state = real_states[random_idx]
-    transitions = []
+`calibrate_epsilon()` queries the ensemble on `n_samples` real transitions and returns a quantile of the resulting uncertainty values. Setting `percentile=80` means the KNOWN region comfortably covers the dataset and extends into nearby well-modeled areas.
 
-    for step in range(horizon):
-        action, _ = policy.sample(state)
-        next_state, uncertainty = ensemble.predict_with_uncertainty(state, action)
+**Step 2 — P-MDP rollouts with hard HALT:**
 
-        # Hard boundary: if OOD, terminate with penalty
-        ood_mask = uncertainty > epsilon          # (batch,) bool
-        reward   = model_reward(state, action, next_state)
+```python
+# Inside MOReLAgent.generate_synthetic_data():
+for step in range(self.rollout_horizon):
+    action, _ = self.policy.sample(state[active])
+    next_state, uncertainty = self.ensemble.predict_with_uncertainty(
+        state[active], action)
 
-        # In-distribution: normal reward. OOD: hard penalty, done=True
-        reward  = torch.where(ood_mask, -kappa * torch.ones_like(reward), reward)
-        done    = ood_mask.float()
+    # Hard boundary: if OOD, terminate with penalty
+    ood = uncertainty > self.epsilon          # (batch,) bool
+
+    reward = torch.where(
+        ood,
+        -self.kappa * torch.ones(ood.shape[0], device=device),
+        self._model_reward(state[active], action, next_state)
+    )
+    done = ood.float()
+
+    # Absorbing: halted rollouts stay at current state
+    next_state_out = torch.where(
+        ood.unsqueeze(-1), state[active], next_state)
+
+    # Mark halted rollouts as inactive — they stop here
+    active[active.nonzero(as_tuple=True)[0][ood]] = False
 
         transitions.append((state, action, reward, next_state, done))
         # Only continue non-terminated rollouts
