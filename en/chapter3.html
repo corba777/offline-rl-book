@@ -79,10 +79,12 @@
 <h2>Formalization</h2>
 <h3>The Full Objective</h3>
 <p>CQL minimizes a regularized Bellman error:</p>
-<p><div class="math-display">$$\min_\theta \, \alpha \left( \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right) + \frac{1}{2} \mathcal{L}_{TD}(\theta)$$</div></p>
+<p><div class="math-display">$$\min_\theta \, \alpha \left( \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right) + \mathcal{L}_{TD}(\theta)$$</div></p>
+<p><em>Note: the original paper writes $\frac{1}{2}\mathcal{L}_{TD}$ — a normalisation convention absorbed by $\alpha$ and the learning rate. Our implementation omits it.</em></p>
 <p>The <strong>log-sum-exp</strong> term is a smooth approximation of $\max_a Q(s,a)$ — it pushes the entire Q-surface down. The second term lifts Q-values specifically at dataset points.</p>
 <p>For continuous action spaces (like our thermal process), enumerating all $a$ is impossible. CQL approximates logsumexp by <strong>importance sampling</strong> with two proposal distributions — random uniform actions and current policy actions:</p>
 <p><div class="math-display">$$\log \sum_a \exp Q(s, a) \approx \log \mathbb{E}_{a \sim \mu} \left[ \frac{\exp Q(s,a)}{\mu(a|s)} \right]$$</div></p>
+<p><strong>Why subtract $\log \mu(a|s)$ in the code?</strong> When $\mu = \pi_\theta$, expanding the importance-sampled estimate gives: $\text{logsumexp}_i[Q(s,a_i) - \log\pi_\theta(a_i|s)] + \text{const}$. Subtracting the log-probability of the proposal implements the importance weight correction — without it we'd compute a plain Monte Carlo average of $Q$, not the soft-maximum CQL requires. Uniform random actions need no correction since their log-density is constant and cancels.</p>
 <p>This is exactly what <code>compute_cql_loss()</code> does in <code>cql.py</code>.</p>
 <h3>Theoretical Guarantee</h3>
 <p><strong>Theorem (Kumar et al., 2020).</strong> Under appropriate $\alpha$, the Q-function learned by CQL satisfies:</p>
@@ -258,6 +260,7 @@ class GaussianPolicy(nn.Module):
 </table>
 <p><strong>Automatic tuning</strong> uses a Lagrangian: keep the CQL penalty near a target $\tau$. In <code>CQLAgent</code>, set <code>auto_alpha=True</code> and <code>target_cql=-1.0</code>. The dual variable <code>log_alpha</code> is updated to satisfy the constraint:</p>
 <p><div class="math-display">$$\min_\theta \max_{\alpha \geq 0} \; \mathcal{L}_{TD}(\theta) + \alpha \left( \mathcal{R}_{CQL}(\theta) - \tau \right)$$</div></p>
+<p><strong>A note on the entropy coefficient.</strong> The implementation uses a fixed <code>alpha_ent=0.1</code>. In production CQL this is also tuned automatically, targeting $\mathcal{H}^* = -\dim(\mathcal{A})$ (one nat per action dimension) — the same convention as SAC. The fixed value works for the thermal control task; for other environments, automatic tuning is recommended.</p>
 <hr />
 <h2>Running the Comparison</h2>
 <pre><code class="language-python">from cql import run_comparison
@@ -296,17 +299,129 @@ CQL vs BC: +6.45 reward
 <h2>What CQL Actually Does: Intuition</h2>
 <p>Think of the Q-function as a landscape over the action space. Standard Q-learning leaves this landscape unconstrained between data points — it tends to rise due to optimistic generalization.</p>
 <p>CQL adds gravity: it pulls the entire landscape down, while TD loss anchors it high at data points. The greedy policy sees high values only at data-like actions and naturally stays in-distribution.</p>
-<pre><code>Standard Q:          CQL Q:
 
-  Q ↑    *    *       Q ↑    *    *
-     |  / \  /           |  *  \  /
-     | /   \/            | /    \/
-     |/    /\            |/     /\
-     +---------→ a       +----------→ a
-     ↑ OOD peaks         ↑ OOD pushed down
-</code></pre>
+<figure style="margin:2rem 0">
+<svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg"
+     style="width:100%;max-width:680px;display:block;font-family:'Inter',system-ui,sans-serif">
+
+  <!-- left panel -->
+  <text x="20" y="18" font-size="11" font-weight="600" fill="#555570" letter-spacing="0.05em">STANDARD Q-LEARNING</text>
+
+  <!-- axes -->
+  <line x1="36" y1="30" x2="36" y2="175" stroke="#c8c8c0" stroke-width="1.5"/>
+  <line x1="36" y1="175" x2="300" y2="175" stroke="#c8c8c0" stroke-width="1.5"/>
+  <text x="20" y="34" font-size="10" fill="#888" text-anchor="middle">Q</text>
+  <text x="305" y="179" font-size="10" fill="#888">a</text>
+
+  <!-- dataset action markers -->
+  <line x1="90"  y1="170" x2="90"  y2="178" stroke="#c8c8c0" stroke-width="1"/>
+  <line x1="160" y1="170" x2="160" y2="178" stroke="#c8c8c0" stroke-width="1"/>
+  <line x1="230" y1="170" x2="230" y2="178" stroke="#c8c8c0" stroke-width="1"/>
+
+  <!-- OOD curve — rises between data points -->
+  <path d="M36,155 C55,148 75,60 90,55 C105,50 125,130 160,45 C195,-20 210,80 230,60 C250,40 275,145 300,152"
+        fill="none" stroke="#dc3545" stroke-width="2" stroke-dasharray="4,3" opacity="0.7"/>
+
+  <!-- data point dots -->
+  <circle cx="90"  cy="55" r="5" fill="#2563eb"/>
+  <circle cx="160" cy="45" r="5" fill="#2563eb"/>
+  <circle cx="230" cy="60" r="5" fill="#2563eb"/>
+
+  <!-- OOD peak annotations -->
+  <circle cx="125" cy="90"  r="3.5" fill="#dc3545" opacity="0.6"/>
+  <circle cx="195" cy="20"  r="3.5" fill="#dc3545" opacity="0.6"/>
+
+  <text x="105" y="85"  font-size="9" fill="#dc3545">OOD peak</text>
+  <text x="175" y="16"  font-size="9" fill="#dc3545">OOD peak</text>
+
+  <!-- legend -->
+  <circle cx="44"  cy="195" r="4" fill="#2563eb"/>
+  <text x="52" y="199" font-size="9" fill="#555570">dataset actions (anchored)</text>
+  <line  x1="40" y1="210" x2="56" y2="210" stroke="#dc3545" stroke-width="2" stroke-dasharray="4,3"/>
+  <text x="60" y="214" font-size="9" fill="#555570">Q-function (unconstrained)</text>
+
+  <!-- right panel -->
+  <text x="370" y="18" font-size="11" font-weight="600" fill="#555570" letter-spacing="0.05em">CQL</text>
+
+  <!-- axes -->
+  <line x1="386" y1="30" x2="386" y2="175" stroke="#c8c8c0" stroke-width="1.5"/>
+  <line x1="386" y1="175" x2="650" y2="175" stroke="#c8c8c0" stroke-width="1.5"/>
+  <text x="370" y="34" font-size="10" fill="#888" text-anchor="middle">Q</text>
+  <text x="655" y="179" font-size="10" fill="#888">a</text>
+
+  <!-- dataset action markers -->
+  <line x1="440" y1="170" x2="440" y2="178" stroke="#c8c8c0" stroke-width="1"/>
+  <line x1="510" y1="170" x2="510" y2="178" stroke="#c8c8c0" stroke-width="1"/>
+  <line x1="580" y1="170" x2="580" y2="178" stroke="#c8c8c0" stroke-width="1"/>
+
+  <!-- CQL curve — OOD regions depressed, data points anchored high -->
+  <path d="M386,162 C400,158 425,155 440,55 C455,155 480,158 510,50 C540,158 565,157 580,62 C595,157 625,160 650,162"
+        fill="none" stroke="#2563eb" stroke-width="2"/>
+
+  <!-- shaded OOD regions -->
+  <path d="M386,162 C400,158 425,155 440,55 C455,155 480,158 510,50 C540,158 565,157 580,62 C595,157 625,160 650,162 L650,175 L386,175 Z"
+        fill="#2563eb" opacity="0.06"/>
+
+  <!-- data point dots -->
+  <circle cx="440" cy="55" r="5" fill="#2563eb"/>
+  <circle cx="510" cy="50" r="5" fill="#2563eb"/>
+  <circle cx="580" cy="62" r="5" fill="#2563eb"/>
+
+  <!-- suppressed OOD annotations -->
+  <text x="416" y="148" font-size="9" fill="#888">↓</text>
+  <text x="468" y="148" font-size="9" fill="#888">↓</text>
+  <text x="600" y="148" font-size="9" fill="#888">↓</text>
+  <text x="405" y="158" font-size="8" fill="#888">suppressed</text>
+  <text x="458" y="158" font-size="8" fill="#888">suppressed</text>
+  <text x="590" y="158" font-size="8" fill="#888">supp.</text>
+
+  <!-- legend -->
+  <circle cx="394" cy="195" r="4" fill="#2563eb"/>
+  <text x="402" y="199" font-size="9" fill="#555570">dataset actions (anchored high)</text>
+  <line  x1="390" y1="210" x2="406" y2="210" stroke="#2563eb" stroke-width="2"/>
+  <text x="410" y="214" font-size="9" fill="#555570">Q-function (OOD suppressed)</text>
+</svg>
+<figcaption style="font-size:0.8rem;color:#555570;text-align:center;margin-top:0.5rem;font-style:italic">
+  Left: standard Q-learning allows the Q-function to rise arbitrarily at unobserved actions. Right: CQL anchors dataset points high while suppressing OOD regions — the greedy policy naturally stays in-distribution.
+</figcaption>
+</figure>
 <hr />
-<h2>Practical Tips</h2>
+<h2>How to Choose α</h2>
+<p>$\alpha$ is the most consequential hyperparameter in CQL. The right value depends on dataset quality, reward scale, and how much you trust the behavior policy. Here is a structured approach.</p>
+<h3>Step 1 — Sanity-check the CQL penalty sign</h3>
+<p>Before tuning $\alpha$, verify that the penalty is correctly positive: $\mathbb{E}_\mu[Q] > \mathbb{E}_D[Q]$ should hold for $\alpha > 0$ after a few hundred updates. If the penalty is negative from the start, the OOD sampling is broken (check your action sampling code).</p>
+<h3>Step 2 — Grid search over one log-scale pass</h3>
+<pre><code class="language-python">for alpha in [0.1, 0.5, 1.0, 5.0, 10.0]:
+    agent = CQLAgent(..., alpha_cql=alpha)
+    train_agent(agent, loader, n_epochs=80)
+    res = evaluate(agent, env, ...)
+    print(f"alpha={alpha:.1f}  reward={res['reward_mean']:.2f}  "
+          f"cql_penalty={res.get('cql_penalty', '?')}")
+</code></pre>
+<p>This takes five training runs and gives a coarse map of the reward–conservatism tradeoff.</p>
+<h3>Step 3 — Read the diagnostics</h3>
+<table>
+<thead><tr><th>Symptom</th><th>Diagnosis</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>Policy ≈ BC, reward not improving</td><td>$\alpha$ too large — Q-values suppressed everywhere</td><td>Reduce $\alpha$ by 5–10×</td></tr>
+<tr><td>Q-values diverge during training</td><td>$\alpha$ too small — OOD overestimation not controlled</td><td>Increase $\alpha$ by 2–5×</td></tr>
+<tr><td>CQL penalty goes negative</td><td>$\alpha$ too small — OOD values not suppressed below dataset values</td><td>Increase $\alpha$</td></tr>
+<tr><td>CQL penalty very large (&gt; 10×TD loss)</td><td>$\alpha$ too large or reward scale issue</td><td>Normalize rewards; reduce $\alpha$</td></tr>
+</tbody>
+</table>
+<h3>Typical values by data type</h3>
+<table>
+<thead><tr><th>Dataset type</th><th>Starting $\alpha$</th><th>Rationale</th></tr></thead>
+<tbody>
+<tr><td>Expert-only (near-optimal behavior)</td><td>0.1 – 0.5</td><td>Behavior policy is good; heavy conservatism hurts</td></tr>
+<tr><td>Mixed quality (expert + random)</td><td>1.0 – 2.0</td><td>Safe default; balances improvement and safety</td></tr>
+<tr><td>Random / noisy operator data</td><td>2.0 – 5.0</td><td>High noise → more OOD risk → more conservatism needed</td></tr>
+<tr><td>Multi-regime industrial logs</td><td>1.0 + auto-$\alpha$</td><td>Lagrangian tuning adapts across regime boundaries</td></tr>
+</tbody>
+</table>
+<h3>When to use automatic tuning</h3>
+<p>Use <code>auto_alpha=True</code> when: (a) you will deploy the policy in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set <code>target_cql</code> to a small negative value (e.g. <code>-1.0</code>) — this means "allow OOD Q-values to be at most 1 unit below dataset values on average."</p>
+<p>Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible, interpretable experiments, or when you have already found a good value via grid search.</p>
 <p><strong>Normalize observations</strong> to zero mean, unit variance using dataset statistics. CQL is sensitive to scale — unnormalized states will make the penalty and TD loss imbalanced.</p>
 <p><strong>Monitor the CQL penalty</strong> (<code>E_μ[Q] - E_D[Q]</code>) during training. It should be positive (OOD values below dataset values) and stable. If it goes negative, increase $\alpha$. If Q-values diverge, increase $\alpha$ or reduce the learning rate.</p>
 <p><strong>Use double-Q always.</strong> <code>torch.min(Q1, Q2)</code> in the TD target and policy update reduces overestimation independently of CQL — the two mechanisms complement each other.</p>

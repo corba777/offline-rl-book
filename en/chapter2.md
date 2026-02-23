@@ -76,21 +76,23 @@ This is not a corner case. It is the **default behavior** of Q-learning on offli
 
 ---
 
-## Formal Statement: The OOD Overestimation Bound
+## Formal Statement: The Performance Gap
 
 Let $\hat{\pi}$ be the greedy policy with respect to a learned Q-function:
 
 $$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$
 
-Define the **behavior policy** $\pi_\beta$ as the policy that generated $\mathcal{D}$. For any state $s$, the greedy action $\hat\pi(s)$ may differ from $\pi_\beta(s)$.
+Define the **estimated performance** $\hat{J}(\hat\pi) = \mathbb{E}_{s,a \sim d^{\hat\pi}}[Q_\theta(s,a)]$ — what the Q-function *predicts* the policy will achieve — and the **true performance** $J(\hat\pi)$ — what it actually achieves in the environment.
 
-The performance of $\hat\pi$ in the real environment is bounded by:
+The gap between them is bounded by (Kumar et al., 2020, Prop. 3.1):
 
-$$J(\hat\pi) \leq J(\pi_\beta) + \frac{1}{1-\gamma} \mathbb{E}_{s \sim d^{\hat\pi}} \left[ \mathbb{E}_{a \sim \hat\pi} \left[ Q_\theta(s,a) - Q^*(s,a) \right] \right]$$
+$$\hat{J}(\hat\pi) - J(\hat\pi) \leq \frac{2\gamma}{(1-\gamma)^2} \mathbb{E}_{s \sim d^{\hat\pi}}\left[\max_a \left| Q_\theta(s,a) - Q^*(s,a) \right|\right]$$
 
-The second term is the **Q-value estimation error** under the learned policy's state-action distribution. If $Q_\theta$ overestimates values for actions outside the dataset — and it will — this term can be large and **positive**, meaning the policy performs far worse than it appears to during training.
+This is the right way to frame the problem. The left side is what we fear: the **gap between the promised and the real return**. The right side shows what drives it: Q-function error evaluated under $d^{\hat\pi}$ — the state distribution of the *learned* policy, not the behavior policy.
 
-The crucial point: **the error is evaluated under $d^{\hat\pi}$, not $d^{\pi_\beta}$**. The learned policy visits different states than the behavior policy. It will seek out the very regions where Q-values are most overestimated.
+This is what makes OOD overestimation dangerous. During training, $\hat{J}(\hat\pi)$ looks high — the Q-function is optimistic. But that optimism is concentrated exactly in the regions the greedy policy seeks out: actions never seen in $\mathcal{D}$, where $|Q_\theta - Q^*|$ is largest. The bound above can be arbitrarily large, meaning real performance can be arbitrarily worse than estimated.
+
+The crucial asymmetry: **the error is evaluated under $d^{\hat\pi}$, not $d^{\pi_\beta}$**. A policy that stays near the behavior policy would keep this term small. The greedy policy actively maximizes it.
 
 ---
 
@@ -148,7 +150,24 @@ def measure_ood_overestimation(Q, dataset_actions, all_actions, state):
     print(f"OOD overestimation ratio : {q_all.max().item() / q_in_dist.max().item():.2f}x")
 ```
 
-Running this after training vanilla Q-learning on a dataset where actions are restricted to `[-0.5, 0.5]` but the action space is `[-2, 2]`:
+Running this:
+
+```python
+# Dataset: actions restricted to [-0.5, 0.5]
+dataset = build_dataset(n=10_000)
+
+# Train Q-network with standard TD — max_{a'} searches over the FULL space [-2, 2]
+Q = train_q_network(dataset, epochs=200)
+
+# Compare Q-values at a representative state
+eval_state      = torch.zeros(STATE_DIM)
+in_dist_actions = torch.clamp(torch.randn(2_000, ACTION_DIM) * 0.2, -0.5, 0.5)
+all_actions     = torch.rand(2_000, ACTION_DIM) * 4 - 2   # full range
+
+measure_ood_overestimation(Q, in_dist_actions, all_actions, eval_state)
+```
+
+Output after training vanilla Q-learning on a dataset where actions are restricted to `[-0.5, 0.5]` but the action space is `[-2, 2]`:
 
 ```
 In-distribution actions  | Q mean: 0.412, max: 0.731

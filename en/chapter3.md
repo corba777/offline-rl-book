@@ -57,7 +57,9 @@ This can be written compactly. Define:
 
 $$\mathcal{R}_{CQL}(\theta) = \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right]$$
 
-Then: $\mathcal{L}_{CQL}(\theta) = \frac{1}{2}\mathcal{L}_{TD}(\theta) + \alpha \cdot \mathcal{R}_{CQL}(\theta)$
+Then: $\mathcal{L}_{CQL}(\theta) = \mathcal{L}_{TD}(\theta) + \alpha \cdot \mathcal{R}_{CQL}(\theta)$
+
+> **Note on the $\frac{1}{2}$ factor.** The original CQL paper writes $\frac{1}{2}\mathcal{L}_{TD}$ to match their derivation conventions. In practice the factor is absorbed into the learning rate and $\alpha$, so implementations (including ours) omit it without loss of generality.
 
 ### Why Log-Sum-Exp?
 
@@ -72,6 +74,12 @@ For continuous action spaces, we cannot enumerate all $a$. CQL approximates the 
 $$\log \sum_a \exp Q(s, a) \approx \log \mathbb{E}_{a \sim \mu(a|s)} \left[ \frac{\exp Q(s,a)}{\mu(a|s)} \right]$$
 
 where $\mu$ is a proposal distribution. In practice, $\mu$ is either uniform over the action space, or the current policy $\pi_\theta$.
+
+**Why subtract $\log \mu(a|s)$ in the code?** When $\mu = \pi_\theta$, the importance-sampled estimate becomes:
+
+$$\log \mathbb{E}_{a \sim \pi_\theta} \left[ \frac{\exp Q(s,a)}{\pi_\theta(a|s)} \right] \approx \log \frac{1}{N} \sum_{i=1}^N \frac{\exp Q(s, a_i)}{\pi_\theta(a_i|s)} = \text{logsumexp}_i \left[ Q(s, a_i) - \log \pi_\theta(a_i|s) \right] + \text{const}$$
+
+This is why the code computes `q_policy - policy_log_probs` before the logsumexp: subtracting $\log \pi_\theta(a|s)$ implements the importance weight correction. Without it, we would be approximating $\mathbb{E}_{\pi_\theta}[Q]$ (a plain Monte Carlo average), not $\log \sum_a \exp Q$ (the soft-maximum that CQL requires). The uniform random actions don't need this correction because their log-density is constant and cancels in the logsumexp.
 
 ### The Theoretical Guarantee
 
@@ -261,6 +269,9 @@ class CQLAgent:
         pi_actions, log_probs = self.policy.sample(s)
         q_pi = torch.min(self.Q1(s, pi_actions), self.Q2(s, pi_actions))
         loss_pi = (0.1 * log_probs - q_pi).mean()   # SAC: entropy - Q
+        # ↑ 0.1 is a fixed entropy coefficient. In full SAC, this is tuned
+        #   automatically to match target entropy H* = -dim(A). See the
+        #   alpha_ent note at the end of this section.
 
         self.pi_opt.zero_grad()
         loss_pi.backward()
@@ -310,9 +321,25 @@ alpha_loss.backward()
 alpha_opt.step()
 ```
 
----
+**A note on the entropy coefficient.** The code uses a fixed `alpha_ent = 0.1` for the SAC entropy term. In production CQL this coefficient is also tuned automatically, targeting a desired policy entropy $\mathcal{H}^* = -\dim(\mathcal{A})$ (one nat of entropy per action dimension):
 
-## What CQL Actually Does: Intuition
+```python
+# Automatic entropy tuning (SAC-style)
+log_alpha_ent = torch.zeros(1, requires_grad=True, device=device)
+ent_opt       = optim.Adam([log_alpha_ent], lr=3e-4)
+target_entropy = -action_dim   # H* = -dim(A)
+
+# In the policy update step:
+alpha_ent  = log_alpha_ent.exp().item()
+loss_pi    = (alpha_ent * log_probs - q_pi).mean()
+# ...
+ent_loss   = -(log_alpha_ent * (log_probs + target_entropy).detach()).mean()
+ent_opt.zero_grad()
+ent_loss.backward()
+ent_opt.step()
+```
+
+The fixed `0.1` in our implementation works for the thermal control environment but may need adjustment for other tasks. When in doubt, use automatic tuning.
 
 Think of the Q-function as a landscape over the state-action space. Standard Q-learning shapes this landscape using only data points as anchors — in between, the landscape is unconstrained and tends to rise due to optimistic generalization.
 
@@ -331,6 +358,54 @@ Standard Q-landscape:        CQL Q-landscape:
      ↑ data points                ↑ data points (anchored high)
      ↑↑ OOD interpolation         OOD values pushed down
 ```
+
+*(In the HTML version this diagram is rendered as an SVG figure.)*
+
+---
+
+## How to Choose α
+
+$\alpha$ is the most consequential hyperparameter in CQL. The right value depends on dataset quality, reward scale, and how much you trust the behavior policy.
+
+### Step 1 — Sanity-check the CQL penalty sign
+
+Before tuning $\alpha$, verify that the penalty is correctly positive: $\mathbb{E}_\mu[Q] > \mathbb{E}_D[Q]$ should hold after a few hundred updates. If the penalty is negative from the start, OOD action sampling is broken.
+
+### Step 2 — Grid search over one log-scale pass
+
+```python
+for alpha in [0.1, 0.5, 1.0, 5.0, 10.0]:
+    agent = CQLAgent(..., alpha_cql=alpha)
+    train_agent(agent, loader, n_epochs=80)
+    res = evaluate(agent, env, ...)
+    print(f"alpha={alpha:.1f}  reward={res['reward_mean']:.2f}")
+```
+
+Five runs give a coarse map of the reward–conservatism tradeoff.
+
+### Step 3 — Read the diagnostics
+
+| Symptom | Diagnosis | Fix |
+|---|---|---|
+| Policy ≈ BC, no improvement | $\alpha$ too large — Q suppressed everywhere | Reduce by 5–10× |
+| Q-values diverge | $\alpha$ too small — OOD not controlled | Increase by 2–5× |
+| CQL penalty goes negative | $\alpha$ too small | Increase $\alpha$ |
+| CQL penalty >> TD loss | $\alpha$ too large or reward scale issue | Normalize rewards; reduce $\alpha$ |
+
+### Typical values by data type
+
+| Dataset type | Starting $\alpha$ | Rationale |
+|---|---|---|
+| Expert-only (near-optimal) | 0.1 – 0.5 | Behavior policy is good; heavy conservatism hurts |
+| Mixed quality (expert + random) | 1.0 – 2.0 | Safe default |
+| Random / noisy operator data | 2.0 – 5.0 | High noise → more OOD risk → more conservatism |
+| Multi-regime industrial logs | 1.0 + auto-$\alpha$ | Lagrangian tuning adapts across regime boundaries |
+
+### When to use automatic tuning
+
+Use `auto_alpha=True` when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set `target_cql` to a small negative value (e.g. `-1.0`).
+
+Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible experiments, or you have already found a good value via grid search.
 
 ---
 

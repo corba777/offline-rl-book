@@ -210,12 +210,17 @@ def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
                      states, actions, rewards, next_states, dones,
                      alpha_cql=1.0, alpha_ent=0.1, gamma=0.99, n_samples=10):
     """
-    CQL loss = (1/2) * TD_loss + alpha_cql * CQL_penalty
+    CQL loss = TD_loss + alpha_cql * CQL_penalty
+
+    Note: Kumar et al. (2020) write (1/2)*TD_loss in their derivation.
+    The factor is absorbed by the learning rate and alpha in practice,
+    so we omit it here — consistent with most open-source implementations.
 
     CQL_penalty = E_s[ logsumexp_a Q(s,a) ] - E_{s,a~D}[ Q(s,a) ]
 
-    logsumexp is approximated by sampling n_samples random actions
-    and n_samples policy actions per state.
+    logsumexp is approximated via importance sampling:
+      - n_samples random actions  (uniform proposal, no IS correction needed)
+      - n_samples policy actions  (proposal = pi_theta, IS correction applied)
     """
     B = states.shape[0]
     dev = states.device
@@ -236,13 +241,22 @@ def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
     s_rep = states.unsqueeze(1).expand(-1, n_samples, -1).reshape(B * n_samples, -1)
 
     # Random OOD actions (uniform over [-1, 1])
+    # Uniform proposal: log μ(a) = const  →  cancels in logsumexp, no IS correction needed.
     a_rand = torch.FloatTensor(B * n_samples, actions.shape[-1]).uniform_(-1, 1).to(dev)
 
     # Policy actions (on-policy, but may differ from behavior policy)
     a_pi, lp_pi = policy.sample(s_rep)
 
     q_rand = Q(s_rep, a_rand).reshape(B, n_samples)
-    # Importance weight: subtract log π(a|s) to approximate logsumexp over the action space
+
+    # Importance weight correction for policy proposal (μ = π_θ):
+    #
+    #   log E_{a~π}[ exp(Q(s,a)) / π(a|s) ]
+    #   ≈  logsumexp_i[ Q(s, a_i) - log π(a_i|s) ]  + const
+    #
+    # Subtracting log π(a|s) turns a plain Monte Carlo average of Q into
+    # the soft-maximum (logsumexp) that CQL requires.  Without this correction
+    # we would compute E_π[Q], not log Σ_a exp Q(s,a).
     q_pi   = (Q(s_rep, a_pi) - lp_pi.detach()).reshape(B, n_samples)
 
     # logsumexp over all OOD action samples — "push down" term
@@ -270,6 +284,12 @@ class CQLAgent:
         alpha=0   -> standard SAC (no conservatism)
         alpha=1   -> default, good starting point
         alpha>>1  -> approaches behavioral cloning
+
+    alpha_ent is the SAC entropy coefficient.  The value 0.1 works for the
+    thermal control task (action_dim=2).  For other environments, automatic
+    tuning is recommended: target entropy H* = -dim(A) (one nat per action
+    dimension).  To enable auto-tuning, subclass this agent and add a
+    log_alpha_ent parameter analogous to log_alpha (the CQL dual variable).
     """
 
     def __init__(self, state_dim, action_dim, hidden_dim=256,
@@ -441,14 +461,14 @@ def run_comparison():
 
     # CQL fixed alpha
     print("\n--- CQL (alpha=1.0) ---")
-    cql = CQLAgent(3, 2, alpha_cql=1.0, alpha_ent=0.05, device=device)
+    cql = CQLAgent(3, 2, alpha_cql=1.0, alpha_ent=0.1, device=device)
     train_agent(cql, loader, n_epochs=80, log_every=20)
     cql_res = evaluate(cql, env, s_mean, s_std, device=device)
 
     # CQL auto alpha
     print("\n--- CQL (auto alpha) ---")
     cql_auto = CQLAgent(3, 2, auto_alpha=True, target_cql=-1.0,
-                        alpha_ent=0.05, device=device)
+                        alpha_ent=0.1, device=device)
     train_agent(cql_auto, loader, n_epochs=80, log_every=20)
     auto_res = evaluate(cql_auto, env, s_mean, s_std, device=device)
 
