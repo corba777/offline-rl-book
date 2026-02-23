@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chapter 9: Conclusion and Future Directions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    ul{margin-bottom:1.2rem;padding-left:1.5rem}
+    li{margin-bottom:0.4rem}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right;margin-left:auto}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/ru/chapter9.html">Русский</a>
+  </div>
+</header>
+<main>
+<h1>Chapter 9: Conclusion and Future Directions</h1>
+<blockquote>
+<p><em>"The goal of offline RL is not to replace online learning — it is to make the knowledge locked in historical data actionable without putting anything at risk."</em></p>
+</blockquote>
+<hr />
+<h2>What This Book Built</h2>
+<p>Seven chapters ago we started with a question: can a sequential decision-making agent learn entirely from a fixed log of past behavior, without ever interacting with the environment? The answer is yes — with caveats that turn out to be at least as interesting as the algorithms themselves.</p>
+<p>The caveats are not engineering details. They are structural features of the offline learning problem: the extrapolation gap between what the data covers and what the policy needs to evaluate, the distribution shift between the behavior policy and any better policy, and the fundamental impossibility of testing a policy in the very regions where it is most likely to fail. Every algorithm in this book is a different answer to the same underlying challenge.</p>
+<p><strong>Behavioral cloning</strong> (Chapter 1) answers it by ignoring it: clone the behavior policy and stay exactly where the data is. This works when the behavior policy is good and fails catastrophically when it is not — the compounding error problem. BC is not a bad algorithm; it is an honest one that makes no promises beyond the data it saw.</p>
+<p><strong>Conservative Q-Learning and IQL</strong> (Chapters 3–4) answer it by pessimism in value space: penalize Q-values for actions not supported by the data, or design the value backup to avoid ever querying OOD actions. Both achieve the same goal — keep the policy's effective support inside the data distribution — through different algebraic routes.</p>
+<p><strong>MOPO and MOReL</strong> (Chapter 5) answer it by expanding the data: learn a model of the world, generate synthetic experience, but penalize or hard-terminate transitions where the model is uncertain. Model-based methods trade compute for sample diversity — when the dynamics model is accurate, they outperform model-free methods significantly.</p>
+<p><strong>Physics-informed methods</strong> (Chapter 6) answer it by borrowing structure: replace the unknown parts of the model with known physics, constrain the reward signal to respect physical laws, and enforce hard constraints via Lagrangian duality. This approach is only possible when engineering knowledge exists — but when it does, it is the most data-efficient of all.</p>
+<p><strong>The industrial case study</strong> (Chapter 7) showed these tools composing in a setting where the stakes are real: a five-variable process with integrating dynamics, transport delay, non-uniform data coverage, and hard equipment constraints. No single algorithm dominated. The practical recommendation — CQL+Physics for minimal constraint violations, HybridMOReL when higher reward is needed — reflects not a winner but a complementary structure between model-free constraint enforcement and model-based diversity.</p>
+<hr />
+<h2>What Offline RL Cannot Yet Guarantee</h2>
+<p>Honesty requires naming what this field has not solved.</p>
+<p><strong>Distribution shift at deployment.</strong> Every offline RL algorithm trains a policy $\pi$ assuming the deployed environment matches the training environment. When the process changes — equipment wears, feed composition shifts, ambient conditions differ — the offline-trained policy has no mechanism to detect or adapt. The theoretical guarantees from Chapters 3–6 hold only as long as the test distribution resembles the training distribution. In practice, this is a calendar question: how long until the gap becomes dangerous?</p>
+<p><strong>Reward specification.</strong> Every algorithm in this book assumed the reward function is given. In many industrial settings it is not. Operators have intuitions about what good control looks like, but translating those intuitions into a scalar reward function that correctly weights competing objectives — product quality, energy efficiency, throughput, safety — is a non-trivial engineering task. A misspecified reward produces a policy that optimizes the wrong thing, often in ways that are only apparent after deployment.</p>
+<p><strong>Uncertainty quantification.</strong> Ensemble-based uncertainty (Chapters 5–6) measures epistemic uncertainty about the dynamics model. It does not measure uncertainty about the reward, the constraint specification, or the value of the offline policy itself. A policy with high ensemble-estimated uncertainty in its rollouts may still be perfectly safe if the physical constraints are conservative enough. Conversely, a policy with low uncertainty may violate constraints that were never represented in the training data. Calibrated uncertainty about the whole pipeline remains an open problem.</p>
+<p><strong>Interpretability.</strong> The neural network policies trained in Chapters 1–7 are black boxes. An operator who needs to understand <em>why</em> the policy commanded a particular setpoint at a particular moment cannot interrogate the weights. This limits deployment in regulated industries where decisions must be explainable and auditable.</p>
+<p><strong>Sim-to-real gap for physics models.</strong> The hybrid dynamics models in Chapter 6 assume the physics model and the real process share the same structure, differing only in residuals. When the physics model is structurally wrong — wrong order, wrong coupling topology, wrong conservation laws — the residual network must learn a correction that the physics term actively fights. Detecting and handling structural model mismatch is not yet systematic.</p>
+<hr />
+<h2>Emerging Directions</h2>
+<p>The field is moving fast. The directions below are not exhaustive, but they represent the most active threads as of the time of writing.</p>
+<h3>Decision Transformers and Sequence Models</h3>
+<p><strong>Decision Transformer</strong> (Chen et al., NeurIPS 2021) reframes offline RL as a sequence modeling problem. Rather than learning a Q-function or policy gradient, it trains a causal Transformer to predict the next action given the past trajectory and a desired return-to-go:</p>
+<p>$$a_t = \pi_\theta!\left(R_t,\, s_t,\, a_{t-1},\, \ldots,\, R_1,\, s_1,\, a_1\right)$$</p>
+<p>At inference time you condition on a high target return — "I want cumulative reward $\geq R^*$" — and the model generates actions to achieve it.</p>
+<p>This approach is conceptually elegant: the entire offline RL pipeline reduces to supervised learning on sequences. No Bellman backups, no Q-functions, no explicit pessimism. The model simply learns from the data what sequences of actions lead to high returns and imitates that pattern conditioned on a high target.</p>
+<p>The practical implications are significant. Transformers scale with data and model size in ways that Q-function methods do not. A Decision Transformer trained on a large, diverse dataset generalizes across tasks and environments in a way that a task-specific CQL agent cannot. This is the connection to large language models: the same architecture that learns to predict text from internet data can learn to predict actions from trajectory data.</p>
+<p><strong>Trajectory Transformer</strong> (Janner et al., NeurIPS 2021) pushes this further: model the entire trajectory $(s_1, a_1, r_1, s_2, a_2, r_2, \ldots)$ as a sequence, then use beam search over this sequence to find high-reward trajectories at inference time. This gives planning-like behavior without explicit dynamics learning.</p>
+<p>The limitation of sequence models is the same as BC's: they do not extrapolate beyond the return distribution in the training data. If the training dataset has maximum return $R_{max}$, conditioning on $R &gt; R_{max}$ produces distribution-shifted inputs that the model was never trained on. Several papers (including <strong>QDT</strong> — Yamagata et al., 2023) address this by combining sequence modeling with Q-value guidance.</p>
+<h3>Diffusion Models for Offline RL</h3>
+<p><strong>Diffusion probabilistic models</strong> have emerged as one of the most powerful generative model families, and their application to sequential decision making is an active and productive direction.</p>
+<p>The core observation: learning a policy $\pi(a|s)$ is a conditional generation problem. Diffusion models excel at conditional generation. Why not learn the policy as a diffusion model?</p>
+<h3>Imitation Learning vs. Offline RL: A Necessary Distinction</h3>
+<p>Before examining diffusion models, it is worth clarifying a conceptual boundary that practitioners frequently blur: the difference between <strong>imitation learning (IL)</strong> and <strong>offline RL</strong>.</p>
+<p>Both learn from a fixed dataset of past behavior without online interaction. The difference is in what the dataset contains and what the learner optimizes:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Imitation Learning</th>
+<th>Offline RL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dataset requires</td>
+<td>Expert demonstrations only</td>
+<td>Any logged transitions $(s, a, r, s')$</td>
+</tr>
+<tr>
+<td>Reward signal</td>
+<td>Not needed — actions are the label</td>
+<td>Required — drives optimization</td>
+</tr>
+<tr>
+<td>Goal</td>
+<td>Reproduce the behavior policy</td>
+<td>Improve <em>beyond</em> the behavior policy</td>
+</tr>
+<tr>
+<td>Failure mode</td>
+<td>Compounding error (covariate shift)</td>
+<td>Distribution shift + extrapolation error</td>
+</tr>
+<tr>
+<td>Key algorithms</td>
+<td>Behavioral Cloning, DAgger, GAIL</td>
+<td>CQL, IQL, MOPO, MOReL</td>
+</tr>
+</tbody>
+</table>
+<p>Behavioral cloning (Chapter 1) is the simplest IL algorithm: given expert state-action pairs $(s, a^*)$, train a policy to predict $a^*$ from $s$ by supervised learning. No reward is needed. The cost is compounding error: at test time, the policy visits states slightly different from the training distribution, makes slightly worse predictions, and the errors accumulate over time.</p>
+<p>Offline RL addresses this not by better behavior cloning, but by optimizing for reward — it can in principle surpass the behavior policy by stitching together suboptimal trajectories in ways the original operators never did. This stitching capability requires a reward signal that IL does not have.</p>
+<p><strong>When to use which:</strong> if you have expert demonstrations and care about replicating the behavior exactly (surgical robots, precise manipulation, teaching from a single demonstrator), IL is simpler and often sufficient. If you have heterogeneous historical logs — multiple operators with different strategies, suboptimal episodes, partial demonstrations — offline RL can extract a policy better than any individual demonstrator.</p>
+<p>In practice, the two approaches converge: offline RL with a behavior cloning regularizer (as in IQL and CQL+BC) uses IL as a constraint to stay close to the data distribution while optimizing reward.</p>
+<h3>The Multimodal Action Problem</h3>
+<p>The most important failure mode of behavioral cloning — and the key motivation for Diffusion Policy — is the <strong>multimodal action problem</strong>. Consider training a robot to push a T-shaped block to a target zone. Expert demonstrations show some operators pushing from the left, others from the right. Both are correct.</p>
+<p>A Gaussian policy $\pi_\theta(a|s)$ fits a unimodal distribution over actions. Faced with two valid but opposite strategies, it predicts their mean — push straight into the flat edge of the T-block. The robot fails not because it lacks skill, but because the policy architecture cannot represent two valid answers to the same question.</p>
+<p>$$\text{Gaussian collapses: } \hat{a} = \mathbb{E}[a | s] = \frac{a_{\text{left}} + a_{\text{right}}}{2} \notin {a_{\text{left}}, a_{\text{right}}}$$</p>
+<p>This is not a pathological edge case. In industrial processes, multiple operators develop different control strategies for the same upset condition. A model that averages them may produce a strategy no operator ever used — and for good reason.</p>
+<p>Diffusion models solve this by modeling the full conditional distribution $p(a|s)$ rather than its mean.</p>
+<h3>Diffusion Policy: Architecture and Temporal Horizons</h3>
+<p><strong>Diffusion Policy</strong> (Chi et al., RSS 2023) applies the denoising diffusion framework to action generation. At inference time, the policy starts from pure Gaussian noise in action space and iteratively denoises it conditioned on the current observation:</p>
+<p>$$A^{k-1}_t = \alpha \left( A^k_t - \gamma\, \epsilon_\theta(O_t, A^k_t, k) + \mathcal{N}(0, \sigma^2 I) \right)$$</p>
+<p>Training is supervised: take a clean action sequence $A^0_t$ from the dataset, corrupt it to $A^k_t$ by adding noise at level $k$, and train the network $\epsilon_\theta$ to predict the added noise:</p>
+<p>$$\mathcal{L} = \mathbb{E}_{k, A^0_t, \epsilon}\left[|\epsilon - \epsilon_\theta(O_t, A^k_t, k)|^2\right]$$</p>
+<p>Three temporal design choices distinguish Diffusion Policy from single-step policies:</p>
+<p><strong>Observation horizon $T_o$:</strong> how many past observations the policy receives. With $T_o = 2$, the robot sees the current and previous frame — giving velocity information without explicit state estimation.</p>
+<p><strong>Prediction horizon $T_p$:</strong> how many future action steps the diffusion model outputs in a single denoising pass. Typically $T_p = 16$. Predicting a chunk of the future rather than one step at a time creates temporally coherent action sequences and avoids high-frequency jitter.</p>
+<p><strong>Action horizon $T_a$:</strong> how many of the $T_p$ predicted actions are actually executed before replanning. Typically $T_a = 8$. The policy executes the first half of its plan, re-observes, and generates a new plan. This receding-horizon structure provides robustness: errors in the later part of the prediction are corrected by replanning rather than accumulating.</p>
+<p>For the denoising backbone, the paper proposes two architectures: a 1D temporal convolutional network with FiLM conditioning (scales and shifts hidden activations by learned functions of the observation) as the default workhorse, and a Transformer decoder with cross-attention to observations for tasks with complex temporal structure.</p>
+<p><strong>Diffuser</strong> (Janner et al., ICML 2022) takes the trajectory-level view: model the entire $(s_1, a_1, r_1, s_2, \ldots)$ jointly as a diffusion process, then steer generation toward high-reward trajectories using classifier guidance:</p>
+<p>$$\text{trajectory} \sim p_\theta(\tau) \cdot \exp(\beta \cdot J(\tau))$$</p>
+<p>This is planning without an explicit dynamics model — the diffusion model encodes dynamics implicitly in its learned trajectory distribution.</p>
+<p><strong>Decision Diffuser</strong> (Ajay et al., ICLR 2023) separates return conditioning from trajectory generation, enabling test-time composition: multiple reward functions can be combined by multiplying their conditioning signals during denoising. For industrial applications where the reward trades off energy, quality, and throughput, this allows weight adjustment at deployment without retraining.</p>
+<p>The computational cost of iterative denoising — typically 10–100 forward passes per action — is the main obstacle for fast industrial control loops. Recent work on consistency models and flow matching reduces this to one or a few steps, making diffusion-class policies practically deployable in real-time settings.</p>
+<h3>Diffusion for Offline RL: Toward Scalable Policy Classes</h3>
+<p>The combination of diffusion and Transformer architectures is an active direction, driven by a concrete observation: the denoising network inside a diffusion model does not have to be a U-Net. <strong>Diffusion Transformers (DiT)</strong> (Peebles &amp; Xie, ICCV 2023) replaced the U-Net backbone with a standard Transformer in image generation and demonstrated favorable scaling — larger models trained on more data improve predictably. The natural question for offline RL is whether the same substitution works for policy and planning networks.</p>
+<p>Several lines of work are converging on this:</p>
+<p><strong>Diffusion Q-Learning (DQL)</strong> (Wang et al., ICLR 2023) uses a diffusion model as the policy class inside an actor-critic framework for offline RL. The diffusion policy generates high-quality actions from the data distribution while a Q-function provides guidance toward high-reward regions. On D4RL benchmarks, diffusion-class policies consistently outperform Gaussian policy baselines.</p>
+<p><strong>DTQL</strong> (Chen et al., NeurIPS 2024) addresses the inference cost problem: iterative denoising is too slow for fast control loops. DTQL trains a dual-policy system — a diffusion model for behavior cloning that defines a trust region, and a fast one-step policy for actual deployment. This separation decouples expressiveness from inference speed, a practically important design for industrial applications.</p>
+<p><strong>Reasoning with Latent Diffusion</strong> (Venkatraman et al., ICLR 2024) applies diffusion in the latent space of a world model rather than in action space — combining model-based planning with diffusion's multimodal expressiveness.</p>
+<p>The architectural trend is clear even if a single dominant "DiT for offline RL" paper does not yet exist: Transformer backbones are replacing U-Nets inside diffusion policies, and diffusion policies are replacing Gaussian policies as the expressive policy class of choice for offline RL. Whether this combination scales the way language models do — where a single large model trained on diverse data transfers to new tasks with minimal fine-tuning — is the open empirical question that the next few years will answer.</p>
+<h3>Offline-to-Online: Bridging the Gap</h3>
+<p>A purely offline policy is static by definition. Real deployments need adaptation: the process changes, new operating modes are introduced, constraints are revised. <strong>Offline-to-online RL</strong> initializes from an offline-trained policy and continues training with limited online interaction.</p>
+<p>The challenge: naively fine-tuning an offline policy online causes catastrophic forgetting of the conservative behavior that made the offline policy safe. Methods like <strong>IQL with online fine-tuning</strong> (Kostrikov et al., 2021) and <strong>Cal-QL</strong> (Nakamoto et al., 2023) maintain the offline pessimism during early online training and gradually relax it as the online data accumulates. This is exactly the right structure for industrial deployment: use the offline policy as a safe starting point, then improve it through supervised interaction with explicit safety constraints.</p>
+<h3>Safe Offline RL and Formal Verification</h3>
+<p>The Lagrangian approach of Chapter 6 provides constraint satisfaction in expectation — it minimizes expected violations but does not guarantee zero violations. For safety-critical applications, this is insufficient.</p>
+<p><strong>Conservative Safety Critics</strong> (Le Cleac'h et al., 2023) and <strong>CVPO</strong> (Liu et al., 2022) provide stronger guarantees by training a separate safety Q-function that bounds the probability of constraint violation, not just its expected magnitude. The policy is constrained to keep the safety Q-function value above a threshold, providing a probabilistic safety certificate.</p>
+<p>Formal verification of neural network policies — proving that a policy satisfies a constraint for <em>all</em> states in a given set — remains computationally intractable for large networks. But for the low-dimensional state spaces typical of industrial process control (5–20 variables), recent work on Lyapunov-based verification (Berkenkamp et al., 2017; Chang et al., 2019) makes formal safety certificates increasingly feasible.</p>
+<h3>Large Language Models as Reward Designers</h3>
+<p>The reward specification problem — arguably the hardest unsolved problem in applied offline RL — may be approachable through large language models. Rather than asking an engineer to write a reward function from scratch, one can ask an LLM to translate a natural language description of good control behavior into a mathematical reward function, verify it against example trajectories, and iteratively refine it based on policy performance.</p>
+<p><strong>EUREKA</strong> (Ma et al., 2023) demonstrates this loop: GPT-4 generates reward functions for robotic manipulation tasks, evaluates them on rollouts, and self-improves them over iterations, achieving superhuman performance on tasks where human-designed rewards were suboptimal. Adapting this approach to industrial process control — where the desired behavior is articulable but hard to formalize — is a natural and near-term direction.</p>
+<hr />
+<h2>A Practical Roadmap for Industrial Deployment</h2>
+<p>Based on the material in this book, a pragmatic deployment sequence for a new industrial application:</p>
+<p><strong>Step 1 — Start with CQL+Physics.</strong> Collect the existing historical log, define the operating constraints from engineering knowledge, calibrate the physics penalty weights via Theorem 6.1, and train. This gives a safe baseline with minimal constraint violations and no dynamics model. Expected timeline: 2–4 weeks for a team with access to the process data.</p>
+<p><strong>Step 2 — Diagnose with DA and violation rate.</strong> Use the <code>IndustrialEvaluator</code> metrics from Chapter 7. If DA &gt; 0.80 and violation rate &lt; 2%, the baseline policy is industrially deployable. If not, identify which variables are failing and whether the issue is data coverage, physics model accuracy, or constraint calibration.</p>
+<p><strong>Step 3 — Add hybrid dynamics if needed.</strong> If reward performance is insufficient (the policy is safe but suboptimal), add <code>HybridEnsemble</code> for model-based diversity. Run <code>diagnose_physics_coverage</code> first — if overall coverage is below 70%, the physics model needs refinement before hybridization helps.</p>
+<p><strong>Step 4 — Offline-to-online fine-tuning.</strong> After an initial deployment period (1–4 weeks), collect online interaction data and fine-tune with the IQL offline-to-online procedure. Maintain the physics constraints throughout — they are not an artifact of offline training but a representation of physical reality.</p>
+<p><strong>Step 5 — Monitor distribution shift.</strong> Track the distribution of observed states over time. If the fraction of observations outside the training distribution exceeds 5–10%, retrain on the combined historical + deployment data. This is not a failure mode — it is the expected lifecycle of an industrial ML model.</p>
+<hr />
+<h2>Closing Remarks</h2>
+<p>Offline RL is not a solved problem. The algorithms in this book are powerful tools with well-understood failure modes, not black boxes to be applied without thought. The most important thing a practitioner can do is understand those failure modes well enough to recognize when they are occurring.</p>
+<p>The questions worth sitting with:</p>
+<p><em>What did the behavior policy never do?</em> The regions of state-action space absent from the dataset are the regions where every offline RL algorithm is speculating. Knowing them is more valuable than any algorithmic improvement.</p>
+<p><em>What does the physics model get wrong?</em> The residual tells you. Run <code>diagnose_physics_coverage</code> before every training run. A physics model with 60% coverage on a key variable is providing more noise than signal for that variable.</p>
+<p><em>What would violating a constraint actually mean?</em> The answer determines whether CQL+Physics (minimize expected violations) or a formal safety approach (guarantee zero violations with high probability) is appropriate.</p>
+<p>The field will continue to develop — diffusion transformers will scale, offline-to-online methods will mature, LLM-based reward design will reduce the specification burden. But the fundamental structure of the problem — learning from fixed data, generalizing cautiously, respecting physics — will remain. The tools in this book are not a snapshot of a passing trend. They are the vocabulary in which the next decade of work will be written.</p>
+<hr />
+<h2>References</h2>
+<p><strong>Decision Transformers and Sequence Models</strong></p>
+<ul>
+<li>Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., &amp; Mordatch, I. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. arXiv:2106.01345.</li>
+<li>Janner, M., Li, Q., &amp; Levine, S. (2021). <em>Offline Reinforcement Learning as One Big Sequence Modeling Problem.</em> NeurIPS. arXiv:2106.02039. <em>(Trajectory Transformer)</em></li>
+<li>Yamagata, T., Khalil, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.</em> arXiv:2309.10150.</li>
+</ul>
+<p><strong>Diffusion Models for Offline RL</strong></p>
+<ul>
+<li>Janner, M., Du, Y., Tenenbaum, J., &amp; Levine, S. (2022). <em>Planning with Diffusion Models.</em> ICML. arXiv:2205.09991. <em>(Diffuser)</em></li>
+<li>Ajay, A., Du, Y., Gupta, A., Tenenbaum, J., Jaakkola, T., &amp; Agrawal, P. (2023). <em>Is Conditional Generative Modeling all you need for Decision-Making?</em> ICLR. arXiv:2211.15657. <em>(Decision Diffuser)</em></li>
+<li>Chi, C., Feng, S., Du, Y., Xu, Z., Cousineau, E., Burchfiel, B., &amp; Song, S. (2023). <em>Diffusion Policy: Visuomotor Policy Learning via Action Diffusion.</em> RSS. arXiv:2303.04137.</li>
+</ul>
+<p><strong>Diffusion Models and Transformers for Offline RL</strong></p>
+<ul>
+<li>Peebles, W., &amp; Xie, S. (2023). <em>Scalable Diffusion Models with Transformers.</em> ICCV. arXiv:2212.09748. <em>(DiT architecture — the backbone trend)</em></li>
+<li>Wang, Z., Hunt, J.J., &amp; Zhou, M. (2023). <em>Diffusion Policies as an Expressive Policy Class for Offline Reinforcement Learning.</em> ICLR. arXiv:2208.06193. <em>(DQL — diffusion as policy class)</em></li>
+<li>Chen, T., Wang, Z., &amp; Zhou, M. (2024). <em>Diffusion Policies creating a Trust Region for Offline Reinforcement Learning.</em> NeurIPS. arXiv:2405.19690. <em>(DTQL — fast inference)</em></li>
+<li>Venkatraman, S., Khaitan, S., Akella, R.T., Dolan, J., Schneider, J., &amp; Berseth, G. (2024). <em>Reasoning with Latent Diffusion in Offline Reinforcement Learning.</em> ICLR. <em>(diffusion in latent world model space)</em></li>
+</ul>
+<p><strong>Flow Matching and Consistency Models</strong></p>
+<ul>
+<li>Lipman, Y., Chen, R.T.Q., Ben-Hamu, H., Nickel, M., &amp; Le, M. (2022). <em>Flow Matching for Generative Modeling.</em> arXiv:2210.02747.</li>
+<li>Song, Y., Dhariwal, P., Chen, M., &amp; Sutskever, I. (2023). <em>Consistency Models.</em> ICML. arXiv:2303.01469.</li>
+</ul>
+<p><strong>Offline-to-Online RL</strong></p>
+<ul>
+<li>Kostrikov, I., Nair, A., &amp; Levine, S. (2021). <em>Offline Reinforcement Learning with Implicit Q-Learning.</em> ICLR 2022. arXiv:2110.06169. <em>(IQL + online fine-tuning)</em></li>
+<li>Nakamoto, M., Zhai, Y., Singh, A., Mark, M.S., Ma, Y., Finn, C., Kumar, A., &amp; Levine, S. (2023). <em>Cal-QL: Calibrated Offline RL Pre-Training for Efficient Online Fine-Tuning.</em> NeurIPS. arXiv:2303.05479.</li>
+</ul>
+<p><strong>Safe Offline RL</strong></p>
+<ul>
+<li>Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., &amp; Zhao, D. (2022). <em>Constrained Variational Policy Optimization for Safe Reinforcement Learning.</em> ICML. arXiv:2201.11927. <em>(CVPO)</em></li>
+<li>Berkenkamp, F., Turchetta, M., Schoellig, A., &amp; Krause, A. (2017). <em>Safe Model-based Reinforcement Learning with Stability Guarantees.</em> NeurIPS. arXiv:1705.08551.</li>
+</ul>
+<p><strong>LLM-Based Reward Design</strong></p>
+<ul>
+<li>Ma, Y.J., Liang, W., Wang, G., Huang, D.A., Bastani, O., Jayaraman, D., Zhu, Y., Fan, L., &amp; Anandkumar, A. (2023). <em>Eureka: Human-Level Reward Design via Coding Large Language Models.</em> arXiv:2310.12931.</li>
+</ul>
+<p><strong>Surveys and Foundations</strong></p>
+<ul>
+<li>Levine, S., Kumar, A., Tucker, G., &amp; Fu, J. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.</em> arXiv:2005.01643.</li>
+<li>Prudencio, R.F., Maximo, M.R.O.A., &amp; Colombini, E.L. (2023). <em>A Survey on Offline Reinforcement Learning.</em> IEEE TNNLS. arXiv:2203.01387.</li>
+</ul>
+<nav class="chapter-nav">
+<a href="/offline-rl-book/en/chapter8.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Explainability in Offline RL</span></a>
+<a href="/offline-rl-book/index.html" class="next"><span class="nav-label">Contents →</span><span class="nav-title">Back to book</span></a>
+</nav>
+</main>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+  </div>
+</footer>
+</body>
+</html>

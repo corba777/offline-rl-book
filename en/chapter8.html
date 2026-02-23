@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chapter 8: Explainability in Offline RL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right;margin-left:auto}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/ru/chapter8.html">Русский</a>
+  </div>
+</header>
+<main>
+<h1>Chapter 8: Explainability in Offline RL</h1>
+<blockquote>
+<p><em>"A policy that achieves 80% Directional Accuracy but cannot explain why it chose each action is hard to trust and impossible to certify."</em></p>
+</blockquote>
+<hr />
+<h2>Why Explainability Matters in Industrial Offline RL</h2>
+<p>The algorithms in Chapters 1–7 produce policies that achieve high reward, respect physical constraints, and generalize to unseen operating regimes. What they do not produce is an answer to the question an operator will inevitably ask: <em>why did the agent command this setpoint at this moment?</em></p>
+<p>This is not merely a regulatory concern, though in many industries it is that too. It is a practical reliability question. A policy whose decisions are opaque cannot be diagnosed when it fails. An operator who does not understand the agent's reasoning cannot override it intelligently. A model that fits data well but for the wrong reasons will fail silently when the process changes.</p>
+<p>Explainability in Offline RL is harder than in standard supervised learning for three reasons specific to the offline setting.</p>
+<p><strong>There are three separate models to explain.</strong> A trained Offline RL agent contains a Q-function (the critic), a policy (the actor), and optionally a dynamics model. Each answers a different question, and their explanations do not always agree. The Q-function might rate an action highly because temperature is near its setpoint; the policy might choose that action because level is near its lower bound. Understanding the discrepancy is as important as understanding the agreement.</p>
+<p><strong>The Q-function's input is a concatenation of state and action.</strong> Unlike a classifier whose input is a single feature vector, the Q-function takes $(s, a)$ as input. SHAP values computed over this concatenated space tell you whether the high Q-value comes from the state (the situation was favorable) or the action (the specific action was appropriate for this situation).</p>
+<p><strong>The behavior policy's distribution is uneven.</strong> SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset — dense near the operating setpoint and sparse near disturbances. SHAP values answer: <em>"how does this instance differ from the typical operating point, and how does that difference affect the output?"</em></p>
+<blockquote>
+<p>📄 Full code: <a href="../../code/chapter8.py"><code>chapter8.py</code></a></p>
+</blockquote>
+<hr />
+<h2>SHAP Background</h2>
+<p>SHAP (SHapley Additive exPlanations, Lundberg &amp; Lee, 2017) decomposes the output of a model $f$ into additive contributions from each input feature:</p>
+<p>$$f(x) = \phi_0 + \sum_{i=1}^{n} \phi_i(x)$$</p>
+<p>where $\phi_0 = \mathbb{E}[f(X)]$ is the expected model output over the background distribution, and $\phi_i(x)$ is the contribution of feature $i$ to the prediction for instance $x$.</p>
+<p>The SHAP values ${\phi_i}$ are the unique decomposition satisfying:
+- <strong>Efficiency</strong>: $\sum_i \phi_i = f(x) - \phi_0$ — values sum to total prediction minus baseline
+- <strong>Symmetry</strong>: features with equal marginal contributions receive equal SHAP values
+- <strong>Dummy</strong>: a feature with zero marginal contribution receives $\phi_i = 0$</p>
+<p><strong>KernelExplainer</strong> computes SHAP values without architecture knowledge. It fits a weighted linear model to masked predictions:</p>
+<p>$$\phi = \arg\min_{\phi} \sum_{z \in {0,1}^n} \pi(z)\left[f(h(x, z)) - \phi_0 - \sum_i z_i \phi_i\right]^2$$</p>
+<p>where $z$ is a binary mask, $h(x, z)$ replaces masked features with background samples, and $\pi(z)$ weights coalitions by the Shapley kernel. This works on any black-box function — Q-networks, policy networks, ensemble dynamics — with no architecture assumptions.</p>
+<p>We use KernelExplainer throughout for consistency: all three explanations use the same method, making them directly comparable.</p>
+<hr />
+<h2>Three Levels of Explanation</h2>
+<h3>Level 1: Q-function SHAP — Why Does the Agent Value This Action?</h3>
+<p>The Q-function $Q(s, a)$ takes the concatenated $(s, a)$ vector as input and outputs a scalar value estimate. SHAP on this input answers which features — current state variables or the chosen action — contribute most to the Q-value.</p>
+<pre><code class="language-python">class QFunctionWrapper:
+    &quot;&quot;&quot;
+    Wrap QNetwork as numpy-in / numpy-out for SHAP KernelExplainer.
+
+    Input:  X ∈ R^{n × (state_dim + action_dim)}  — [state | action]
+    Output: q ∈ R^n                                — Q-value per sample
+    &quot;&quot;&quot;
+    def __call__(self, X: np.ndarray) -&gt; np.ndarray:
+        with torch.no_grad():
+            x_t = torch.FloatTensor(X).to(self.device)
+            s   = x_t[:, :self.s_dim]
+            a   = x_t[:, self.s_dim:]
+            q   = self.q(s, a)
+        return q.cpu().numpy()
+</code></pre>
+<p>Feature vector: <code>[temperature, filler_frac, viscosity, density, level, heat_input, flow_input]</code>.</p>
+<p>State feature SHAP answers: "was this situation favorable?"
+Action feature SHAP answers: "was this action appropriately chosen for this state?"</p>
+<p><strong>Expected pattern for a well-trained CQL agent:</strong> state features near their setpoints → positive SHAP (favorable situation → high Q). If action SHAP values are near zero regardless of action magnitude, the Q-function ignores the action — a sign of Q-function collapse.</p>
+<h3>Level 2: Policy SHAP — Why Does the Agent Choose This Action?</h3>
+<p>We explain each action dimension separately (SHAP requires scalar output):</p>
+<pre><code class="language-python">class PolicySingleOutputWrapper:
+    &quot;&quot;&quot;
+    action_idx = 0 → heat_input
+    action_idx = 1 → flow_input
+
+    Explains deterministic mean action tanh(μ_θ(s)) — not sampled,
+    so SHAP estimates are stable across calls.
+    &quot;&quot;&quot;
+    def __call__(self, S: np.ndarray) -&gt; np.ndarray:
+        with torch.no_grad():
+            s_t     = torch.FloatTensor(S).to(self.device)
+            mean, _ = self.policy._dist(s_t)
+            action  = torch.tanh(mean)
+        return action[:, self.action_idx].cpu().numpy()
+</code></pre>
+<p><strong>Expected pattern:</strong> <code>heat_input</code> driven primarily by <code>temperature</code> deviation; <code>flow_input</code> by <code>filler_frac</code> deviation. If <code>level</code> has high SHAP for <code>flow_input</code>, the policy learned that flow rate affects level — physically correct (level depends on inflow) and a sign that the agent has internalized the integrating dynamics.</p>
+<h3>Level 3: Dynamics SHAP — Why Does the Model Predict This Next State?</h3>
+<p>We explain three output dimensions: <code>next_temperature</code> (0), <code>next_filler_frac</code> (1), <code>next_level</code> (4):</p>
+<pre><code class="language-python">class DynamicsSingleOutputWrapper:
+    &quot;&quot;&quot;
+    Explains ensemble mean prediction for one next-state dimension.
+    &quot;&quot;&quot;
+    def __call__(self, X: np.ndarray) -&gt; np.ndarray:
+        with torch.no_grad():
+            s     = x_t[:, :self.s_dim]
+            a     = x_t[:, self.s_dim:]
+            s_next, _ = self.ensemble.predict_with_uncertainty(s, a)
+        return s_next[:, self.state_idx].cpu().numpy()
+</code></pre>
+<p><strong>Physics sanity check:</strong> <code>heat_input</code> must have positive mean SHAP for <code>next_temperature</code>; <code>flow_input</code> for <code>next_filler_frac</code>. These follow from first-order dynamics and hold for any physically reasonable model. If violated, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.</p>
+<hr />
+<h2>The Explainer Class</h2>
+<p><code>OfflineRLExplainer</code> manages background construction and SHAP computation for all three levels:</p>
+<pre><code class="language-python">class OfflineRLExplainer:
+    def __init__(self, agent, ensemble, dataset,
+                 s_mean, s_std, device='cpu', n_background=100):
+        # Background = representative sample from offline dataset
+        idx = np.random.default_rng(42).choice(
+            len(dataset['states']), size=n_background, replace=False)
+        self.bg_states  = dataset['states'][idx]
+        self.bg_actions = dataset['actions'][idx]
+        self.bg_sa      = np.concatenate(
+            [self.bg_states, self.bg_actions], axis=1)
+</code></pre>
+<p>The background defines $\phi_0$ — the average model output. Using the offline dataset means SHAP values answer: <em>"how does this transition differ from a typical observed transition?"</em></p>
+<pre><code class="language-python">results = explainer.explain_all(
+    n_explain    = 150,   # instances to explain
+    n_background = 80,    # background dataset size
+    n_samples    = 80,    # SHAP coalitions per instance
+)
+# results keys: 'states', 'actions', 'q_shap',
+#               'policy_shap', 'dynamics_shap', 'q_base'
+</code></pre>
+<p><code>n_samples</code> controls approximation quality. At 80, standard error is ~0.005 on normalized outputs — sufficient for feature ranking. At 500 the estimates are publication-quality but 6× slower.</p>
+<hr />
+<h2>Visualization</h2>
+<h3>Summary Plot (Q-function)</h3>
+<p>Beeswarm plot: each dot is one instance, colored by feature value (blue=low, red=high), x-axis is SHAP value.</p>
+<pre><code class="language-python">plot_q_summary(results['q_shap'], SA_NAMES,
+               save_path='ch8_q_summary.png')
+</code></pre>
+<p>Reading patterns:
+- <strong>Wide horizontal spread</strong> → feature has variable impact
+- <strong>Red-right / blue-left consistently</strong> → monotone relationship
+- <strong>Mixed colors</strong> → nonlinear or interaction-dependent</p>
+<h3>Bar Charts (Policy and Dynamics)</h3>
+<p>Mean |SHAP| per feature — answers "which features matter most?"</p>
+<pre><code class="language-python">plot_policy_bar(results['policy_shap'], STATE_NAMES,
+                save_path='ch8_policy_bar.png')
+
+plot_dynamics_bar(results['dynamics_shap'], SA_NAMES, STATE_NAMES,
+                  save_path='ch8_dynamics_bar.png')
+</code></pre>
+<h3>Force Plot: Single Instance</h3>
+<p>The most operationally useful visualization. For a single time step, shows each feature's contribution as a waterfall from baseline to final Q-value:</p>
+<pre><code class="language-python">best = int(np.argmax(q_vals))   # highest-Q instance
+plot_force_single(
+    results['q_shap'][best], SA_NAMES,
+    q_value=q_vals[best], q_base=results['q_base'],
+    instance_label=f'Highest-Q instance (Q={q_vals[best]:.3f})',
+    save_path='ch8_force_best.png')
+</code></pre>
+<p>An operator can use this to answer: "why did the agent rate this moment as high-value?" If the answer is "temperature near setpoint, level stable" — sensible. If "viscosity unusually low" when the setpoint is on temperature — a spurious correlation to investigate.</p>
+<h3>Dependence Plot: Interactions</h3>
+<p>SHAP of feature A vs its raw value, colored by feature B — reveals interaction effects:</p>
+<pre><code class="language-python">plot_shap_dependence(
+    results['q_shap'][:, :len(STATE_NAMES)],
+    results['states'],
+    feature_idx=0,       # temperature
+    interaction_idx=1,   # colored by filler_frac
+    feature_names=STATE_NAMES,
+    title='Q-SHAP: temperature effect (colored by filler_frac)')
+</code></pre>
+<p>If temperature SHAP values split systematically by filler color, there is an interaction: the Q-function's response to temperature depends on filler level. For a physics-informed agent this is expected — viscosity is a nonlinear function of both.</p>
+<hr />
+<h2>Consistency Check</h2>
+<pre><code class="language-python">metrics = check_explanation_consistency(results)
+print_consistency_report(metrics)
+</code></pre>
+<p>Expected output:</p>
+<pre><code>  Q ↔ policy rank correlation  : 0.71  ✓ aligned
+  heat_input → next_temperature: SHAP=+0.0412  ✓ positive (correct)
+  flow_input → next_filler     : SHAP=+0.0387  ✓ positive (correct)
+</code></pre>
+<p><strong>Q-policy Spearman $\rho$:</strong> ranks state features by mean |SHAP| in Q-function and policy. $\rho &gt; 0.6$ means the agent's critic and actor attend to the same features. $\rho &lt; 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.</p>
+<p><strong>Physics sign tests:</strong> <code>heat_input</code> → <code>next_temperature</code> SHAP must be positive; <code>flow_input</code> → <code>next_filler_frac</code> SHAP must be positive. Failure indicates the dynamics model learned a physically inverted relationship in some data region — common when coverage near boundaries is very sparse.</p>
+<hr />
+<h2>SHAP in Production: Practical Considerations</h2>
+<p><strong>Computational cost.</strong> KernelExplainer makes $n_\text{explain} \times n_\text{samples} \times n_\text{background}$ model evaluations. For 150 × 80 × 80 = 960,000 calls this takes minutes on CPU. Practical strategy: run offline before deployment on a held-out validation set; re-run monthly on recent operating data to detect distribution shift.</p>
+<p><strong>Background dataset choice</strong> is the most important hyperparameter. Full dataset background answers "difference from typical operation." Constraint-region background answers "what distinguishes near-violations from typical near-violations?" — useful for diagnosing why the agent approaches boundaries.</p>
+<p><strong>Physical units.</strong> States are normalized. To communicate with operators:</p>
+<pre><code class="language-python"># Convert SHAP back to physical units
+shap_physical = results['q_shap'][:, :S] * s_std
+# SHAP of 0.04 on normalized temperature = 0.04 × σ_T physical degrees
+</code></pre>
+<hr />
+<h2>What SHAP Cannot Tell You</h2>
+<p><strong>SHAP ≠ causal effect.</strong> High SHAP for <code>viscosity</code> means the model uses viscosity as a predictor, not that viscosity causally affects Q-value. If viscosity is correlated with temperature (it is), SHAP may split credit between them in ways that don't match physics.</p>
+<p><strong>SHAP values depend on the background.</strong> A feature can have high SHAP against one background and low against another. Hold the background fixed when comparing across runs.</p>
+<p><strong>Temporal structure is lost.</strong> KernelExplainer explains each instance independently. For integrating states like level, the agent's reasoning depends on trajectory history. Single-step SHAP cannot capture this dependency.</p>
+<p><strong>SHAP explains the model, not whether the model is correct.</strong> If the Q-function overestimates in some region (a known offline RL failure mode), SHAP will faithfully explain the overestimation. Consistency checks can detect some failure modes, but SHAP is not a substitute for evaluation metrics from Chapter 7.</p>
+<hr />
+<h2>Summary</h2>
+<p>Three complementary SHAP explanations for a trained Offline RL agent:</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Model</th>
+<th>Question</th>
+<th>Input space</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q-function SHAP</td>
+<td>Critic $Q(s,a)$</td>
+<td>Why is this action valued here?</td>
+<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+</tr>
+<tr>
+<td>Policy SHAP</td>
+<td>Actor $\pi(s)$</td>
+<td>Why was this action chosen?</td>
+<td>$s \in \mathbb{R}^S$</td>
+</tr>
+<tr>
+<td>Dynamics SHAP</td>
+<td>$\hat{f}(s,a)$</td>
+<td>Why is this next state predicted?</td>
+<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+</tr>
+</tbody>
+</table>
+<p>The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.</p>
+<p>Chapter 9 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
+<hr />
+<h2>Appendix 8.A: Choosing Between SHAP Variants</h2>
+<table>
+<thead>
+<tr>
+<th>Explainer</th>
+<th>Best for</th>
+<th>Speed</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KernelExplainer</code></td>
+<td>Any black-box</td>
+<td>Slow</td>
+<td>Used throughout — consistent across all model types</td>
+</tr>
+<tr>
+<td><code>DeepExplainer</code></td>
+<td>PyTorch / TF nets</td>
+<td>Fast</td>
+<td>Uses backprop; less accurate near tanh saturation</td>
+</tr>
+<tr>
+<td><code>GradientExplainer</code></td>
+<td>Differentiable nets</td>
+<td>Medium</td>
+<td>Gradient × input; fast but noisy</td>
+</tr>
+<tr>
+<td><code>TreeExplainer</code></td>
+<td>XGBoost, RF</td>
+<td>Very fast</td>
+<td>Exact SHAP; irrelevant for neural policies</td>
+</tr>
+<tr>
+<td><code>LinearExplainer</code></td>
+<td>Linear models</td>
+<td>Instant</td>
+<td>Exact; use if policy is distilled to a linear surrogate</td>
+</tr>
+</tbody>
+</table>
+<p>For fast per-step operator explanations in a deployed system: distill the policy to a shallow <code>DecisionTreeRegressor</code> and use <code>TreeExplainer</code>. The distillation loses some accuracy but makes each decision explainable in $&lt; 1$ms.</p>
+<hr />
+<h2>References</h2>
+<ul>
+<li>Lundberg, S.M., &amp; Lee, S.I. (2017). <em>A Unified Approach to Interpreting Model Predictions.</em> NeurIPS. arXiv:1705.07874.</li>
+<li>Lundberg, S.M., Erion, G., Chen, H. et al. (2020). <em>From Local Explanations to Global Understanding with Explainable AI for Trees.</em> Nature Machine Intelligence. arXiv:1905.04610.</li>
+<li>Shapley, L.S. (1953). <em>A Value for n-Person Games.</em> In Contributions to the Theory of Games.</li>
+<li>Ribeiro, M.T., Singh, S., &amp; Guestrin, C. (2016). <em>"Why Should I Trust You?": Explaining the Predictions of Any Classifier.</em> KDD. arXiv:1602.04938.</li>
+<li>Molnar, C. (2022). <em>Interpretable Machine Learning.</em> 2nd ed.</li>
+<li>Doshi-Velez, F., &amp; Kim, B. (2017). <em>Towards a Rigorous Science of Interpretable Machine Learning.</em> arXiv:1702.08608.</li>
+</ul>
+<nav class="chapter-nav">
+<a href="/offline-rl-book/en/chapter7.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Industrial Applications</span></a>
+<a href="/offline-rl-book/en/chapter9.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Conclusion and Future Directions</span></a>
+</nav>
+</main>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+  </div>
+</footer>
+</body>
+</html>
