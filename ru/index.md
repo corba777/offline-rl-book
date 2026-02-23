@@ -30,15 +30,15 @@ permalink: "/offline-rl-book/ru/"
     </a>
   </li>
   <li>
-    <a href="#">
+    <a href="/offline-rl-book/ru/chapter3/">
       <span><span class="ch-num">Гл 3</span>Консервативное Q-обучение (CQL)</span>
-      <span class="ch-status">скоро</span>
+      <span class="ch-status ready">готово</span>
     </a>
   </li>
   <li>
-    <a href="#">
+    <a href="/offline-rl-book/ru/chapter4/">
       <span><span class="ch-num">Гл 4</span>Неявное Q-обучение (IQL)</span>
-      <span class="ch-status">скоро</span>
+      <span class="ch-status ready">готово</span>
     </a>
   </li>
   <li>

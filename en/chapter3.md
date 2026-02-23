@@ -2,6 +2,13 @@
 layout: default
 title: "Chapter 3: Conservative Q-Learning (CQL)"
 lang: en
+ru_url: /ru/chapter3/
+prev_chapter:
+  url: /en/chapter2/
+  title: "The Offline RL Problem"
+next_chapter:
+  url: /en/chapter4/
+  title: "Implicit Q-Learning (IQL)"
 permalink: "/offline-rl-book/en/chapter3/"
 ---
 
@@ -210,19 +217,22 @@ def cql_loss(
         batch_size * n_action_samples, -1)
     q_rand = Q1(states_rep_rand, random_actions).view(batch_size, n_action_samples)
 
-    # Q-values for policy actions
-    q_policy = Q1(states_rep, policy_actions).view(batch_size, n_action_samples)
+    # Q-values for policy actions — with importance weight correction.
+    # We subtract log π(a|s) because we sample a ~ π but need E_{uniform}[exp Q].
+    # See the importance sampling derivation above.
+    q_policy_raw = Q1(states_rep, policy_actions).view(batch_size, n_action_samples)
+    lp = policy_log_probs.detach().view(batch_size, n_action_samples)
+    q_policy = q_policy_raw - lp     # importance weight: exp(Q) / π → exp(Q - log π)
 
     # Q-values for dataset actions (the ones we want to keep high)
     q_data = Q1(states, actions)
 
-    # logsumexp over random + policy actions
-    # This is the "push down" term — approximates E_μ[Q(s,a)]
+    # logsumexp over random + policy actions (importance-corrected)
+    # Approximates log Σ_a exp Q(s,a) — the "push down" term
     q_ood = torch.cat([q_rand, q_policy], dim=1)  # (batch, 2*n_samples)
     logsumexp = torch.logsumexp(q_ood, dim=1)     # (batch,)
 
     # CQL penalty: push down OOD, push up dataset
-    # logsumexp ≈ log Σ exp Q(s,a) for a ~ uniform ∪ policy
     cql_penalty = (logsumexp - q_data).mean()
 
     return td_loss + alpha_cql * cql_penalty, td_loss.item(), cql_penalty.item()

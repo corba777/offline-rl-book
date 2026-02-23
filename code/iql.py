@@ -177,7 +177,7 @@ class DeterministicPolicy(nn.Module):
     Simple deterministic MLP policy: s -> a in [-1, 1].
 
     IQL extracts the policy via advantage-weighted regression (AWR):
-    maximize E[exp(beta * A(s,a)) * log pi(a|s)] over dataset actions.
+    minimize E[exp(beta * A(s,a)) * ||pi(s) - a||^2] over dataset actions.
     No need for a stochastic policy — we weight dataset actions by their advantage.
     """
     def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
@@ -254,8 +254,7 @@ def iql_value_loss(V: ValueNetwork,
     }
 
 
-def iql_q_loss(Q: QNetwork, Q_other: QNetwork,
-               Q_tgt: QNetwork, Q_other_tgt: QNetwork,
+def iql_q_loss(Q: QNetwork,
                V_tgt: ValueNetwork,
                states: torch.Tensor, actions: torch.Tensor,
                rewards: torch.Tensor, next_states: torch.Tensor,
@@ -295,11 +294,11 @@ def iql_policy_loss(policy: DeterministicPolicy,
     """
     Policy extraction via Advantage-Weighted Regression (AWR).
 
-    Objective: maximize E_{(s,a)~D} [ exp(beta * A(s,a)) * log pi(a|s) ]
+    Objective: minimize E_{(s,a)~D} [ exp(beta * A(s,a)) * ||pi(s) - a||^2 ]
 
     where A(s,a) = Q(s,a) - V(s) is the advantage of dataset action a.
 
-    This is a weighted imitation loss:
+    This is a weighted MSE loss:
     - actions with high advantage (better than average) get large weights
     - actions with negative advantage get weights near zero
     - beta controls how selective we are (higher = more selective)
@@ -393,11 +392,9 @@ class IQLAgent:
 
         # ── 2. Q update (TD with V as next-state value) ───────────────────
         # Q(s,a) ← r + gamma * V_target(s')
-        q_loss1, q_info1 = iql_q_loss(self.Q1, self.Q2,
-                                       self.Q1_tgt, self.Q2_tgt, self.V_tgt,
+        q_loss1, q_info1 = iql_q_loss(self.Q1, self.V_tgt,
                                        s, a, r, s2, d, self.gamma)
-        q_loss2, q_info2 = iql_q_loss(self.Q2, self.Q1,
-                                       self.Q2_tgt, self.Q1_tgt, self.V_tgt,
+        q_loss2, q_info2 = iql_q_loss(self.Q2, self.V_tgt,
                                        s, a, r, s2, d, self.gamma)
         self.q_opt.zero_grad()
         (q_loss1 + q_loss2).backward()
@@ -407,7 +404,7 @@ class IQLAgent:
         info['q_loss'] = (q_info1['q_loss'] + q_info2['q_loss']) / 2
 
         # ── 3. Policy update (advantage-weighted regression) ──────────────
-        # pi(s) ← argmax_a exp(beta * A(s,a)) * log pi(a|s) over dataset
+        # pi(s) ← argmin_a exp(beta * A(s,a)) * ||pi(s) - a||^2 over dataset
         pi_loss, pi_info = iql_policy_loss(
             self.policy, self.Q1, self.Q2, self.V, s, a, self.beta)
         self.pi_opt.zero_grad()

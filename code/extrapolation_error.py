@@ -167,7 +167,7 @@ def measure_ood_overestimation(
           f"Q mean: {q_in_dist.mean():.3f}, max: {q_in_dist.max():.3f}")
     print(f"All actions (incl. OOD)  | "
           f"Q mean: {q_all.mean():.3f},     max: {q_all.max():.3f}")
-    ratio = q_all.max().item() / (q_in_dist.max().item() + 1e-8)
+    ratio = q_all.max().item() / max(q_in_dist.max().item(), 1e-8)
     print(f"OOD overestimation ratio : {ratio:.2f}x")
     return ratio
 

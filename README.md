@@ -11,8 +11,8 @@ A practical book on offline reinforcement learning.
 |---|---|---|---|
 | 1. Behavioral Cloning | `en/chapter1.md` | `ru/chapter1.md` | ✅ Ready |
 | 2. The Offline RL Problem | `en/chapter2.md` | `ru/chapter2.md` | ✅ Ready |
-| 3. Conservative Q-Learning (CQL) | `en/chapter3.md`| `ru/chapter2.md` | ✅ Ready |
-| 4. Implicit Q-Learning (IQL) | — | — | 🔜 |
+| 3. Conservative Q-Learning (CQL) | `en/chapter3.md`| `ru/chapter3.md` | ✅ Ready |
+| 4. Implicit Q-Learning (IQL) | `en/chapter4.md` | `ru/chapter4.md` | ✅ Ready |
 | 5. Model-Based Offline RL | — | — | 🔜 |
 | 6. Physics-Informed Offline RL | — | — | 🔜 |
 | 7. Industrial Applications | — | — | 🔜 |
@@ -26,14 +26,20 @@ A practical book on offline reinforcement learning.
 ├── index.md                 # English home page (TOC)
 ├── en/
 │   ├── chapter1.md
-│   └── chapter2.md
+│   ├── chapter2.md
+│   ├── chapter3.md
+│   └── chapter4.md
 ├── ru/
 │   ├── index.md             # Russian home page
 │   ├── chapter1.md
-│   └── chapter2.md
+│   ├── chapter2.md
+│   ├── chapter3.md
+│   └── chapter4.md
 └── code/
     ├── behavioral_cloning.py
-    └── extrapolation_error.py
+    ├── extrapolation_error.py
+    ├── cql.py
+    └── iql.py
 ```
 
 ## Writing New Chapters
@@ -43,16 +49,16 @@ Copy the front matter from any existing chapter:
 ```yaml
 ---
 layout: default
-title: "Chapter 3: Conservative Q-Learning"
+title: "Chapter 5: Model-Based Offline RL"
 lang: en
-ru_url: /ru/chapter3/
-permalink: "/offline-rl-book/en/chapter3/"
+ru_url: /ru/chapter5/
+permalink: "/offline-rl-book/en/chapter5/"
 prev_chapter:
-  url: /en/chapter2/
-  title: "The Offline RL Problem"
-next_chapter:
   url: /en/chapter4/
   title: "Implicit Q-Learning (IQL)"
+next_chapter:
+  url: /en/chapter6/
+  title: "Physics-Informed Offline RL"
 ---
 ```
 

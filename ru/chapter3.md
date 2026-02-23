@@ -2,6 +2,13 @@
 layout: default
 title: "Глава 3: Консервативное Q-обучение (CQL)"
 lang: ru
+en_url: /en/chapter3/
+prev_chapter:
+  url: /ru/chapter2/
+  title: "Задача Offline RL"
+next_chapter:
+  url: /ru/chapter4/
+  title: "Неявное Q-обучение (IQL)"
 permalink: "/offline-rl-book/ru/chapter3/"
 ---
 
@@ -182,18 +189,24 @@ def cql_loss(Q1, Q2, Q1_target, Q2_target, policy,
     # Действия текущей политики
     states_rep = states.unsqueeze(1).repeat(1, n_action_samples, 1).view(
         batch_size * n_action_samples, -1)
-    policy_actions, _ = policy.sample(states_rep)
+    policy_actions, policy_log_probs = policy.sample(states_rep)
 
-    # Q-значения для случайных и policy-действий (OOD)
+    # Q-значения для случайных OOD-действий
     q_rand   = Q1(states.unsqueeze(1).repeat(1, n_action_samples, 1)
                   .view(batch_size * n_action_samples, -1),
                   random_actions).view(batch_size, n_action_samples)
-    q_policy = Q1(states_rep, policy_actions).view(batch_size, n_action_samples)
+
+    # Q-значения для policy-действий — с коррекцией importance weights.
+    # Вычитаем log π(a|s): сэмплируем a ~ π, но нужен E_{uniform}[exp Q].
+    q_policy_raw = Q1(states_rep, policy_actions).view(batch_size, n_action_samples)
+    lp = policy_log_probs.detach().view(batch_size, n_action_samples)
+    q_policy = q_policy_raw - lp     # importance weight: exp(Q)/π → exp(Q - log π)
 
     # Q-значения для действий из датасета
     q_data = Q1(states, actions)
 
-    # logsumexp ≈ E_μ[Q(s,a)] — «опустить вниз»
+    # logsumexp по случайным + policy-действиям (с importance correction)
+    # Аппроксимирует log Σ_a exp Q(s,a) — член «опустить вниз»
     q_ood      = torch.cat([q_rand, q_policy], dim=1)
     logsumexp  = torch.logsumexp(q_ood, dim=1)
 

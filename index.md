@@ -30,15 +30,15 @@ Each chapter: **idea → formalization → code → limitations**.
     </a>
   </li>
   <li>
-    <a href="#">
+    <a href="/offline-rl-book/en/chapter3/">
       <span><span class="ch-num">Ch 3</span>Conservative Q-Learning (CQL)</span>
-      <span class="ch-status">upcoming</span>
+      <span class="ch-status ready">ready</span>
     </a>
   </li>
   <li>
-    <a href="#">
+    <a href="/offline-rl-book/en/chapter4/">
       <span><span class="ch-num">Ch 4</span>Implicit Q-Learning (IQL)</span>
-      <span class="ch-status">upcoming</span>
+      <span class="ch-status ready">ready</span>
     </a>
   </li>
   <li>
