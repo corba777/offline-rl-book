@@ -436,7 +436,7 @@ The bottom-left cell (dense data, no physics) is the D4RL benchmark — where Ch
 
 Physics-informed methods are not a replacement for offline RL algorithms — they are a layer on top. Reward shaping plugs into CQL or IQL without modifying a line of algorithm code. The hybrid model replaces the ensemble in MOPO or MOReL while keeping everything else intact. The combination of a physically grounded dynamics model with a pessimistic offline RL algorithm (MOReL + hybrid ensemble) is the natural architecture for industrial settings where data is sparse but domain knowledge is rich.
 
-Chapter 7 works through a complete industrial case study showing how these pieces fit together in practice.
+Chapter 7 works through an industrial case study showing how these pieces fit together in practice.
 
 ---
 
