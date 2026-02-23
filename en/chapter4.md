@@ -6,6 +6,9 @@ ru_url: /ru/chapter4/
 prev_chapter:
   url: /en/chapter3/
   title: "Conservative Q-Learning (CQL)"
+next_chapter:
+  url: /en/chapter5/
+  title: "Model-Based Offline RL (MOPO)"
 permalink: "/offline-rl-book/en/chapter4/"
 ---
 

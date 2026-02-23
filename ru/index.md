@@ -42,9 +42,9 @@ permalink: "/offline-rl-book/ru/"
     </a>
   </li>
   <li>
-    <a href="#">
-      <span><span class="ch-num">Гл 5</span>Модельный Offline RL (MOPO, MOReL)</span>
-      <span class="ch-status">скоро</span>
+    <a href="/offline-rl-book/ru/chapter5/">
+      <span><span class="ch-num">Гл 5</span>Модельный Offline RL (MOPO)</span>
+      <span class="ch-status ready">готово</span>
     </a>
   </li>
   <li>

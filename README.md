@@ -13,7 +13,7 @@ A practical book on offline reinforcement learning.
 | 2. The Offline RL Problem | `en/chapter2.md` | `ru/chapter2.md` | ✅ Ready |
 | 3. Conservative Q-Learning (CQL) | `en/chapter3.md`| `ru/chapter3.md` | ✅ Ready |
 | 4. Implicit Q-Learning (IQL) | `en/chapter4.md` | `ru/chapter4.md` | ✅ Ready |
-| 5. Model-Based Offline RL | — | — | 🔜 |
+| 5. Model-Based Offline RL (MOPO) | `en/chapter5.md` | `ru/chapter5.md` | ✅ Ready |
 | 6. Physics-Informed Offline RL | — | — | 🔜 |
 | 7. Industrial Applications | — | — | 🔜 |
 
@@ -28,18 +28,21 @@ A practical book on offline reinforcement learning.
 │   ├── chapter1.md
 │   ├── chapter2.md
 │   ├── chapter3.md
-│   └── chapter4.md
+│   ├── chapter4.md
+│   └── chapter5.md
 ├── ru/
 │   ├── index.md             # Russian home page
 │   ├── chapter1.md
 │   ├── chapter2.md
 │   ├── chapter3.md
-│   └── chapter4.md
+│   ├── chapter4.md
+│   └── chapter5.md
 └── code/
     ├── behavioral_cloning.py
     ├── extrapolation_error.py
     ├── cql.py
-    └── iql.py
+    ├── iql.py
+    └── mopo.py
 ```
 
 ## Writing New Chapters

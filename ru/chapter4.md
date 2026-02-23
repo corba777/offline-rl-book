@@ -6,6 +6,9 @@ en_url: /en/chapter4/
 prev_chapter:
   url: /ru/chapter3/
   title: "Консервативное Q-обучение (CQL)"
+next_chapter:
+  url: /ru/chapter5/
+  title: "Модельный оффлайн RL (MOPO)"
 permalink: "/offline-rl-book/ru/chapter4/"
 ---
 

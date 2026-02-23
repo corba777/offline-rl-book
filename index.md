@@ -42,9 +42,9 @@ Each chapter: **idea → formalization → code → limitations**.
     </a>
   </li>
   <li>
-    <a href="#">
-      <span><span class="ch-num">Ch 5</span>Model-Based Offline RL (MOPO, MOReL)</span>
-      <span class="ch-status">upcoming</span>
+    <a href="/offline-rl-book/en/chapter5/">
+      <span><span class="ch-num">Ch 5</span>Model-Based Offline RL (MOPO)</span>
+      <span class="ch-status ready">ready</span>
     </a>
   </li>
   <li>
