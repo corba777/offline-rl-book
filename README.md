@@ -11,7 +11,7 @@ A practical book on offline reinforcement learning.
 |---|---|---|---|
 | 1. Behavioral Cloning | `en/chapter1.md` | `ru/chapter1.md` | ✅ Ready |
 | 2. The Offline RL Problem | `en/chapter2.md` | `ru/chapter2.md` | ✅ Ready |
-| 3. Conservative Q-Learning (CQL) | — | — | 🔜 |
+| 3. Conservative Q-Learning (CQL) | `en/chapter3.md`| `ru/chapter2.md` | ✅ Ready |
 | 4. Implicit Q-Learning (IQL) | — | — | 🔜 |
 | 5. Model-Based Offline RL | — | — | 🔜 |
 | 6. Physics-Informed Offline RL | — | — | 🔜 |
