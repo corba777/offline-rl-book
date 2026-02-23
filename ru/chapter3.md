@@ -108,7 +108,7 @@ $$J(\hat\pi) \geq J(\pi_\beta) - \frac{\alpha}{1-\gamma} \cdot \mathbb{E}_{s \si
 
 ## Реализация
 
-> 📄 Полный код: [`cql.py`](../../code/cql.py)
+> 📄 Полный код: [`cql.py`](https://github.com/corba777/offline-rl-book/blob/main/code/cql.py)
 
 ### Сети
 

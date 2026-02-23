@@ -32,7 +32,7 @@ Explainability in Offline RL is harder than in standard supervised learning for 
 
 **The behavior policy's distribution is uneven.** SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset — dense near the operating setpoint and sparse near disturbances. SHAP values answer: *"how does this instance differ from the typical operating point, and how does that difference affect the output?"*
 
-> 📄 Full code: [`chapter8.py`](../../code/chapter8.py)
+> 📄 Full code: [`chapter8.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter8.py)
 
 ---
 

@@ -108,7 +108,7 @@ where $D_{CQL}$ is a divergence term that measures how far the learned policy dr
 
 ## Implementation
 
-> 📄 Full code: [`cql.py`](../../code/cql.py)
+> 📄 Full code: [`cql.py`](https://github.com/corba777/offline-rl-book/blob/main/code/cql.py)
 
 ### Networks
 

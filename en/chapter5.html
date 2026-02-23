@@ -193,7 +193,7 @@
 <h4>Branched Rollouts</h4>
 <p>MOPO uses <strong>branched rollouts</strong>: sample $s_0$ from real data, roll out $h$ steps with model + policy, add each synthetic transition $(s_t, a_t, \tilde{r}_t, s_{t+1})$ to a synthetic buffer. Starting from real states ensures rollouts begin in a well-modeled region. Short horizon $h$ limits error compounding.</p>
 <h3>Implementation</h3>
-<p>📄 Full code: <a href="../../code/mopo.py"><code>mopo.py</code></a></p>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/mopo.py"><code>mopo.py</code></a></p>
 <h4>Probabilistic Dynamics Model</h4>
 <pre><code class="language-python">class ProbabilisticDynamicsNet(nn.Module):
     """

@@ -72,7 +72,7 @@ $$g_{bounds}(s) = \sum_i \max(0,\ s_i - s_i^{max}) + \max(0,\ s_i^{min} - s_i)$$
 
 ### Implementation
 
-> 📄 Full code: [`physics_informed.py`](../../code/physics_informed.py)
+> 📄 Full code: [`physics_informed.py`](https://github.com/corba777/offline-rl-book/blob/main/code/physics_informed.py)
 
 ```python
 class PhysicsRewardWrapper:

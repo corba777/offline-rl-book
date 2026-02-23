@@ -64,4 +64,4 @@ next_chapter:
 
 Math: `$...$` inline, `$$...$$` display — rendered by MathJax.  
 Code: fenced blocks with `python` tag.  
-File refs: `> 📄 Full code: [filename.py](../../code/filename.py)`
+File refs: `> 📄 Full code: [filename.py](https://github.com/corba777/offline-rl-book/blob/main/code/filename.py)` (use full GitHub URL so links work on github.io)

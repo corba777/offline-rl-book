@@ -113,7 +113,7 @@ This is sometimes called the **"deadly triad"**: function approximation + bootst
 
 ## Empirical Demonstration
 
-> 📄 Full code: [`extrapolation_error.py`](../../code/extrapolation_error.py)
+> 📄 Full code: [`extrapolation_error.py`](https://github.com/corba777/offline-rl-book/blob/main/code/extrapolation_error.py)
 
 ```python
 import torch

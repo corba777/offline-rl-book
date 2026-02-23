@@ -34,7 +34,7 @@ Real industrial processes differ from that environment in every dimension that m
 
 This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–6. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.
 
-> 📄 Full code: [`chapter7.py`](../../code/chapter7.py)
+> 📄 Full code: [`chapter7.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter7.py)
 
 ---
 

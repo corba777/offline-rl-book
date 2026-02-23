@@ -69,7 +69,7 @@ $$\mathcal{L}_{BC}(\theta) = \mathbb{E}_{s \sim d^{\pi_\beta}} \left[ D_{KL}\lef
 
 ## Реализация
 
-> 📄 Полный код: [`behavioral_cloning.py`](../code/behavioral_cloning.py)
+> 📄 Полный код: [`behavioral_cloning.py`](https://github.com/corba777/offline-rl-book/blob/main/code/behavioral_cloning.py)
 
 ```python
 import torch

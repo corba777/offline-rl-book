@@ -101,7 +101,7 @@ Starting from real states ensures the rollout begins in a well-modeled region. T
 
 ### Implementation
 
-> 📄 Full code: [`mopo.py`](../../code/mopo.py)
+> 📄 Full code: [`mopo.py`](https://github.com/corba777/offline-rl-book/blob/main/code/mopo.py)
 
 #### Probabilistic Dynamics Model
 
@@ -232,7 +232,7 @@ This is a stronger guarantee than MOPO's: it is **distribution-free** and does n
 
 ### Implementation
 
-> 📄 Full code: [`morel.py`](../../code/morel.py)
+> 📄 Full code: [`morel.py`](https://github.com/corba777/offline-rl-book/blob/main/code/morel.py)
 
 MOReL shares the ensemble architecture with MOPO (`ProbabilisticDynamicsNet`, `DynamicsEnsemble`) — see `mopo.py` for those details. The key MOReL-specific additions are:
 

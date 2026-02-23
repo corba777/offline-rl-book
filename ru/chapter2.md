@@ -113,7 +113,7 @@ $$\hat{J}(\hat\pi) - J(\hat\pi) \leq \frac{2\gamma}{(1-\gamma)^2} \mathbb{E}_{s 
 
 ## Демонстрация на практике
 
-> 📄 Полный код: [`extrapolation_error.py`](../../code/extrapolation_error.py)
+> 📄 Полный код: [`extrapolation_error.py`](https://github.com/corba777/offline-rl-book/blob/main/code/extrapolation_error.py)
 
 ```python
 import torch

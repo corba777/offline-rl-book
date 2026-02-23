@@ -101,7 +101,7 @@ $$J(\pi) \geq \hat{J}_{\tilde{\mathcal{M}}}(\pi) - C \cdot \mathbb{E}_{s \sim d^
 
 ### Реализация
 
-> 📄 Полный код: [`mopo.py`](../../code/mopo.py)
+> 📄 Полный код: [`mopo.py`](https://github.com/corba777/offline-rl-book/blob/main/code/mopo.py)
 
 #### Вероятностная модель динамики
 
@@ -199,7 +199,7 @@ $$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^
 
 ### Реализация
 
-> 📄 Полный код: [`morel.py`](../../code/morel.py)
+> 📄 Полный код: [`morel.py`](https://github.com/corba777/offline-rl-book/blob/main/code/morel.py)
 
 MOReL использует ту же архитектуру ансамбля что и MOPO (`ProbabilisticDynamicsNet`, `DynamicsEnsemble`). Специфичные для MOReL дополнения:
 
