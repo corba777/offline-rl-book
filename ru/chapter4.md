@@ -8,7 +8,7 @@ prev_chapter:
   title: "Консервативное Q-обучение (CQL)"
 next_chapter:
   url: /ru/chapter5/
-  title: "Модельный оффлайн RL (MOPO)"
+  title: "Ограничение политики и Actor-Critic (TD3+BC, AWAC)"
 permalink: "/offline-rl-book/ru/chapter4/"
 ---
 

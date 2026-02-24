@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Глава 10: Объяснимость в Offline RL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right;margin-left:auto}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/en/chapter10.html">English</a>
+  </div>
+</header>
+<main>
+<h1>Глава 10: Объяснимость в Offline RL</h1>
+<blockquote>
+<p><em>«Политика с 80% Directional Accuracy, которая не может объяснить причину каждого своего решения, с трудом поддаётся доверию и не может быть сертифицирована.»</em></p>
+</blockquote>
+<hr />
+<h2>Почему объяснимость важна в промышленном Offline RL</h2>
+<p>Алгоритмы глав 1–9 строят политики с высокой наградой, уважающие физические ограничения и обобщающиеся на незнакомые режимы работы. Чего они не производят — ответа на вопрос, который оператор неизбежно задаст: <em>почему агент выдал именно это уставное значение именно сейчас?</em></p>
+<p>Это не только регуляторная проблема, хотя во многих отраслях она и является таковой. Это практический вопрос надёжности. Политику, чьи решения непрозрачны, нельзя диагностировать при отказе. Оператор, не понимающий логику агента, не может компетентно его отменить. Модель, хорошо подогнанная к данным по неправильным причинам, будет молча отказывать при изменении процесса.</p>
+<p>Объяснимость в Offline RL сложнее, чем в стандартном обучении с учителем — по трём причинам, специфичным для офлайн-постановки.</p>
+<p><strong>Три отдельные модели для объяснения.</strong> Обученный агент Offline RL содержит Q-функцию (критик), политику (актор) и опционально модель динамики. Каждая отвечает на разный вопрос, и их объяснения не всегда согласуются. Q-функция может высоко оценивать действие потому, что температура близка к уставному значению; политика может выбирать это же действие потому, что уровень близок к нижней границе. Понимание этого расхождения так же важно, как понимание согласия.</p>
+<p><strong>Вход Q-функции — конкатенация состояния и действия.</strong> В отличие от классификатора, чей вход — один вектор признаков, Q-функция принимает $(s, a)$ как вход. SHAP-значения в этом конкатенированном пространстве показывают, откуда берётся высокое Q-значение: из состояния (ситуация была благоприятной) или из действия (конкретное действие было правильным для данного состояния).</p>
+<p><strong>Распределение поведенческой политики неравномерно.</strong> SHAP-значения вычисляются относительно фонового распределения. В Offline RL естественный фон — офлайн-датасет, плотный вблизи рабочей точки и разреженный вблизи возмущений. SHAP-значения отвечают: <em>«чем этот переход отличается от типичного, и насколько это отличие влияет на выход?»</em></p>
+<blockquote>
+<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8.py"><code>chapter8.py</code></a></p>
+</blockquote>
+<hr />
+<h2>Основы SHAP</h2>
+<p>SHAP (SHapley Additive exPlanations, Lundberg &amp; Lee, 2017) разлагает выход модели $f$ в аддитивные вклады каждого входного признака:</p>
+<p><div class="math-display">$$f(x) = \phi_0 + \sum_{i=1}^{n} \phi_i(x)$$</div></p>
+<p>где $\phi_0 = \mathbb{E}[f(X)]$ — ожидаемый выход модели на фоновом распределении, а $\phi_i(x)$ — вклад признака $i$ в предсказание для экземпляра $x$.</p>
+<p>SHAP-значения ${\phi_i}$ — единственное разложение, удовлетворяющее аксиомам:
+- <strong>Эффективность</strong>: $\sum_i \phi_i = f(x) - \phi_0$ — значения суммируются в полное предсказание минус базовый уровень
+- <strong>Симметрия</strong>: признаки с одинаковым маргинальным вкладом получают одинаковые SHAP-значения
+- <strong>Пустышка</strong>: признак с нулевым маргинальным вкладом получает $\phi_i = 0$</p>
+<p><strong>KernelExplainer</strong> вычисляет SHAP-значения без знания архитектуры, подгоняя взвешенную линейную модель на маскированных предсказаниях:</p>
+<p><div class="math-display">$$\phi = \arg\min_{\phi} \sum_{z \in \{0,1\}^n} \pi(z)\left[f(h(x, z)) - \phi_0 - \sum_i z_i \phi_i\right]^2$$</div></p>
+<p>где $z$ — бинарная маска, $h(x, z)$ заменяет замаскированные признаки сэмплами из фона, а $\pi(z)$ взвешивает коалиции по ядру Шепли. Это работает на любой функции-чёрном ящике — Q-сетях, сетях политик, ансамблях динамики — без предположений об архитектуре.</p>
+<p>Мы используем KernelExplainer повсюду для последовательности: все три объяснения используют один метод, что делает их напрямую сопоставимыми.</p>
+<h3>Игрушечный пример: что показывает SHAP</h3>
+<p>Минимальный пример фиксирует интуицию. Рассмотрим игрушечную Q-функцию от трёх входов: $Q(s_1, s_2, a) = 2 s_1 - s_2 + 0{,}5 a$. То есть состояние_1 повышает Q, состояние_2 понижает, действие даёт меньший положительный вклад. Фон берём из «типичной» работы (значения в $[0{,}3, 0{,}7]$) и объясняем набор экземпляров. SHAP приписывает каждому предсказанию вклад трёх признаков.</p>
+<p><strong>Какой признак важнее всего?</strong> На столбчатой диаграмме ниже — среднее $|\phi_i|$ по объясняемым экземплярам. state_1 и state_2 доминируют (у них большие коэффициенты), и SHAP это воспроизводит.</p>
+<p><img alt="Игрушечное Q: среднее |SHAP| по признакам" src="../figures/ch8/toy_shap_bar.png" /></p>
+<p><strong>Почему Q для этого экземпляра высокое?</strong> Водопад для одного экземпляра (например, высокое $s_1$, низкое $s_2$) показывает, как SHAP-вклад каждого признака сдвигает выход от базового $\phi_0 = \mathbb{E}[Q]$ к итоговому $Q(x)$. Положительные столбцы (state_1, action) поднимают Q; отрицательный (state_2) — опускают.</p>
+<p><img alt="Игрушечное Q: водопад для одного экземпляра" src="../figures/ch8/toy_shap_waterfall.png" /></p>
+<p><strong>Разброс по экземплярам.</strong> На графике «рой пчёл» одна точка — один экземпляр и один признак; по оси X — SHAP-значение, цвет — значение признака (синий = низкое, красный = высокое). Видно, что высокое state_1 чаще даёт положительный SHAP (красные точки справа), высокое state_2 — отрицательный; монотонная зависимость модели видна наглядно.</p>
+<p><img alt="Игрушечное Q: пчелиный рой SHAP-значений" src="../figures/ch8/toy_shap_beeswarm.png" /></p>
+<p><strong>Игрушечная политика: какой признак состояния двигает действие?</strong> Рассмотрим политику $\pi(s_1, s_2) = \text{clip}(0{,}5 + 0{,}4 s_1 - 0{,}3 s_2)$ с одним действием. Состояние_1 увеличивает действие, состояние_2 уменьшает. Policy SHAP приписывает скалярное действие двум входам состояния. Столбчатая диаграмма показывает, какую переменную состояния политика «учитывает» больше; водопад для одного состояния — как вклад каждого признака сдвигает выход от среднего действия $\mathbb{E}[\pi]$ к $\pi(s)$. В реальной настройке процесса покрытия (уровень 2) два измерения действия (heat_input, flow_input); каждое объясняем отдельно и получаем по одной такой диаграмме и водопаду на действие.</p>
+<p><img alt="Игрушечная политика: среднее |SHAP| по признакам состояния" src="../figures/ch8/toy_policy_bar.png" /></p>
+<p><img alt="Игрушечная политика: водопад для одного состояния" src="../figures/ch8/toy_policy_waterfall.png" /></p>
+<p><strong>Игрушечная динамика: какой вход двигает предсказанное следующее состояние?</strong> Модель динамики с двумя компонентами: $\hat{s}_1' = 0{,}7 s_1 + 0{,}2 a$ и $\hat{s}_2' = 0{,}6 s_2 + 0{,}15 a$. Первый выход определяется текущим $s_1$ и действием $a$, второй — $s_2$ и $a$. Каждый выход объясняем отдельно (как в уровне 3). Двухпанельный bar chart показывает среднее $|\phi_i|$ по трём входам $(s_1, s_2, a)$ при предсказании $\hat{s}_1'$ и $\hat{s}_2'$ — SHAP восстанавливает, что для next_s1 важны $s_1$ и $a$, для next_s2 — $s_2$ и $a$. Водопад для одного $(s, a)$ показывает, как SHAP-вклады входов суммируются от базового предсказания до $\hat{s}_1'$.</p>
+<p><img alt="Игрушечная динамика: какие входы двигают next_s1 и next_s2?" src="../figures/ch8/toy_dynamics_bar.png" /></p>
+<p><img alt="Игрушечная динамика: водопад для одного (s,a) → next_s1" src="../figures/ch8/toy_dynamics_waterfall.png" /></p>
+<p>Все эти рисунки получаются запуском <code>python code/chapter8_toy_figures.py</code> (в скрипте — точные игрушечные модели и настройка SHAP). Далее в главе мы проверяем, что Q-функция и политика обращают внимание на сходные признаки состояния (ранговая корреляция), и что модель динамики соблюдает простую физику (например, heat_input → next_temperature положителен); те же SHAP-выходы используются в этих проверках согласованности.</p>
+<hr />
+<h2>Три уровня объяснения</h2>
+<h3>Уровень 1: SHAP Q-функции — почему агент ценит это действие?</h3>
+<p>Q-функция $Q(s, a)$ принимает конкатенацию $(s, a)$ и выдаёт скалярную оценку ценности. SHAP по этому входу отвечает, какие признаки — переменные состояния или выбранное действие — вносят наибольший вклад в Q-значение.</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">QFunctionWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Оборачивает QNetwork в numpy-in/numpy-out для SHAP KernelExplainer.</span>
+
+<span class="sd">    Вход:  X ∈ R^{n × (state_dim + action_dim)}  — [состояние | действие]</span>
+<span class="sd">    Выход: q ∈ R^n                                — Q-значение на сэмпл</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">x_t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">X</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">s</span>   <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">]</span>
+            <span class="n">a</span>   <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">:]</span>
+            <span class="n">q</span>   <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">q</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">q</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+</code></pre></div>
+
+<p>Вектор признаков: <code>[temperature, filler_frac, viscosity, density, level, heat_input, flow_input]</code>.</p>
+<p>SHAP признаков состояния отвечает: «была ли эта ситуация благоприятной?»
+SHAP признаков действия отвечает: «было ли это действие правильно выбрано для данного состояния?»</p>
+<p><strong>Ожидаемый паттерн для хорошо обученного CQL:</strong> переменные состояния вблизи уставных значений → положительный SHAP (благоприятная ситуация → высокое Q). Если SHAP признаков действия близок к нулю независимо от величины действия — Q-функция игнорирует действие, признак коллапса Q-функции.</p>
+<h3>Уровень 2: SHAP политики — почему агент выбирает это действие?</h3>
+<p>Объясняем каждое измерение действия отдельно (SHAP требует скалярного выхода):</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">PolicySingleOutputWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    action_idx = 0 → heat_input</span>
+<span class="sd">    action_idx = 1 → flow_input</span>
+
+<span class="sd">    Объясняет детерминированное среднее tanh(μ_θ(s)) — не сэмпл,</span>
+<span class="sd">    поэтому оценки SHAP стабильны между вызовами.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">S</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">s_t</span>     <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">S</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">mean</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">_dist</span><span class="p">(</span><span class="n">s_t</span><span class="p">)</span>
+            <span class="n">action</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tanh</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">action</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">action_idx</span><span class="p">]</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+</code></pre></div>
+
+<p><strong>Ожидаемый паттерн:</strong> <code>heat_input</code> управляется главным образом отклонением <code>temperature</code> от уставного значения; <code>flow_input</code> — отклонением <code>filler_frac</code>. Если <code>level</code> имеет высокий SHAP для <code>flow_input</code>, политика научилась, что расход влияет на уровень — физически корректно и признак того, что агент усвоил интегрирующую динамику.</p>
+<h3>Уровень 3: SHAP динамики — почему модель предсказывает это следующее состояние?</h3>
+<p>Объясняем три выходных измерения: <code>next_temperature</code> (0), <code>next_filler_frac</code> (1), <code>next_level</code> (4):</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">DynamicsSingleOutputWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Объясняет предсказание среднего по ансамблю для одного измерения состояния.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">s</span>     <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">]</span>
+            <span class="n">a</span>     <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">:]</span>
+            <span class="n">s_next</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">s_next</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_idx</span><span class="p">]</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+</code></pre></div>
+
+<p><strong>Проверка физического здравого смысла:</strong> <code>heat_input</code> должен иметь положительный средний SHAP для <code>next_temperature</code>; <code>flow_input</code> — для <code>next_filler_frac</code>. Это следует из динамики первого порядка и должно выполняться для любой физически разумной модели. При нарушении — модель динамики выучила физически невозможную зависимость в некоторой области данных. Красный флаг перед развёртыванием.</p>
+<hr />
+<h2>Класс Explainer</h2>
+<p><code>OfflineRLExplainer</code> управляет построением фонового датасета и вычислением SHAP для всех трёх уровней:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">OfflineRLExplainer</span><span class="p">:</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">,</span> <span class="n">ensemble</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span>
+                 <span class="n">s_mean</span><span class="p">,</span> <span class="n">s_std</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">n_background</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+        <span class="c1"># Фон = репрезентативная выборка из офлайн-датасета</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">]),</span> <span class="n">size</span><span class="o">=</span><span class="n">n_background</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span>  <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bg_sa</span>      <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
+            <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Фон определяет $\phi_0$ — средний выход модели. Использование офлайн-датасета означает: SHAP отвечает на вопрос «чем этот переход отличается от типичного наблюдённого?»</p>
+<div class="codehilite"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">explainer</span><span class="o">.</span><span class="n">explain_all</span><span class="p">(</span>
+    <span class="n">n_explain</span>    <span class="o">=</span> <span class="mi">150</span><span class="p">,</span>   <span class="c1"># экземпляры для объяснения</span>
+    <span class="n">n_background</span> <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>    <span class="c1"># размер фонового датасета</span>
+    <span class="n">n_samples</span>    <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>    <span class="c1"># коалиций SHAP на экземпляр</span>
+<span class="p">)</span>
+<span class="c1"># ключи results: &#39;states&#39;, &#39;actions&#39;, &#39;q_shap&#39;,</span>
+<span class="c1">#                &#39;policy_shap&#39;, &#39;dynamics_shap&#39;, &#39;q_base&#39;</span>
+</code></pre></div>
+
+<p><code>n_samples</code> управляет качеством аппроксимации. При 80 стандартная ошибка ~0.005 на нормированных выходах — достаточно для ранжирования признаков. При 500 — качество для публикаций, но в 6 раз медленнее.</p>
+<hr />
+<h2>Визуализация</h2>
+<h3>Сводный график (Q-функция)</h3>
+<p>График «рой пчёл» (beeswarm): каждая точка — один экземпляр, цвет — значение признака (синий=низкое, красный=высокое), ось X — SHAP-значение.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">plot_q_summary</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
+               <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_q_summary.png&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Паттерны для чтения:
+- <strong>Широкий горизонтальный разброс</strong> → признак имеет переменный эффект
+- <strong>Красные точки стабильно правее синих</strong> → монотонная зависимость
+- <strong>Смешанные цвета</strong> → нелинейная или зависимая от взаимодействий связь</p>
+<h3>Столбчатые диаграммы (политика и динамика)</h3>
+<p>Среднее |SHAP| по признакам — отвечает на «какие признаки важнее всего?»</p>
+<div class="codehilite"><pre><span></span><code><span class="n">plot_policy_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;policy_shap&#39;</span><span class="p">],</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
+                <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_policy_bar.png&#39;</span><span class="p">)</span>
+
+<span class="n">plot_dynamics_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;dynamics_shap&#39;</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
+                  <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_dynamics_bar.png&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>Force plot: один экземпляр</h3>
+<p>Наиболее операционно полезная визуализация. Для одного временного шага показывает вклад каждого признака как водопад от базового уровня до итогового Q-значения:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">best</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">q_vals</span><span class="p">))</span>   <span class="c1"># экземпляр с наибольшим Q</span>
+<span class="n">plot_force_single</span><span class="p">(</span>
+    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][</span><span class="n">best</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
+    <span class="n">q_value</span><span class="o">=</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">],</span> <span class="n">q_base</span><span class="o">=</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_base&#39;</span><span class="p">],</span>
+    <span class="n">instance_label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;Highest-Q instance (Q=</span><span class="si">{</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">]</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">)&#39;</span><span class="p">,</span>
+    <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_force_best.png&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Оператор использует этот график для ответа: «почему агент оценил этот момент как высокоценный?» Если ответ — «температура у уставного значения, уровень стабилен» — разумно. Если «вязкость необычно низкая», когда уставная точка по температуре — подозрительная корреляция для расследования.</p>
+<h3>График зависимости: взаимодействия</h3>
+<p>SHAP признака A против его сырого значения, окрашенный по признаку B — выявляет эффекты взаимодействия:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">plot_shap_dependence</span><span class="p">(</span>
+    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][:,</span> <span class="p">:</span><span class="nb">len</span><span class="p">(</span><span class="n">STATE_NAMES</span><span class="p">)],</span>
+    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">],</span>
+    <span class="n">feature_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>       <span class="c1"># temperature</span>
+    <span class="n">interaction_idx</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>   <span class="c1"># окрашен по filler_frac</span>
+    <span class="n">feature_names</span><span class="o">=</span><span class="n">STATE_NAMES</span><span class="p">,</span>
+    <span class="n">title</span><span class="o">=</span><span class="s1">&#39;Q-SHAP: влияние температуры (окрашено по filler_frac)&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Если SHAP температуры систематически разделяется по цвету наполнителя — есть взаимодействие: реакция Q-функции на температуру зависит от доли наполнителя. Для физически-информированного агента это ожидаемо — вязкость нелинейно зависит от обеих переменных.</p>
+<hr />
+<h2>Проверка согласованности</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">metrics</span> <span class="o">=</span> <span class="n">check_explanation_consistency</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+<span class="n">print_consistency_report</span><span class="p">(</span><span class="n">metrics</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Ожидаемый вывод:</p>
+<div class="codehilite"><pre><span></span><code>  Q ↔ policy rank correlation  : 0.71  ✓ согласованы
+  heat_input → next_temperature: SHAP=+0.0412  ✓ положительный (верно)
+  flow_input → next_filler     : SHAP=+0.0387  ✓ положительный (верно)
+</code></pre></div>
+
+<p><strong>Ранговая корреляция Спирмена Q-политика $\rho$:</strong> ранжирует признаки состояния по среднему |SHAP| в Q-функции и в политике. $\rho &gt; 0.6$ означает, что критик и актор обращают внимание на одни и те же признаки. $\rho &lt; 0.3$ указывает на коллапс политики — актор игнорирует большую часть состояния, которое важно критику. Характерно при слишком большом $\alpha$ в CQL.</p>
+<p><strong>Проверки знака физики:</strong> SHAP <code>heat_input</code> → <code>next_temperature</code> должен быть положительным; <code>flow_input</code> → <code>next_filler_frac</code> — тоже. Нарушение указывает на то, что модель динамики выучила физически инвертированную зависимость в некоторой области данных — характерно при очень разреженном покрытии вблизи границ.</p>
+<hr />
+<h2>SHAP в производстве: практические соображения</h2>
+<p><strong>Вычислительная стоимость.</strong> KernelExplainer делает $n_\text{explain} \times n_\text{samples} \times n_\text{background}$ обращений к модели. Для 150 × 80 × 80 = 960,000 вызовов на CPU это занимает минуты. Практическая стратегия: запускать офлайн перед развёртыванием на отложенной валидационной выборке; ежемесячно перезапускать на свежих эксплуатационных данных для обнаружения дрейфа распределения.</p>
+<p><strong>Выбор фонового датасета</strong> — важнейший гиперпараметр. Полный датасет в качестве фона отвечает «отличие от типичной работы». Фон из зоны ограничений отвечает «что отличает приближение к нарушению от типичного приближения» — полезно для диагностики, почему агент приближается к границам.</p>
+<p><strong>Физические единицы.</strong> Состояния нормированы. Для коммуникации с операторами:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Перевод SHAP обратно в физические единицы</span>
+<span class="n">shap_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][:,</span> <span class="p">:</span><span class="n">S</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span>
+<span class="c1"># SHAP 0.04 на нормированной температуре = 0.04 × σ_T физических градусов</span>
+</code></pre></div>
+
+<hr />
+<h2>Что SHAP не может сказать</h2>
+<p><strong>SHAP ≠ причинно-следственная связь.</strong> Высокий SHAP для <code>viscosity</code> означает, что модель использует вязкость как предиктор, а не что вязкость причинно влияет на Q-значение. Если вязкость скоррелирована с температурой (так и есть, через нелинейную зависимость), SHAP может разделить «заслугу» между ними способами, не совпадающими с физической интуицией.</p>
+<p><strong>SHAP-значения зависят от фона.</strong> Признак может иметь высокий SHAP относительно одного фона и низкий — относительно другого. При сравнении SHAP-анализов между запусками держите фон фиксированным.</p>
+<p><strong>Временна́я структура теряется.</strong> KernelExplainer объясняет каждый экземпляр независимо. Для интегрирующих состояний вроде уровня логика агента зависит от истории траектории. Одношаговые SHAP не могут отразить эту временну́ю зависимость.</p>
+<p><strong>SHAP объясняет модель, а не её правильность.</strong> Если Q-функция переоценивает в некоторой области (известный режим отказа Offline RL), SHAP будет добросовестно объяснять эту переоценку. Проверки согласованности позволяют обнаружить некоторые режимы отказа, но SHAP не заменяет метрики оценки из главы 7.</p>
+<hr />
+<h2>За пределами SHAP: Causal AI в Offline RL</h2>
+<p>SHAP даёт <em>атрибуцию</em> — какие входы модель использует для предсказания. Другое направление исследований ставит вопрос: можно ли заставить агентов Offline RL рассуждать в терминах <em>причины и следствия</em>, чтобы они лучше обобщали и не опирались на ложные корреляции?</p>
+<p><strong>Зачем причинность в Offline RL.</strong> Офлайн-данные наблюдательные: мы видим $(s, a, s', r)$ при поведенческой политике, но не знаем, что было бы при другом действии. Обычные модельные методы учат переходы по корреляциям; при сдвиге распределения или при наличии смешивающих факторов (независимые переменные, влияющие и на действие, и на следующее состояние) такие модели могут давать сбой. Причинный подход стремится отделить истинные причинные влияния от ложных — например, «дождь → дворники» и «дождь → торможение» коррелируют, но только одно из них — прямая причина другого.</p>
+<p><strong>Causal RL на практике.</strong> В последних работах рассматриваются:</p>
+<ul>
+<li><strong>Причинные мировые модели.</strong> Вместо одного чёрного ящика $\hat{s}' = f(s, a)$ алгоритмы вроде FOCUS учат <em>причинную структуру</em> над переменными состояния (какие факторы состояния причинно влияют на какие следующие). Теория показывает, что такая структура может улучшать границы обобщения в модельном Offline RL; эксперименты — более устойчивое поведение при изменении среды или распределения данных.</li>
+<li><strong>Устранение смешивания (deconfounding).</strong> Когда данные смешаны скрытой переменной (например, скрытый фактор влияет и на действие, и на исход), do-исчисление и латентные причинные модели переходов позволяют безопасно комбинировать офлайн-наблюдательные данные с ограниченными онлайн-интервенционными данными.</li>
+<li><strong>Обзоры и таксономия.</strong> Causal RL часто делят на: причинное представление (representation learning), контрафактная оптимизация политики, <em>офлайн</em> causal RL, причинный перенос и причинная объяснимость. Последнее напрямую связано с этой главой: объяснения, отражающие причинно-следственную структуру, проще доверять и отлаживать.</li>
+</ul>
+<p><strong>Ресурсы.</strong> Обзор Deng et al. (2023) даёт единую картину causal RL и включает раздел об офлайн/батчевых настройках. Статья FOCUS (Zhang et al.) — конкретный пример причинных мировых моделей для модельного Offline RL. Связь off-policy оценки с причинным выводом (оценка эффекта вмешательства) освещена в литературе по batch RL и causal inference (например, важностное взвешивание и inverse propensity scoring). Ссылки приведены ниже.</p>
+<p><strong>Игрушечный пример кода.</strong> Минимальный скрипт показывает, почему предикторы, опирающиеся на корреляции, могут ошибаться при интервенции. Истинная динамика: $\text{next_s1} = 0{,}8\,s_1 + 0{,}2\,a$ (причинные родители: $s_1$, $a$). Добавляем «мешающую» переменную $z = s_1 + \text{шум}$ — она коррелирует с $s_1$, но не является причиной next_s1. «Корреляционная» модель предсказывает next_s1 по $(s_2, z, a)$ (не видит $s_1$, использует $z$ как прокси). «Причинная» модель использует только $(s_1, a)$. Обе хорошо подходят на обучающей выборке. При <em>интервенции</em> задаём $z=0{,}9$, $s_1=0{,}2$, $a=0{,}5$: истинное next_s1 = $0{,}26$, но корреляционная модель даёт завышенный прогноз (из-за $z$); причинная — $0{,}26$. Запуск: <code>python code/chapter8_causal_toy.py</code>. Идея в коде:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Истинная динамика (неизвестна обучающемуся): next_s1 = 0.8*s1 + 0.2*a</span>
+<span class="c1"># Мешающая z = s1 + шум — коррелирует с s1, не причина next_s1</span>
+<span class="c1"># Корреляционная модель: next_s1 по (s2, z, a)</span>
+<span class="c1"># Причинная модель:       next_s1 по (s1, a)</span>
+<span class="c1"># Интервенция: s1=0.2, z=0.9, a=0.5 → истинное next_s1=0.26</span>
+<span class="c1">#   Корреляционная (видит z=0.9, не видит s1) → ~0.7 (ошибка)</span>
+<span class="c1">#   Причинная (видит s1=0.2, a=0.5)           → 0.26 (верно)</span>
+</code></pre></div>
+
+<blockquote>
+<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8_causal_toy.py"><code>chapter8_causal_toy.py</code></a></p>
+</blockquote>
+<hr />
+<h2>Итог</h2>
+<p>Три взаимодополняющих SHAP-объяснения для обученного агента Offline RL:</p>
+<table>
+<thead>
+<tr>
+<th>Уровень</th>
+<th>Модель</th>
+<th>Вопрос</th>
+<th>Входное пространство</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SHAP Q-функции</td>
+<td>Критик $Q(s,a)$</td>
+<td>Почему это действие ценно здесь?</td>
+<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+</tr>
+<tr>
+<td>SHAP политики</td>
+<td>Актор $\pi(s)$</td>
+<td>Почему было выбрано это действие?</td>
+<td>$s \in \mathbb{R}^S$</td>
+</tr>
+<tr>
+<td>SHAP динамики</td>
+<td>$\hat{f}(s,a)$</td>
+<td>Почему предсказано именно это следующее состояние?</td>
+<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+</tr>
+</tbody>
+</table>
+<p>Проверка согласованности — ранговая корреляция Спирмена Q-политика и проверки знака физики — обеспечивает автоматическую верификацию взаимной когерентности и физической обоснованности трёх объяснений.</p>
+<p>Объяснимость на основе SHAP — не замена оценке (метрики DA и частоты нарушений из главы 7), соблюдению ограничений (глава 6) или аккуратному моделированию динамики (глава 5). Это слой прозрачности, делающий эти компоненты поддающимися аудиту.</p>
+<p>Глава 9 завершает книгу широким взглядом: что область достигла, куда движется, и какие открытые проблемы остаются нерешёнными.</p>
+<hr />
+<h2>Приложение 8.А: Выбор между вариантами SHAP</h2>
+<table>
+<thead>
+<tr>
+<th>Explainer</th>
+<th>Лучше всего для</th>
+<th>Скорость</th>
+<th>Примечания</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KernelExplainer</code></td>
+<td>Любой чёрный ящик</td>
+<td>Медленно</td>
+<td>Используется в главе — единообразен для всех типов моделей</td>
+</tr>
+<tr>
+<td><code>DeepExplainer</code></td>
+<td>PyTorch / TF сети</td>
+<td>Быстро</td>
+<td>Использует backprop; менее точен вблизи насыщения tanh</td>
+</tr>
+<tr>
+<td><code>GradientExplainer</code></td>
+<td>Дифференцируемые сети</td>
+<td>Средне</td>
+<td>Градиент × вход; быстро, но шумно</td>
+</tr>
+<tr>
+<td><code>TreeExplainer</code></td>
+<td>XGBoost, RF</td>
+<td>Очень быстро</td>
+<td>Точный SHAP; нерелевантен для нейронных политик</td>
+</tr>
+<tr>
+<td><code>LinearExplainer</code></td>
+<td>Линейные модели</td>
+<td>Мгновенно</td>
+<td>Точный SHAP; используйте, если политика дистиллирована в линейную модель</td>
+</tr>
+</tbody>
+</table>
+<p>Для быстрых пошаговых объяснений оператору в развёрнутой системе: дистиллируйте политику в мелкое дерево <code>DecisionTreeRegressor</code> и используйте <code>TreeExplainer</code>. Дистилляция теряет точность, но делает каждое решение объяснимым за &lt;1 мс.</p>
+<hr />
+<h2>Ссылки</h2>
+<ul>
+<li>Lundberg, S.M., &amp; Lee, S.I. (2017). <em>A Unified Approach to Interpreting Model Predictions.</em> NeurIPS. <a href="https://arxiv.org/abs/1705.07874">arXiv:1705.07874</a>.</li>
+<li>Lundberg, S.M., Erion, G., Chen, H. et al. (2020). <em>From Local Explanations to Global Understanding with Explainable AI for Trees.</em> Nature Machine Intelligence. <a href="https://arxiv.org/abs/1905.04610">arXiv:1905.04610</a>.</li>
+<li>Shapley, L.S. (1953). <em>A Value for n-Person Games.</em> In Contributions to the Theory of Games.</li>
+<li>Ribeiro, M.T., Singh, S., &amp; Guestrin, C. (2016). <em>"Why Should I Trust You?": Explaining the Predictions of Any Classifier.</em> KDD. <a href="https://arxiv.org/abs/1602.04938">arXiv:1602.04938</a>.</li>
+<li>Molnar, C. (2022). <em><a href="https://interpretable-ml.github.io/">Interpretable Machine Learning</a>.</em> 2nd ed.</li>
+<li>Doshi-Velez, F., &amp; Kim, B. (2017). <em>Towards a Rigorous Science of Interpretable Machine Learning.</em> <a href="https://arxiv.org/abs/1702.08608">arXiv:1702.08608</a>.</li>
+<li>Deng, Z., Jiang, J., Long, G., &amp; Zhang, C. (2023). <em>Causal Reinforcement Learning: A Survey.</em> TMLR. <a href="https://arxiv.org/abs/2307.01452">arXiv:2307.01452</a>.</li>
+<li>Zhang, Y., et al. (2022). <em>Offline Model-Based Reinforcement Learning with Causal Structure.</em> Front. Comput. Sci. <a href="https://arxiv.org/abs/2206.01474">arXiv:2206.01474</a> (FOCUS).</li>
+<li>Buesing, L., et al. (2020). <em>Woulda, Coulda, Shoulda: Counterfactually-Guided Policy Search.</em> ICLR. <a href="https://arxiv.org/abs/2006.02579">arXiv:2006.02579</a> — связь batch RL и причинного вывода.</li>
+</ul></main>
+<nav class="chapter-nav">
+<a href="/offline-rl-book/ru/chapter9.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Промышленные применения</span></a>
+    <a href="/offline-rl-book/ru/chapter11.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Заключение и перспективы</span></a>
+</nav>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+  </div>
+</footer>
+</body>
+</html>

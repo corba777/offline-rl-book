@@ -1,450 +1,179 @@
 ---
 layout: default
-title: "Chapter 6: Physics-Informed Offline RL"
+title: "Chapter 6: Decision Transformers"
 lang: en
-ru_url: /offline-rl-book/ru/chapter6/
+ru_url: /ru/chapter6/
 prev_chapter:
   url: /en/chapter5/
-  title: "Model-Based Offline RL (MOPO, MOReL)"
+  title: "Policy-Constraint and Actor-Critic (TD3+BC, AWAC)"
 next_chapter:
   url: /en/chapter7/
-  title: "Industrial Applications"
+  title: "Model-Based Offline RL (MOPO, MOReL)"
 permalink: "/offline-rl-book/en/chapter6/"
 ---
 
-# Chapter 6: Physics-Informed Offline RL
+# Chapter 6: Decision Transformers
 
-> *"A black-box model that fits the data perfectly inside the training distribution is still useless if it predicts that energy is not conserved outside it."*
-
----
-
-## Why Physics?
-
-Chapters 3–5 treated the world as a black box: we fed in states and actions, observed next states and rewards, and let neural networks figure out the rest. For benchmark tasks like MuJoCo locomotion this is fine — the environment is a simulation, data is plentiful, and there are no hard physical constraints that must hold.
-
-Industrial processes are different. Three things distinguish them:
-
-**Data is scarce and narrow.** A manufacturing line runs in a small region of its theoretical operating envelope — the operator keeps it there deliberately. An offline dataset from six months of normal operation may contain almost no examples of the process near its physical limits. Any model that tries to reason about those regions is extrapolating.
-
-**Physical laws are partially known.** For most industrial systems, engineers know a great deal: conservation of mass and energy, thermodynamic relationships, transport phenomena, first-order dynamics. This knowledge is imperfect (real systems have unmeasured disturbances, aging equipment, composition variation) but it is not zero. Ignoring it wastes a free source of information.
-
-**Violations of physics are costly.** A policy that violates a mass balance might command an impossible setpoint. A model that predicts temperature decreasing when heat is added is not just inaccurate — it will produce a control policy that actively damages the process.
-
-Physics-informed offline RL exploits known structure in three places:
-
-1. **Reward shaping** — encode physical constraints as soft penalties in the reward signal
-2. **Hybrid dynamics model** — replace the pure black-box ensemble with a model that respects known physics exactly and learns the unknown residual
-3. **Constraint-based policy** — embed hard constraints directly into policy optimization (brief treatment, as this overlaps with safe RL)
+> *"What if we never computed a Bellman backup? Just ask: given this history and this desired return, what action would a good agent take?"*
 
 ---
 
-## Part I: Physics as Reward Shaping
+## A Different Paradigm
 
-### The Idea
+Chapters 2–5 all shared the same backbone: a **value function** (Q or V) and a **policy**, trained with Bellman backups or policy gradients. The central challenge was extrapolation error — the value function is wrong for OOD actions — and we addressed it with pessimism (CQL, IQL) or policy constraints (TD3+BC, AWAC).
 
-The simplest way to use physics: add penalty terms to the reward whenever the system violates known constraints. This works with *any* offline RL algorithm — CQL, IQL, MOPO — without changing the algorithm itself.
+**Decision Transformer (DT)** — Chen et al., NeurIPS 2021 — takes a different view. It treats **offline RL as sequence modeling**: given a trajectory prefix (past states, actions, and a summary of future return), predict the next action. There is **no Q-function**, **no Bellman backup**, and **no policy gradient**. The "policy" is the conditional distribution of actions given context; training is **supervised learning** on sequences from the dataset.
 
-For a process with state $s = (x_1, \ldots, x_n)$ and known constraint $g(s) \leq 0$:
-
-$$\tilde{r}(s, a, s') = r(s, a) - \lambda \cdot \max\bigl(0,\ g(s')\bigr)$$
-
-The $\max(0, \cdot)$ activates the penalty only when the constraint is violated; inside the feasible region it contributes nothing. $\lambda$ controls the trade-off between reward maximization and constraint satisfaction.
-
-### Types of Physical Constraints
-
-**Monotone relationships.** Many physical relationships are guaranteed to be monotone. Viscosity of a liquid decreases with temperature (for most fluids in normal operating ranges). Conversion in a reactor increases with residence time up to some limit. If the learned dynamics model predicts the wrong sign, it is physically wrong.
-
-$$g_{mono}(s, s') = \max\Bigl(0,\ \text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\Bigr)$$
-
-**Conservation laws.** Mass and energy must balance. For a mixing process with input flows $q_{in}$ and output flow $q_{out}$ and a tank of volume $V$:
-
-$$\frac{dV}{dt} = q_{in} - q_{out}$$
-
-If a discrete-time model predicts $V_{t+1}$ inconsistent with this, the violation magnitude is:
-
-$$g_{mass}(s_t, s_{t+1}) = \bigl| V_{t+1} - V_t - \Delta t (q_{in,t} - q_{out,t}) \bigr| - \delta$$
-
-where $\delta$ is a tolerance for measurement noise and unmodeled flows.
-
-**Feasibility bounds.** Physical state variables have hard limits from thermodynamics, equipment ratings, or safety considerations. Temperature cannot exceed the boiling point of the medium. Concentration cannot be negative. A valve position is in $[0, 1]$.
-
-$$g_{bounds}(s) = \sum_i \max(0,\ s_i - s_i^{max}) + \max(0,\ s_i^{min} - s_i)$$
-
-### Implementation
-
-> 📄 Full code: [`physics_informed.py`](https://github.com/corba777/offline-rl-book/blob/main/code/physics_informed.py)
-
-```python
-class PhysicsRewardWrapper:
-    """
-    Wraps any reward function with physics-based penalty terms.
-
-    Constraints are callables g(state, action, next_state) -> float,
-    returning a non-negative violation magnitude (0 = constraint satisfied).
-
-    Usage:
-        reward_fn = PhysicsRewardWrapper(
-            base_reward=my_reward,
-            constraints=[mass_balance_constraint, temperature_bound],
-            lambdas=[10.0, 5.0],
-        )
-        r_phys = reward_fn(state, action, next_state)
-    """
-
-    def __init__(self, base_reward, constraints, lambdas):
-        assert len(constraints) == len(lambdas)
-        self.base_reward = base_reward
-        self.constraints = constraints
-        self.lambdas     = lambdas
-
-    def __call__(self,
-                 state:      torch.Tensor,
-                 action:     torch.Tensor,
-                 next_state: torch.Tensor) -> torch.Tensor:
-        r = self.base_reward(state, action, next_state)
-        for g, lam in zip(self.constraints, self.lambdas):
-            violation = g(state, action, next_state)        # (batch,) >= 0
-            r = r - lam * violation
-        return r
-```
-
-**Example constraint — first-order dynamics consistency:**
-
-A first-order process with known time constant $\tau$ and gain $K$ satisfies:
-
-$$x_{t+1} \approx x_t + \frac{\Delta t}{\tau}(K \cdot u_t - x_t)$$
-
-If the learned model's prediction deviates significantly from this, the deviation is a constraint violation:
-
-```python
-def first_order_consistency(state, action, next_state,
-                             tau=10.0, K=0.8, dt=1.0, tol=0.05):
-    """
-    Physics penalty: predicted next state should be consistent with
-    first-order dynamics x_{t+1} ≈ x_t + dt/tau * (K*u - x_t).
-    """
-    x    = state[:, 0]    # process variable
-    u    = action[:, 0]   # control input
-    x_phys = x + (dt / tau) * (K * u - x)
-    x_pred = next_state[:, 0]
-    violation = torch.clamp(torch.abs(x_pred - x_phys) - tol, min=0.0)
-    return violation
-```
-
-### Choosing $\lambda$
-
-The penalty weight $\lambda$ has the same role as $\alpha$ in CQL: too small and violations persist; too large and the policy becomes overly conservative, ignoring the reward signal.
-
-A practical calibration: compute the typical base reward magnitude $\bar{r}$ on the dataset, then set $\lambda$ so that a typical violation (say, 5% mass balance error) costs about 20–50% of $\bar{r}$. This makes the constraint "expensive but not catastrophic."
-
-```python
-# Calibrate lambda from dataset statistics
-r_mean = np.abs(dataset['rewards']).mean()
-typical_violation = 0.05   # expected violation magnitude in the region of interest
-target_penalty_fraction = 0.3   # want penalty ≈ 30% of mean reward
-
-lam = (target_penalty_fraction * r_mean) / typical_violation
-print(f"Calibrated lambda = {lam:.2f}")
-```
+This sidesteps extrapolation error in a structural way: the model never evaluates $\max_{a'} Q(s', a')$ over OOD actions, because there is no Q. It only ever predicts actions conditioned on inputs that appear in the data (state and return-to-go sequences). The tradeoff is that long-horizon credit assignment is learned implicitly from the data, not from TD; and the choice of conditioning (e.g. return-to-go) matters a lot.
 
 ---
 
-## Part II: Hybrid Dynamics Models
+## The Idea
 
-### The Limitation of Pure Black-Box Ensembles
+In standard RL we learn $Q(s,a)$ or $\pi(a|s)$ and improve them with backups or gradients. In DT we learn a **conditional sequence model**:
 
-In Chapter 5, the dynamics ensemble is a pure neural network: it learns $\hat{T}(s' | s, a)$ entirely from data. This works well when:
-- The dataset covers the state-action space densely
-- The model is evaluated near the training distribution
+$$\pi(a_t \mid s_{1:t}, a_{1:t-1}, R_{1:t})$$
 
-Outside the data support, a pure black-box model will extrapolate in whatever direction its weights happen to point — which often violates physics. The epistemic uncertainty from ensemble disagreement partially guards against this, but it cannot distinguish "uncertain because data is sparse" from "uncertain because the model is physically wrong."
+where $R_t$ is the **return-to-go** at time $t$: the sum of rewards from $t$ onward in the trajectory, $R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$. So the model is conditioned on:
 
-A **hybrid model** splits the prediction into two parts:
+1. **Past states** $s_1, \ldots, s_t$
+2. **Past actions** $a_1, \ldots, a_{t-1}$
+3. **Return-to-go** $R_1, \ldots, R_t$ (the desired or observed cumulative future reward from each step)
 
-$$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{known physics}} + \underbrace{f_{NN}(s, a; \theta)}_{\text{learned residual}}$$
+At **test time**, we choose a **target return** $R^*$ (e.g. the 90th percentile of returns in the dataset) and feed the model the same trajectory prefix plus $R^*$ as the current return-to-go. The model then generates actions that, in training data, were associated with that high return. No value function, no $\max_a$ — just autoregressive action prediction.
 
-The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong.
+**Why this avoids extrapolation error:** The model is never asked to evaluate an action it hasn't seen in a similar context. It only predicts the next action given (state history, action history, return-to-go). All of these are observed in the dataset. The "policy" is implicit: high return-to-go → actions that led to high return in the data.
 
-### Why This Helps Offline RL
+---
 
-**Better extrapolation.** The physics component provides a principled prediction even where data is sparse. The neural residual is near zero where data is sparse (prior to training, and by regularization), so the hybrid model degrades gracefully to the physics model in OOD regions rather than making wild predictions.
+## Formalization
 
-**Smaller residuals = easier learning.** If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model converges faster and generalizes better.
+### Sequence Representation
 
-**Improved uncertainty calibration.** Ensemble disagreement now measures uncertainty about the *residual*, not the total dynamics. In OOD regions, the physics term is still active; only the residual is uncertain. This gives more meaningful uncertainty estimates.
+Each trajectory in the dataset is a sequence of length $T$:
 
-### Formalization
+$$\tau = (s_1, a_1, r_1, R_1, s_2, a_2, r_2, R_2, \ldots, s_T, a_T, r_T, R_T)$$
 
-Let $f_{phys}(s, a)$ be the known physics model (deterministic, no parameters). The residual network predicts a Gaussian over the residual:
+with $R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$. We can also use **reward-to-go** (undiscounted sum) or normalize $R_t$ (e.g. by the max return in the dataset) for stability.
 
-$$\hat{f}_{NN}(s, a; \theta) = \bigl(\mu_\theta(s, a),\ \sigma^2_\theta(s, a)\bigr)$$
+The model receives **chunks** of length $K$ (context length): for each timestep $t$, the input is
 
-The full prediction is:
+$$(R_{t-K+1}, s_{t-K+1}, a_{t-K+1}, \ldots, R_t, s_t, \_ )$$
 
-$$s' \sim \mathcal{N}\!\bigl(f_{phys}(s, a) + \mu_\theta(s, a),\ \sigma^2_\theta(s, a) \cdot I\bigr)$$
+and the target is $a_t$. So we have three streams: return-to-go, state, action. Each token is embedded; the action at the last position is masked (we predict it).
 
-Training minimizes the NLL of the residual $\delta = s' - f_{phys}(s, a)$:
+### Architecture
 
-$$\mathcal{L}(\theta) = \mathbb{E}_{(s,a,s') \sim \mathcal{D}} \!\left[\frac{\|\delta - \mu_\theta\|^2}{2\sigma^2_\theta} + \frac{1}{2}\log \sigma^2_\theta \right]$$
+DT uses a **GPT-style transformer** with causal masking:
 
-This is identical to training the probabilistic ensemble in Chapter 5, except the *target* is the residual $\delta$ rather than the full $s'$.
+1. **Embeddings:** Each $(R_t, s_t, a_t)$ is projected to a common dimension $d$. For $a_t$ we can use a linear layer (continuous) or an MLP; $s_t$ and $R_t$ are typically linear.
+2. **Positional encoding:** Timestep indices (or learned positions) are added so the model knows the order.
+3. **Causal self-attention:** The model attends only to past tokens (no future leak). So at position $t$, the model sees $R_{1:t}, s_{1:t}, a_{1:t-1}$ and predicts $a_t$.
+4. **Output head:** The last hidden state (at the position of $a_t$) is passed through an MLP that outputs the action (e.g. mean of a Gaussian, or tanh for bounded action).
 
-### Implementation
+### Training Objective
+
+**Supervised learning:** Minimize the negative log-likelihood of the dataset actions under the model:
+
+$$\mathcal{L} = -\mathbb{E}_{\tau \sim \mathcal{D}} \left[ \sum_{t=1}^{T} \log \pi_\theta(a_t \mid R_{1:t}, s_{1:t}, a_{1:t-1}) \right]$$
+
+For continuous actions, the model usually outputs a Gaussian mean (and optionally log-std); the loss is MSE on the mean (or full Gaussian NLL). No rewards in the loss — only states, actions, and return-to-go. The return-to-go is a **label** that tells the model "in this context, we want behavior that achieved this return." So the same state sequence can appear with different $R_t$ in different chunks (from different trajectories), and the model learns to map (context, desired return) → action.
+
+### At Test Time
+
+1. Initialize $R_1 = R^*$ (target return, e.g. high percentile of dataset returns).
+2. Observe $s_1$; feed $(R_1, s_1, \_)$ to the model; get $a_1$.
+3. Execute $a_1$, get $s_2, r_1$. Set $R_2 = R_1 - r_1$ (or $R_2 = (R_1 - r_1) / \gamma$ depending on convention).
+4. Feed $(R_1, s_1, a_1, R_2, s_2, \_)$; get $a_2$. Repeat.
+
+So we **condition on the desired return** and let the model autoregressively generate actions. The return-to-go is updated each step to reflect how much "return budget" is left.
+
+---
+
+## Implementation Sketch
+
+> 📄 Full code: [`decision_transformer.py`](https://github.com/corba777/offline-rl-book/blob/main/code/decision_transformer.py)
+
+### Token Embedding and Model
+
+Chunks are built in `ChunkDataset`: for each (trajectory, timestep $t$) we form padded arrays of length `context_len` for return-to-go, states, and actions (actions up to $t-1$; we predict $a_t$). The model concatenates $(R, s, a)$ per timestep into a single token, embeds with one linear layer, adds positional embedding, and runs a causal transformer:
 
 ```python
-class HybridDynamicsNet(nn.Module):
+class DecisionTransformer(nn.Module):
     """
-    Hybrid dynamics model: physics baseline + learned residual.
-
-    Args:
-        state_dim:   dimensionality of state
-        action_dim:  dimensionality of action
-        physics_fn:  callable (state, action) -> next_state_physics
-                     Must operate on torch.Tensor inputs.
-        hidden_dim:  residual network hidden size
+    GPT-style model. Input: context_len tokens, each (R, s, a) concatenated and embedded.
+    Output: predicted action for the last timestep.
+    Causal mask: each position sees only past.
     """
-
-    def __init__(self, state_dim: int, action_dim: int,
-                 physics_fn,
-                 hidden_dim: int = 128):
+    def __init__(self, state_dim, action_dim, hidden_dim=128, n_heads=4, n_layers=2, context_len=20):
         super().__init__()
-        self.physics_fn = physics_fn
-
-        # Residual network: smaller than a pure black-box model
-        # because residuals are smoother and lower-amplitude
-        inp = state_dim + action_dim
-        self.trunk = nn.Sequential(
-            nn.Linear(inp, hidden_dim), nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim), nn.SiLU(),
+        self.context_len = context_len
+        self.token_dim = 1 + state_dim + action_dim
+        self.embed = nn.Linear(self.token_dim, hidden_dim)
+        self.pos_embed = nn.Parameter(torch.zeros(1, context_len, hidden_dim))
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_dim, nhead=n_heads, dim_feedforward=hidden_dim * 4,
+            dropout=0.1, activation='relu', batch_first=True, norm_first=False,
         )
-        self.mean_head    = nn.Linear(hidden_dim, state_dim)
-        self.log_var_head = nn.Linear(hidden_dim, state_dim)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        self.action_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim), nn.Tanh(),
+        )
 
-        # Tighter log_var bounds for residuals (smaller magnitude expected)
-        self.min_log_var = nn.Parameter(-8.0 * torch.ones(state_dim))
-        self.max_log_var = nn.Parameter(-1.0 * torch.ones(state_dim))
+    def _causal_mask(self, L, device):
+        return torch.triu(torch.ones(L, L, device=device) * float('-inf'), diagonal=1)
 
-    def forward(self, state: torch.Tensor,
-                action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Returns (mean_next_state, log_var_residual)."""
-        # Physics prediction (no gradient needed)
-        with torch.no_grad():
-            phys = self.physics_fn(state, action)
-
-        h = self.trunk(torch.cat([state, action], -1))
-        residual_mean = self.mean_head(h)
-        log_var       = self.log_var_head(h)
-        log_var = self.max_log_var - F.softplus(self.max_log_var - log_var)
-        log_var = self.min_log_var + F.softplus(log_var - self.min_log_var)
-
-        # Combine: full prediction = physics + residual
-        return phys + residual_mean, log_var
-
-    def nll_loss(self, state: torch.Tensor, action: torch.Tensor,
-                 next_state: torch.Tensor) -> tuple[torch.Tensor, dict]:
-        """NLL of next_state; target is residual from physics."""
-        mean, log_var = self.forward(state, action)
-        # The target is the full next_state; mean already includes physics
-        var = log_var.exp()
-        nll = 0.5 * (log_var + (next_state - mean).pow(2) / var)
-        loss = nll.sum(-1).mean()
-        bound_reg = 0.01 * (self.max_log_var.sum() - self.min_log_var.sum())
-        return loss + bound_reg, {
-            'nll': loss.item(),
-            'residual_mse': (next_state - mean).pow(2).mean().item(),
-        }
+    def forward(self, R_chunk, S_chunk, A_chunk):
+        B, L, _ = R_chunk.shape
+        tokens = torch.cat([R_chunk, S_chunk, A_chunk], dim=-1)
+        x = self.embed(tokens) + self.pos_embed[:, :L]
+        mask = self._causal_mask(L, x.device)
+        x = self.transformer(x, mask=mask)
+        return self.action_head(x[:, -1])
 ```
 
-**Physics function for a generic first-order process:**
+Training loop: sample a batch from `ChunkDataset`; forward pass; loss = MSE(predicted_a, target_a).
 
-```python
-def first_order_physics(state: torch.Tensor,
-                        action: torch.Tensor,
-                        tau: float = 10.0,
-                        K: float   = 0.8,
-                        dt: float  = 1.0) -> torch.Tensor:
-    """
-    Euler discretization of first-order ODE:
-        dx/dt = (K*u - x) / tau
-    =>  x_{t+1} = x_t + dt/tau * (K*u_t - x_t)
+### Key Design Choices
 
-    For a multi-variable state, apply element-wise with per-variable
-    tau and K (pass as vectors).
-    """
-    return state + (dt / tau) * (K * action[:, :state.shape[1]] - state)
-```
-
-### Building a Hybrid Ensemble
-
-The ensemble from Chapter 5 is straightforwardly extended — each model in the ensemble is a `HybridDynamicsNet` sharing the same `physics_fn`:
-
-```python
-class HybridEnsemble:
-    """
-    Ensemble of hybrid dynamics models sharing the same physics component.
-    Uncertainty = disagreement on the *residual* term across models.
-    """
-
-    def __init__(self, n_models: int, state_dim: int, action_dim: int,
-                 physics_fn, hidden_dim: int = 128,
-                 lr: float = 1e-3, device: str = 'cpu'):
-        self.n_models  = n_models
-        self.device    = device
-        self.models    = [
-            HybridDynamicsNet(state_dim, action_dim, physics_fn, hidden_dim).to(device)
-            for _ in range(n_models)
-        ]
-        self.optimizers = [optim.Adam(m.parameters(), lr=lr) for m in self.models]
-
-    def train_ensemble(self, dataset: dict, n_epochs: int = 50,
-                       batch_size: int = 256, log_every: int = 10):
-        """Bootstrap training — identical structure to Chapter 5 ensemble."""
-        n = len(dataset['states'])
-        s  = torch.FloatTensor(dataset['states']).to(self.device)
-        a  = torch.FloatTensor(dataset['actions']).to(self.device)
-        s2 = torch.FloatTensor(dataset['next_states']).to(self.device)
-
-        for i, (model, opt) in enumerate(zip(self.models, self.optimizers)):
-            idx = torch.randint(0, n, (int(0.8 * n),))
-            loader = DataLoader(TensorDataset(s[idx], a[idx], s2[idx]),
-                                batch_size=batch_size, shuffle=True, drop_last=True)
-            for epoch in range(1, n_epochs + 1):
-                total_nll, nb = 0.0, 0
-                for s_b, a_b, s2_b in loader:
-                    loss, info = model.nll_loss(s_b, a_b, s2_b)
-                    opt.zero_grad(); loss.backward()
-                    nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-                    opt.step()
-                    total_nll += info['nll']; nb += 1
-                if epoch % log_every == 0:
-                    print(f"  HybridModel {i} | epoch {epoch:3d} | "
-                          f"NLL={total_nll/nb:.4f}")
-
-    @torch.no_grad()
-    def predict_with_uncertainty(self, states: torch.Tensor,
-                                  actions: torch.Tensor):
-        """Returns (mean_next_state, epistemic_uncertainty)."""
-        means = [m(states, actions)[0] for m in self.models]
-        means = torch.stack(means, 0)
-        return means.mean(0), means.std(0).norm(dim=-1)
-```
-
-### Comparing Hybrid vs Pure Black-Box
-
-The key diagnostic is **residual magnitude** on the training data. If the physics model is reasonable, residuals should be small and smooth. If residuals are large or structured (have clear patterns), the physics model is missing something important.
-
-```python
-def diagnose_hybrid_model(hybrid_model, dataset, physics_fn, device='cpu'):
-    """
-    Compare physics prediction vs true next_state.
-    Print residual statistics to assess physics model quality.
-    """
-    s  = torch.FloatTensor(dataset['states'][:500]).to(device)
-    a  = torch.FloatTensor(dataset['actions'][:500]).to(device)
-    s2 = torch.FloatTensor(dataset['next_states'][:500]).to(device)
-
-    with torch.no_grad():
-        phys_pred = physics_fn(s, a)
-        residuals = s2 - phys_pred                     # what the NN must learn
-        residual_std = residuals.std(0).cpu().numpy()
-        full_std     = s2.std(0).cpu().numpy()
-
-    coverage = 1.0 - (residual_std / (full_std + 1e-8))
-
-    print("Physics model coverage (fraction of variance explained):")
-    for i, (cov, rs, fs) in enumerate(zip(coverage, residual_std, full_std)):
-        print(f"  State dim {i}: physics covers {cov:.1%}  "
-              f"(residual std={rs:.4f}, total std={fs:.4f})")
-    return coverage
-```
-
-A physics model explaining 70–90% of variance is excellent; the residual model needs to learn only the remaining 10–30%, which requires far less data.
+- **Return normalization:** Scale $R_t$ by the max return in the dataset so that inputs are in a bounded range (e.g. $[0, 1]$).
+- **Context length:** Longer context (e.g. 20–50) lets the model use more history; shorter is faster and may suffice for near-Markov tasks.
+- **Target return $R^*$:** At test time, use a high percentile (e.g. 90th) of returns in the dataset. If you set $R^*$ higher than any trajectory in the data, the model may extrapolate poorly.
 
 ---
 
-## Part III: Constraint-Based Policy (Brief)
+## Limitations
 
-### Hard vs Soft Constraints
+**No explicit credit assignment.** DT learns "what action came next in good trajectories" but does not use Bellman backups. Long-horizon causality is only in the data; the model may not generalize as well as value-based methods when the dataset is small or noisy.
 
-Reward penalties (Part I) are **soft constraints**: the policy *prefers* to avoid violations but can still choose them if the reward benefit is large enough. For safety-critical systems this may be insufficient.
+**Stitching.** Standard DT does not explicitly "stitch" sub-optimal trajectory segments. Value-based methods can combine a good prefix from one trajectory with a good suffix from another via the value function; DT generates autoregressively from a single context. Variants like **Q-learning DT (QDT)** add TD learning to improve credit assignment.
 
-**Hard constraints** guarantee $g(s, a) \leq 0$ at every step. Two common approaches in offline RL:
+**Conditioning sensitivity.** Performance depends on the choice of $R^*$ at test time. If $R^*$ is too low, the model behaves conservatively; if too high, it may hallucinate. Return normalization and percentile-based $R^*$ help but are hyperparameters.
 
-**Projection.** After computing the policy action $a_{raw} = \pi_\theta(s)$, project it onto the feasible set:
-
-$$a_{safe} = \arg\min_{a : g(s,a) \leq 0} \| a - a_{raw} \|^2$$
-
-This is trivial for box constraints (clamp) and for linear constraints (quadratic programming). For complex nonlinear constraints it requires a solver at inference time.
-
-**Lagrangian relaxation.** Augment the objective with constraint multipliers and optimize jointly:
-
-$$\max_{\pi} \min_{\lambda \geq 0}\ \mathbb{E}\bigl[R(\pi)\bigr] - \lambda \cdot \mathbb{E}\bigl[g(s, \pi(s))\bigr]$$
-
-The multiplier $\lambda$ is updated to increase whenever the constraint is violated, making violations increasingly costly. In offline RL this is applied to the offline dataset, not through environment interaction.
-
-For most industrial applications, **soft constraints via reward shaping** (Part I) combined with the KNOWN/UNKNOWN boundary from MOReL (Chapter 5) provide sufficient safety. The hard constraint machinery is warranted when:
-- A constraint violation is irreversible (equipment damage, safety incident)
-- The constraint boundary is precisely known
-- Online projection is computationally feasible
-
----
-
-## Part IV: When Physics Helps Most
-
-Not every offline RL problem benefits equally from physics. The value of physical knowledge depends on three factors:
-
-**Data coverage.** The sparser the dataset, the more physics helps. A dataset covering 20% of the operating envelope leaves 80% where only physics can guide the model.
-
-**Physics accuracy.** A first-principles model that captures 90% of the dynamics is highly valuable. An analytical model that captures only 30% may still cause problems if its errors are systematic (i.e., confidently wrong in a predictable way). Validate the physics model on a held-out subset before trusting it.
-
-**Constraint hardness.** Mass balance and energy conservation are exact (up to measurement error). Empirical correlations (viscosity-temperature-composition) are approximate. Use the former as hard constraints; use the latter as soft penalties or initial guesses for the neural residual.
-
-```
-                    Physics Knowledge Available
-                    None         Partial       Strong
-                   ┌────────────┬─────────────┬──────────────┐
-Data   Sparse      │  Pure BC   │ Reward pen. │ Hybrid model │
-Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
-       Dense       │ CQL / IQL  │ CQL + pen.  │ Hybrid + CQL │
-                   └────────────┴─────────────┴──────────────┘
-```
-
-The bottom-left cell (dense data, no physics) is the D4RL benchmark — where Chapters 3–5 shine. Industrial settings typically live in the top-right: sparse data, partial physics knowledge.
-
----
-
-## Further Directions
-
-**Koopman operator methods.** Nonlinear dynamics become linear in a suitable latent space — the Koopman eigenspace. If this space can be learned or approximated, the dynamics model simplifies enormously: linear prediction, linear uncertainty propagation, and tractable optimal control. Active research area; not yet standardized for offline RL.
-
-**Gaussian Processes.** GPs offer exact uncertainty quantification and naturally incorporate physical structure through kernel design. They are computationally expensive for large datasets but highly effective when data is very scarce (hundreds of transitions rather than thousands).
-
-**Physics-informed neural networks (PINNs).** Instead of a residual model, enforce physics equations as a regularization loss during neural network training. A PINN predicting the wrong sign for a known derivative can be penalized during training. Compatible with any architecture.
-
-**Structured state spaces.** If the physics dictates a specific state-space structure (e.g., a mass-spring-damper Lagrangian system), neural networks can be constrained to architectures that respect this structure (Hamiltonian or Lagrangian neural networks). Very effective when the structural assumption holds; brittle when it doesn't.
+**No theoretical guarantee.** DT does not provide a lower bound or safety guarantee. It is a powerful and flexible sequence model that avoids extrapolation by construction but does not have the same formal guarantees as CQL or MOPO.
 
 ---
 
 ## Summary
 
-| Approach | What changes | When to use |
-|---|---|---|
-| Reward shaping | Reward function | Any algorithm; physical bounds known |
-| Hybrid dynamics | Dynamics model | Partial physics known; sparse data |
-| Projection | Policy output | Box/linear constraints; safety-critical |
-| Lagrangian | Objective | Complex nonlinear constraints |
+| Property | Decision Transformer |
+|---|---|
+| Data required | Trajectories $(s_1, a_1, r_1, \ldots, s_T, a_T, r_T)$ with return-to-go |
+| Training | Supervised learning (maximize log prob of actions given context + RTG) |
+| OOD handling | Structural: no Q, no $\max_a$; only conditional prediction on in-data contexts |
+| Credit assignment | Implicit in the sequence (no TD) |
+| Key hyperparameters | Context length, target return $R^*$, return normalization |
+| Implementation | Transformer (GPT-style, causal mask) |
 
-Physics-informed methods are not a replacement for offline RL algorithms — they are a layer on top. Reward shaping plugs into CQL or IQL without modifying a line of algorithm code. The hybrid model replaces the ensemble in MOPO or MOReL while keeping everything else intact. The combination of a physically grounded dynamics model with a pessimistic offline RL algorithm (MOReL + hybrid ensemble) is the natural architecture for industrial settings where data is sparse but domain knowledge is rich.
+Decision Transformers offer a clean alternative to value-based offline RL: no Bellman backup, no extrapolation over actions, and a single supervised objective. They are well-suited to settings where you have long trajectories, multi-task or diverse data, and existing sequence-model infrastructure. For continuous control with a single task and strong performance guarantees, CQL and IQL (Chapters 3–4) and model-based methods (Chapter 7) remain the default choice.
 
-Chapter 7 works through an industrial case study showing how these pieces fit together in practice.
+Chapter 7 turns to **model-based** offline RL: learning a dynamics model and using it to generate synthetic data with uncertainty-aware penalties (MOPO, MOReL).
 
 ---
 
 ## References
 
-- Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* Expert Systems with Applications. [arXiv:2309.01909](https://arxiv.org/abs/2309.01909).
-- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1811.10561](https://arxiv.org/abs/1811.10561).
-- Liu, Y., & Wang, X. (2021). *Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.* [arXiv:2008.05598](https://arxiv.org/abs/2008.05598).
-- Lusch, B., Kutz, J.N., & Brunton, S.L. (2018). *Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.* Nature Communications. *(Koopman)*
-- García, J., & Fernández, F. (2015). *A Comprehensive Survey on Safe Reinforcement Learning.* JMLR. *(constraint methods)*
-- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
+- Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., & Laskin, M. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
+- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993).
+- Zheng, Q., Zhang, A., & Grover, A. (2022). *Online Decision Transformer.* ICML. [arXiv:2202.05607](https://arxiv.org/abs/2202.05607).

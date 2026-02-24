@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chapter 9: Conclusion and Future Directions</title>
+  <title>Chapter 9: Industrial Applications</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -39,8 +39,6 @@
     th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
     td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
     hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
-    ul{margin-bottom:1.2rem;padding-left:1.5rem}
-    li{margin-bottom:0.4rem}
     .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
     .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
     .chapter-nav a:hover{color:var(--accent)}
@@ -60,188 +58,435 @@
   </div>
 </header>
 <main>
-<h1>Chapter 9: Conclusion and Future Directions</h1>
+<h1>Chapter 9: Industrial Applications</h1>
 <blockquote>
-<p><em>"The goal of offline RL is not to replace online learning — it is to make the knowledge locked in historical data actionable without putting anything at risk."</em></p>
+<p><em>"The gap between a working benchmark result and a working industrial deployment is not a gap in algorithms — it is a gap in understanding the data."</em></p>
 </blockquote>
 <hr />
-<h2>What This Book Built</h2>
-<p>Seven chapters ago we started with a question: can a sequential decision-making agent learn entirely from a fixed log of past behavior, without ever interacting with the environment? The answer is yes — with caveats that turn out to be at least as interesting as the algorithms themselves.</p>
-<p>The caveats are not engineering details. They are structural features of the offline learning problem: the extrapolation gap between what the data covers and what the policy needs to evaluate, the distribution shift between the behavior policy and any better policy, and the fundamental impossibility of testing a policy in the very regions where it is most likely to fail. Every algorithm in this book is a different answer to the same underlying challenge.</p>
-<p><strong>Behavioral cloning</strong> (Chapter 1) answers it by ignoring it: clone the behavior policy and stay exactly where the data is. This works when the behavior policy is good and fails catastrophically when it is not — the compounding error problem. BC is not a bad algorithm; it is an honest one that makes no promises beyond the data it saw.</p>
-<p><strong>Conservative Q-Learning and IQL</strong> (Chapters 3–4) answer it by pessimism in value space: penalize Q-values for actions not supported by the data, or design the value backup to avoid ever querying OOD actions. Both achieve the same goal — keep the policy's effective support inside the data distribution — through different algebraic routes.</p>
-<p><strong>MOPO and MOReL</strong> (Chapter 5) answer it by expanding the data: learn a model of the world, generate synthetic experience, but penalize or hard-terminate transitions where the model is uncertain. Model-based methods trade compute for sample diversity — when the dynamics model is accurate, they outperform model-free methods significantly.</p>
-<p><strong>Physics-informed methods</strong> (Chapter 6) answer it by borrowing structure: replace the unknown parts of the model with known physics, constrain the reward signal to respect physical laws, and enforce hard constraints via Lagrangian duality. This approach is only possible when engineering knowledge exists — but when it does, it is the most data-efficient of all.</p>
-<p><strong>The industrial case study</strong> (Chapter 7) showed these tools composing in a setting where the stakes are real: a five-variable process with integrating dynamics, transport delay, non-uniform data coverage, and hard equipment constraints. No single algorithm dominated. The practical recommendation — CQL+Physics for minimal constraint violations, HybridMOReL when higher reward is needed — reflects not a winner but a complementary structure between model-free constraint enforcement and model-based diversity.</p>
+<h2>From Benchmarks to Industry</h2>
+<p>The preceding six chapters built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on <code>ThermalProcessEnv</code> — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.</p>
+<p>Real industrial processes differ from that environment in every dimension that matters.</p>
+<p><strong>More variables, more coupling.</strong> A realistic coating process has dozens of sensor readings. Even a simplified model has temperature, filler fraction, viscosity, bulk density, and a surge tank level — five variables with physical dependencies between all of them. The level is an integrating state that drifts without active control; viscosity is a nonlinear function of temperature and filler that the agent cannot observe independently of its inputs.</p>
+<p><strong>Non-uniform data coverage.</strong> Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.</p>
+<p><strong>Lag and delay.</strong> Material fed into a coating line takes 30–90 minutes to appear at the quality measurement point. Within the dynamic model, this manifests as a transport delay: the agent's action at time $t$ affects the output at time $t + k$. A pure first-order model ignoring the delay will have systematic prediction errors whenever the feed rate changes.</p>
+<p><strong>Hard physical constraints.</strong> Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.</p>
+<p>This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–8. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.</p>
+<blockquote>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter7.py"><code>chapter7.py</code></a></p>
+</blockquote>
 <hr />
-<h2>What Offline RL Cannot Yet Guarantee</h2>
-<p>Honesty requires naming what this field has not solved.</p>
-<p><strong>Distribution shift at deployment.</strong> Every offline RL algorithm trains a policy $\pi$ assuming the deployed environment matches the training environment. When the process changes — equipment wears, feed composition shifts, ambient conditions differ — the offline-trained policy has no mechanism to detect or adapt. The theoretical guarantees from Chapters 3–6 hold only as long as the test distribution resembles the training distribution. In practice, this is a calendar question: how long until the gap becomes dangerous?</p>
-<p><strong>Reward specification.</strong> Every algorithm in this book assumed the reward function is given. In many industrial settings it is not. Operators have intuitions about what good control looks like, but translating those intuitions into a scalar reward function that correctly weights competing objectives — product quality, energy efficiency, throughput, safety — is a non-trivial engineering task. A misspecified reward produces a policy that optimizes the wrong thing, often in ways that are only apparent after deployment.</p>
-<p><strong>Uncertainty quantification.</strong> Ensemble-based uncertainty (Chapters 5–6) measures epistemic uncertainty about the dynamics model. It does not measure uncertainty about the reward, the constraint specification, or the value of the offline policy itself. A policy with high ensemble-estimated uncertainty in its rollouts may still be perfectly safe if the physical constraints are conservative enough. Conversely, a policy with low uncertainty may violate constraints that were never represented in the training data. Calibrated uncertainty about the whole pipeline remains an open problem.</p>
-<p><strong>Interpretability.</strong> The neural network policies trained in Chapters 1–7 are black boxes. An operator who needs to understand <em>why</em> the policy commanded a particular setpoint at a particular moment cannot interrogate the weights. This limits deployment in regulated industries where decisions must be explainable and auditable.</p>
-<p><strong>Sim-to-real gap for physics models.</strong> The hybrid dynamics models in Chapter 6 assume the physics model and the real process share the same structure, differing only in residuals. When the physics model is structurally wrong — wrong order, wrong coupling topology, wrong conservation laws — the residual network must learn a correction that the physics term actively fights. Detecting and handling structural model mismatch is not yet systematic.</p>
-<hr />
-<h2>Emerging Directions</h2>
-<p>The field is moving fast. The directions below are not exhaustive, but they represent the most active threads as of the time of writing.</p>
-<h3>Decision Transformers and Sequence Models</h3>
-<p><strong>Decision Transformer</strong> (Chen et al., NeurIPS 2021) reframes offline RL as a sequence modeling problem. Rather than learning a Q-function or policy gradient, it trains a causal Transformer to predict the next action given the past trajectory and a desired return-to-go:</p>
-<p>$$a_t = \pi_\theta!\left(R_t,\, s_t,\, a_{t-1},\, \ldots,\, R_1,\, s_1,\, a_1\right)$$</p>
-<p>At inference time you condition on a high target return — "I want cumulative reward $\geq R^*$" — and the model generates actions to achieve it.</p>
-<p>This approach is conceptually elegant: the entire offline RL pipeline reduces to supervised learning on sequences. No Bellman backups, no Q-functions, no explicit pessimism. The model simply learns from the data what sequences of actions lead to high returns and imitates that pattern conditioned on a high target.</p>
-<p>The practical implications are significant. Transformers scale with data and model size in ways that Q-function methods do not. A Decision Transformer trained on a large, diverse dataset generalizes across tasks and environments in a way that a task-specific CQL agent cannot. This is the connection to large language models: the same architecture that learns to predict text from internet data can learn to predict actions from trajectory data.</p>
-<p><strong>Trajectory Transformer</strong> (Janner et al., NeurIPS 2021) pushes this further: model the entire trajectory $(s_1, a_1, r_1, s_2, a_2, r_2, \ldots)$ as a sequence, then use beam search over this sequence to find high-reward trajectories at inference time. This gives planning-like behavior without explicit dynamics learning.</p>
-<p>The limitation of sequence models is the same as BC's: they do not extrapolate beyond the return distribution in the training data. If the training dataset has maximum return $R_{max}$, conditioning on $R &gt; R_{max}$ produces distribution-shifted inputs that the model was never trained on. Several papers (including <strong>QDT</strong> — Yamagata et al., 2023) address this by combining sequence modeling with Q-value guidance.</p>
-<h3>Diffusion Models for Offline RL</h3>
-<p><strong>Diffusion probabilistic models</strong> have emerged as one of the most powerful generative model families, and their application to sequential decision making is an active and productive direction.</p>
-<p>The core observation: learning a policy $\pi(a|s)$ is a conditional generation problem. Diffusion models excel at conditional generation. Why not learn the policy as a diffusion model?</p>
-<h3>Imitation Learning vs. Offline RL: A Necessary Distinction</h3>
-<p>Before examining diffusion models, it is worth clarifying a conceptual boundary that practitioners frequently blur: the difference between <strong>imitation learning (IL)</strong> and <strong>offline RL</strong>.</p>
-<p>Both learn from a fixed dataset of past behavior without online interaction. The difference is in what the dataset contains and what the learner optimizes:</p>
+<h2>The Coating Process</h2>
+<h3>Environment</h3>
+<p>The <code>CoatingProcessEnv</code> models a continuous thermal coating line with five state variables and two control inputs.</p>
+<p><strong>State</strong> $s \in \mathbb{R}^5$ (all normalized to $[0,1]$):</p>
 <table>
 <thead>
 <tr>
-<th></th>
-<th>Imitation Learning</th>
-<th>Offline RL</th>
+<th>Index</th>
+<th>Variable</th>
+<th>Physical meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Dataset requires</td>
-<td>Expert demonstrations only</td>
-<td>Any logged transitions $(s, a, r, s')$</td>
+<td>$s_0$</td>
+<td><code>temperature</code></td>
+<td>Process temperature in the coating zone</td>
 </tr>
 <tr>
-<td>Reward signal</td>
-<td>Not needed — actions are the label</td>
-<td>Required — drives optimization</td>
+<td>$s_1$</td>
+<td><code>filler_fraction</code></td>
+<td>Fraction of filler material in the blend</td>
 </tr>
 <tr>
-<td>Goal</td>
-<td>Reproduce the behavior policy</td>
-<td>Improve <em>beyond</em> the behavior policy</td>
+<td>$s_2$</td>
+<td><code>viscosity</code></td>
+<td>Blend viscosity — nonlinear function of $T$ and filler</td>
 </tr>
 <tr>
-<td>Failure mode</td>
-<td>Compounding error (covariate shift)</td>
-<td>Distribution shift + extrapolation error</td>
+<td>$s_3$</td>
+<td><code>density</code></td>
+<td>Bulk material density</td>
 </tr>
 <tr>
-<td>Key algorithms</td>
-<td>Behavioral Cloning, DAgger, GAIL</td>
-<td>CQL, IQL, MOPO, MOReL</td>
+<td>$s_4$</td>
+<td><code>level</code></td>
+<td>Surge tank fill level — integrating dynamics</td>
 </tr>
 </tbody>
 </table>
-<p>Behavioral cloning (Chapter 1) is the simplest IL algorithm: given expert state-action pairs $(s, a^*)$, train a policy to predict $a^*$ from $s$ by supervised learning. No reward is needed. The cost is compounding error: at test time, the policy visits states slightly different from the training distribution, makes slightly worse predictions, and the errors accumulate over time.</p>
-<p>Offline RL addresses this not by better behavior cloning, but by optimizing for reward — it can in principle surpass the behavior policy by stitching together suboptimal trajectories in ways the original operators never did. This stitching capability requires a reward signal that IL does not have.</p>
-<p><strong>When to use which:</strong> if you have expert demonstrations and care about replicating the behavior exactly (surgical robots, precise manipulation, teaching from a single demonstrator), IL is simpler and often sufficient. If you have heterogeneous historical logs — multiple operators with different strategies, suboptimal episodes, partial demonstrations — offline RL can extract a policy better than any individual demonstrator.</p>
-<p>In practice, the two approaches converge: offline RL with a behavior cloning regularizer (as in IQL and CQL+BC) uses IL as a constraint to stay close to the data distribution while optimizing reward.</p>
-<h3>The Multimodal Action Problem</h3>
-<p>The most important failure mode of behavioral cloning — and the key motivation for Diffusion Policy — is the <strong>multimodal action problem</strong>. Consider training a robot to push a T-shaped block to a target zone. Expert demonstrations show some operators pushing from the left, others from the right. Both are correct.</p>
-<p>A Gaussian policy $\pi_\theta(a|s)$ fits a unimodal distribution over actions. Faced with two valid but opposite strategies, it predicts their mean — push straight into the flat edge of the T-block. The robot fails not because it lacks skill, but because the policy architecture cannot represent two valid answers to the same question.</p>
-<p>$$\text{Gaussian collapses: } \hat{a} = \mathbb{E}[a | s] = \frac{a_{\text{left}} + a_{\text{right}}}{2} \notin {a_{\text{left}}, a_{\text{right}}}$$</p>
-<p>This is not a pathological edge case. In industrial processes, multiple operators develop different control strategies for the same upset condition. A model that averages them may produce a strategy no operator ever used — and for good reason.</p>
-<p>Diffusion models solve this by modeling the full conditional distribution $p(a|s)$ rather than its mean.</p>
-<h3>Diffusion Policy: Architecture and Temporal Horizons</h3>
-<p><strong>Diffusion Policy</strong> (Chi et al., RSS 2023) applies the denoising diffusion framework to action generation. At inference time, the policy starts from pure Gaussian noise in action space and iteratively denoises it conditioned on the current observation:</p>
-<p>$$A^{k-1}_t = \alpha \left( A^k_t - \gamma\, \epsilon_\theta(O_t, A^k_t, k) + \mathcal{N}(0, \sigma^2 I) \right)$$</p>
-<p>Training is supervised: take a clean action sequence $A^0_t$ from the dataset, corrupt it to $A^k_t$ by adding noise at level $k$, and train the network $\epsilon_\theta$ to predict the added noise:</p>
-<p>$$\mathcal{L} = \mathbb{E}_{k, A^0_t, \epsilon}\left[|\epsilon - \epsilon_\theta(O_t, A^k_t, k)|^2\right]$$</p>
-<p>Three temporal design choices distinguish Diffusion Policy from single-step policies:</p>
-<p><strong>Observation horizon $T_o$:</strong> how many past observations the policy receives. With $T_o = 2$, the robot sees the current and previous frame — giving velocity information without explicit state estimation.</p>
-<p><strong>Prediction horizon $T_p$:</strong> how many future action steps the diffusion model outputs in a single denoising pass. Typically $T_p = 16$. Predicting a chunk of the future rather than one step at a time creates temporally coherent action sequences and avoids high-frequency jitter.</p>
-<p><strong>Action horizon $T_a$:</strong> how many of the $T_p$ predicted actions are actually executed before replanning. Typically $T_a = 8$. The policy executes the first half of its plan, re-observes, and generates a new plan. This receding-horizon structure provides robustness: errors in the later part of the prediction are corrected by replanning rather than accumulating.</p>
-<p>For the denoising backbone, the paper proposes two architectures: a 1D temporal convolutional network with FiLM conditioning (scales and shifts hidden activations by learned functions of the observation) as the default workhorse, and a Transformer decoder with cross-attention to observations for tasks with complex temporal structure.</p>
-<p><strong>Diffuser</strong> (Janner et al., ICML 2022) takes the trajectory-level view: model the entire $(s_1, a_1, r_1, s_2, \ldots)$ jointly as a diffusion process, then steer generation toward high-reward trajectories using classifier guidance:</p>
-<p>$$\text{trajectory} \sim p_\theta(\tau) \cdot \exp(\beta \cdot J(\tau))$$</p>
-<p>This is planning without an explicit dynamics model — the diffusion model encodes dynamics implicitly in its learned trajectory distribution.</p>
-<p><strong>Decision Diffuser</strong> (Ajay et al., ICLR 2023) separates return conditioning from trajectory generation, enabling test-time composition: multiple reward functions can be combined by multiplying their conditioning signals during denoising. For industrial applications where the reward trades off energy, quality, and throughput, this allows weight adjustment at deployment without retraining.</p>
-<p>The computational cost of iterative denoising — typically 10–100 forward passes per action — is the main obstacle for fast industrial control loops. Recent work on consistency models and flow matching reduces this to one or a few steps, making diffusion-class policies practically deployable in real-time settings.</p>
-<h3>Diffusion for Offline RL: Toward Scalable Policy Classes</h3>
-<p>The combination of diffusion and Transformer architectures is an active direction, driven by a concrete observation: the denoising network inside a diffusion model does not have to be a U-Net. <strong>Diffusion Transformers (DiT)</strong> (Peebles &amp; Xie, ICCV 2023) replaced the U-Net backbone with a standard Transformer in image generation and demonstrated favorable scaling — larger models trained on more data improve predictably. The natural question for offline RL is whether the same substitution works for policy and planning networks.</p>
-<p>Several lines of work are converging on this:</p>
-<p><strong>Diffusion Q-Learning (DQL)</strong> (Wang et al., ICLR 2023) uses a diffusion model as the policy class inside an actor-critic framework for offline RL. The diffusion policy generates high-quality actions from the data distribution while a Q-function provides guidance toward high-reward regions. On D4RL benchmarks, diffusion-class policies consistently outperform Gaussian policy baselines.</p>
-<p><strong>DTQL</strong> (Chen et al., NeurIPS 2024) addresses the inference cost problem: iterative denoising is too slow for fast control loops. DTQL trains a dual-policy system — a diffusion model for behavior cloning that defines a trust region, and a fast one-step policy for actual deployment. This separation decouples expressiveness from inference speed, a practically important design for industrial applications.</p>
-<p><strong>Reasoning with Latent Diffusion</strong> (Venkatraman et al., ICLR 2024) applies diffusion in the latent space of a world model rather than in action space — combining model-based planning with diffusion's multimodal expressiveness.</p>
-<p>The architectural trend is clear even if a single dominant "DiT for offline RL" paper does not yet exist: Transformer backbones are replacing U-Nets inside diffusion policies, and diffusion policies are replacing Gaussian policies as the expressive policy class of choice for offline RL. Whether this combination scales the way language models do — where a single large model trained on diverse data transfers to new tasks with minimal fine-tuning — is the open empirical question that the next few years will answer.</p>
-<h3>Offline-to-Online: Bridging the Gap</h3>
-<p>A purely offline policy is static by definition. Real deployments need adaptation: the process changes, new operating modes are introduced, constraints are revised. <strong>Offline-to-online RL</strong> initializes from an offline-trained policy and continues training with limited online interaction.</p>
-<p>The challenge: naively fine-tuning an offline policy online causes catastrophic forgetting of the conservative behavior that made the offline policy safe. Methods like <strong>IQL with online fine-tuning</strong> (Kostrikov et al., 2021) and <strong>Cal-QL</strong> (Nakamoto et al., 2023) maintain the offline pessimism during early online training and gradually relax it as the online data accumulates. This is exactly the right structure for industrial deployment: use the offline policy as a safe starting point, then improve it through supervised interaction with explicit safety constraints.</p>
-<h3>Safe Offline RL and Formal Verification</h3>
-<p>The Lagrangian approach of Chapter 6 provides constraint satisfaction in expectation — it minimizes expected violations but does not guarantee zero violations. For safety-critical applications, this is insufficient.</p>
-<p><strong>Conservative Safety Critics</strong> (Le Cleac'h et al., 2023) and <strong>CVPO</strong> (Liu et al., 2022) provide stronger guarantees by training a separate safety Q-function that bounds the probability of constraint violation, not just its expected magnitude. The policy is constrained to keep the safety Q-function value above a threshold, providing a probabilistic safety certificate.</p>
-<p>Formal verification of neural network policies — proving that a policy satisfies a constraint for <em>all</em> states in a given set — remains computationally intractable for large networks. But for the low-dimensional state spaces typical of industrial process control (5–20 variables), recent work on Lyapunov-based verification (Berkenkamp et al., 2017; Chang et al., 2019) makes formal safety certificates increasingly feasible.</p>
-<h3>Large Language Models as Reward Designers</h3>
-<p>The reward specification problem — arguably the hardest unsolved problem in applied offline RL — may be approachable through large language models. Rather than asking an engineer to write a reward function from scratch, one can ask an LLM to translate a natural language description of good control behavior into a mathematical reward function, verify it against example trajectories, and iteratively refine it based on policy performance.</p>
-<p><strong>EUREKA</strong> (Ma et al., 2023) demonstrates this loop: GPT-4 generates reward functions for robotic manipulation tasks, evaluates them on rollouts, and self-improves them over iterations, achieving superhuman performance on tasks where human-designed rewards were suboptimal. Adapting this approach to industrial process control — where the desired behavior is articulable but hard to formalize — is a natural and near-term direction.</p>
+<p><strong>Actions</strong> $a \in [-1,1]^2$:</p>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Action</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$a_0$</td>
+<td><code>heat_input</code></td>
+<td>Heater setpoint delta</td>
+</tr>
+<tr>
+<td>$a_1$</td>
+<td><code>flow_input</code></td>
+<td>Filler feed rate delta</td>
+</tr>
+</tbody>
+</table>
+<p><strong>True dynamics</strong> (unknown to the agent):</p>
+<p><div class="math-display">$$T_{t+1} = \left(1 - \frac{\Delta t}{\tau_T}\right)T_t + \frac{\Delta t}{\tau_T} K_T u_T + \underbrace{0.03 \cdot f_t \cdot u_T}_{\text{cross-coupling}} + \epsilon_T$$</div></p>
+<p><div class="math-display">$$f_{t+1} = \left(1 - \frac{\Delta t}{\tau_f}\right)f_t + \frac{\Delta t}{\tau_f} K_f \cdot \underbrace{u_{f,t-2}}_{\text{delay}} + \epsilon_f$$</div></p>
+<p><div class="math-display">$$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \epsilon_v$$</div></p>
+<p><div class="math-display">$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_f}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_T}_{\text{outflow}}\right) + \epsilon_L$$</div></p>
+<p>Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$.</p>
+<p>Three things are deliberately hidden from the agent's physics model:
+1. The cross-coupling term $0.03 f_t u_T$ in the temperature equation
+2. The two-step transport delay in the filler equation
+3. The quadratic term $0.12 f(1-T)$ in the viscosity relationship</p>
+<p>These represent the gap between first-principles engineering knowledge and reality.</p>
+<p><strong>Reward</strong> function targets temperature, filler fraction, and level stability:</p>
+<p><div class="math-display">$$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$</div></p>
+<p>with setpoints $T^<em> = 0.60$, $f^</em> = 0.50$, $L^* = 0.50$.</p>
+<p><strong>Hard constraints</strong> (violation = irreversible equipment damage or shutdown):</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Lower</th>
+<th>Upper</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>temperature</td>
+<td>0.35</td>
+<td>0.85</td>
+</tr>
+<tr>
+<td>filler fraction</td>
+<td>0.20</td>
+<td>0.75</td>
+</tr>
+<tr>
+<td>viscosity</td>
+<td>0.10</td>
+<td>0.90</td>
+</tr>
+<tr>
+<td>density</td>
+<td>0.30</td>
+<td>0.80</td>
+</tr>
+<tr>
+<td>level</td>
+<td>0.15</td>
+<td>0.85</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">CoatingProcessEnv</span><span class="p">:</span>
+    <span class="n">STATE_DIM</span>  <span class="o">=</span> <span class="mi">5</span>
+    <span class="n">ACTION_DIM</span> <span class="o">=</span> <span class="mi">2</span>
+
+    <span class="n">T_TARGET</span>     <span class="o">=</span> <span class="mf">0.60</span>
+    <span class="n">F_TARGET</span>     <span class="o">=</span> <span class="mf">0.50</span>
+    <span class="n">LEVEL_TARGET</span> <span class="o">=</span> <span class="mf">0.50</span>
+
+    <span class="n">BOUNDS</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="mf">0.35</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">),</span>  <span class="c1"># temperature</span>
+        <span class="p">(</span><span class="mf">0.20</span><span class="p">,</span> <span class="mf">0.75</span><span class="p">),</span>  <span class="c1"># filler_fraction</span>
+        <span class="p">(</span><span class="mf">0.10</span><span class="p">,</span> <span class="mf">0.90</span><span class="p">),</span>  <span class="c1"># viscosity</span>
+        <span class="p">(</span><span class="mf">0.30</span><span class="p">,</span> <span class="mf">0.80</span><span class="p">),</span>  <span class="c1"># density</span>
+        <span class="p">(</span><span class="mf">0.15</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">),</span>  <span class="c1"># level</span>
+    <span class="p">]</span>
+
+    <span class="n">TAU_T</span><span class="p">,</span> <span class="n">TAU_F</span> <span class="o">=</span> <span class="mf">12.0</span><span class="p">,</span> <span class="mf">8.0</span>
+    <span class="n">K_T</span><span class="p">,</span>   <span class="n">K_F</span>   <span class="o">=</span> <span class="mf">0.85</span><span class="p">,</span> <span class="mf">0.90</span>
+    <span class="n">DT</span>           <span class="o">=</span> <span class="mf">1.0</span>
+</code></pre></div>
+
+<h3>Why the Level Variable is the Hardest</h3>
+<p>The first four state variables are <strong>self-regulating</strong>: if the heater is turned off, temperature eventually returns to ambient. The level variable is <strong>integrating</strong>: it has no natural setpoint. Left alone, it drifts in the direction of net flow imbalance. Controlling an integrating state requires the agent to predict the sign and magnitude of its own long-term effect — which is exactly what offline RL struggles with when data is sparse near the constraint boundaries.</p>
+<p>This is not a contrived difficulty. Surge tanks, buffer silos, and intermediate storage vessels are integrating elements in nearly every continuous manufacturing process.</p>
 <hr />
-<h2>A Practical Roadmap for Industrial Deployment</h2>
-<p>Based on the material in this book, a pragmatic deployment sequence for a new industrial application:</p>
-<p><strong>Step 1 — Start with CQL+Physics.</strong> Collect the existing historical log, define the operating constraints from engineering knowledge, calibrate the physics penalty weights via Theorem 6.1, and train. This gives a safe baseline with minimal constraint violations and no dynamics model. Expected timeline: 2–4 weeks for a team with access to the process data.</p>
-<p><strong>Step 2 — Diagnose with DA and violation rate.</strong> Use the <code>IndustrialEvaluator</code> metrics from Chapter 7. If DA &gt; 0.80 and violation rate &lt; 2%, the baseline policy is industrially deployable. If not, identify which variables are failing and whether the issue is data coverage, physics model accuracy, or constraint calibration.</p>
-<p><strong>Step 3 — Add hybrid dynamics if needed.</strong> If reward performance is insufficient (the policy is safe but suboptimal), add <code>HybridEnsemble</code> for model-based diversity. Run <code>diagnose_physics_coverage</code> first — if overall coverage is below 70%, the physics model needs refinement before hybridization helps.</p>
-<p><strong>Step 4 — Offline-to-online fine-tuning.</strong> After an initial deployment period (1–4 weeks), collect online interaction data and fine-tune with the IQL offline-to-online procedure. Maintain the physics constraints throughout — they are not an artifact of offline training but a representation of physical reality.</p>
-<p><strong>Step 5 — Monitor distribution shift.</strong> Track the distribution of observed states over time. If the fraction of observations outside the training distribution exceeds 5–10%, retrain on the combined historical + deployment data. This is not a failure mode — it is the expected lifecycle of an industrial ML model.</p>
+<h2>The Dataset: Operating Regimes</h2>
+<p>Industrial data is not uniformly distributed. <code>collect_industrial_dataset</code> simulates three operating regimes that appear in real historical logs:</p>
+<p><strong>Normal operation (60% of episodes):</strong> The process runs near its setpoints. The behavior policy is a proportional controller with moderate exploration noise. This is the bulk of the data — the region where all algorithms will perform reasonably.</p>
+<p><strong>Setpoint transitions (25%):</strong> Episodes start away from the nominal operating point. Higher noise, shifted initial states. These transitions stress-test the agent's ability to drive the process back to setpoint rather than just maintaining it.</p>
+<p><strong>Disturbances (15%):</strong> Unusual initial conditions — specifically, level disturbances where the surge tank starts far below normal. These are the episodes where constraint violations are most likely and where the physics model is most valuable.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">dataset</span> <span class="o">=</span> <span class="n">collect_industrial_dataset</span><span class="p">(</span>
+    <span class="n">n_episodes</span><span class="o">=</span><span class="mi">400</span><span class="p">,</span>
+    <span class="n">episode_len</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="n">noise_scale</span><span class="o">=</span><span class="mf">0.30</span><span class="p">,</span>
+    <span class="n">regime_split</span><span class="o">=</span><span class="p">(</span><span class="mf">0.60</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.15</span><span class="p">),</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>This distribution creates the characteristic industrial imbalance: the trained agents will encounter disturbance scenarios rarely during evaluation but must handle them correctly. An agent that learned only from normal-operation data will be systematically undertrained for the 15% of situations that matter most.</p>
 <hr />
-<h2>Closing Remarks</h2>
-<p>Offline RL is not a solved problem. The algorithms in this book are powerful tools with well-understood failure modes, not black boxes to be applied without thought. The most important thing a practitioner can do is understand those failure modes well enough to recognize when they are occurring.</p>
-<p>The questions worth sitting with:</p>
-<p><em>What did the behavior policy never do?</em> The regions of state-action space absent from the dataset are the regions where every offline RL algorithm is speculating. Knowing them is more valuable than any algorithmic improvement.</p>
-<p><em>What does the physics model get wrong?</em> The residual tells you. Run <code>diagnose_physics_coverage</code> before every training run. A physics model with 60% coverage on a key variable is providing more noise than signal for that variable.</p>
-<p><em>What would violating a constraint actually mean?</em> The answer determines whether CQL+Physics (minimize expected violations) or a formal safety approach (guarantee zero violations with high probability) is appropriate.</p>
-<p>The field will continue to develop — diffusion transformers will scale, offline-to-online methods will mature, LLM-based reward design will reduce the specification burden. But the fundamental structure of the problem — learning from fixed data, generalizing cautiously, respecting physics — will remain. The tools in this book are not a snapshot of a passing trend. They are the vocabulary in which the next decade of work will be written.</p>
+<h2>Evaluation: Industrial Metrics</h2>
+<p>Standard RL metrics — episode return, normalized score — are insufficient for industrial evaluation. <code>IndustrialEvaluator</code> computes five metrics that matter in practice.</p>
+<h3>Directional Accuracy (DA)</h3>
+<p><div class="math-display">$$\text{DA}_x = \frac{1}{T}\sum_{t=1}^T \mathbf{1}\!\left[\Delta x_t \cdot (x^* - x_{t-1}) \geq 0\right]$$</div></p>
+<p>DA measures whether the controlled variable moved <em>toward</em> its setpoint at each step, regardless of how far it moved. A policy that always moves in the right direction but slowly has DA = 1.0. A policy that systematically pushes variables the wrong way has DA &lt; 0.5 (worse than random).</p>
+<p>DA is often more informative than RMSE in industrial settings because:
+- A slow policy with DA ≈ 1.0 can be sped up by tuning the action scaling
+- A fast policy with DA ≈ 0.4 requires fundamental retraining
+- Operators can visually verify DA from trend plots without numerical analysis</p>
+<h3>RMSE and Constraint Violation Rate</h3>
+<p>RMSE from setpoint is computed per variable:</p>
+<p><div class="math-display">$$\text{RMSE}_x = \sqrt{\frac{1}{T}\sum_t (x_t - x^*)^2}$$</div></p>
+<p>Constraint violation rate is the fraction of time steps where any state variable falls outside its hard bounds. Severity measures the mean violation magnitude <em>given</em> that a violation occurred:</p>
+<p><div class="math-display">$$\text{severity} = \frac{\sum_t \max(0,\, g(s_t))}{\sum_t \mathbf{1}[g(s_t) > 0]}$$</div></p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">IndustrialEvaluator</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Computes: reward_mean, reward_std, T_rmse, f_rmse, level_rmse,</span>
+<span class="sd">              da_T, da_f, da_mean, constraint_viol_rate,</span>
+<span class="sd">              constraint_viol_severity</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">evaluate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+        <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_episodes</span><span class="p">):</span>
+            <span class="n">obs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">reset</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="mi">8000</span> <span class="o">+</span> <span class="n">ep</span><span class="p">)</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="n">done</span><span class="p">:</span>
+                <span class="n">prev_T</span><span class="p">,</span> <span class="n">prev_f</span> <span class="o">=</span> <span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">s_t</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span>
+                    <span class="p">(</span><span class="n">obs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_mean</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_std</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">act</span>  <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">act</span><span class="p">(</span><span class="n">s_t</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="n">obs</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">done</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">act</span><span class="p">)</span>
+
+                <span class="c1"># Directional accuracy</span>
+                <span class="n">da_T</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">T_TARGET</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+                <span class="n">da_f</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">F_TARGET</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+
+                <span class="c1"># Constraint tracking</span>
+                <span class="n">viol</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;constraint_violation&#39;</span><span class="p">]</span>   <span class="c1"># sum of boundary overruns</span>
+</code></pre></div>
+
+<hr />
+<h2>The Physics Model</h2>
+<p>The known physics for the coating process is encoded in <code>coating_physics_fn</code>. It implements the first-order responses and the mass balance exactly, but omits the cross-coupling, transport delay, and viscosity nonlinearity:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">coating_physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                        <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="n">T</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">L</span> <span class="o">=</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">4</span><span class="p">]</span>
+    <span class="n">heat_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
+    <span class="n">flow_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
+
+    <span class="n">T_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">T</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_T</span> <span class="o">*</span> <span class="n">heat_in</span>
+    <span class="n">f_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">f</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_F</span> <span class="o">*</span> <span class="n">flow_in</span>
+
+    <span class="c1"># Linearized viscosity (true is nonlinear)</span>
+    <span class="n">v_new</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.75</span> <span class="o">-</span> <span class="mf">0.45</span><span class="o">*</span><span class="n">T_new</span> <span class="o">+</span> <span class="mf">0.38</span><span class="o">*</span><span class="n">f_new</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">d_new</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.55</span> <span class="o">+</span> <span class="mf">0.25</span><span class="o">*</span><span class="n">f_new</span> <span class="o">-</span> <span class="mf">0.10</span><span class="o">*</span><span class="n">T_new</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="c1"># Mass balance — good approximation of true level dynamics</span>
+    <span class="n">inflow</span>  <span class="o">=</span> <span class="n">flow_in</span> <span class="o">*</span> <span class="mf">0.4</span>
+    <span class="n">outflow</span> <span class="o">=</span> <span class="n">L</span> <span class="o">*</span> <span class="mf">0.35</span> <span class="o">+</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">heat_in</span>
+    <span class="n">L_new</span>   <span class="o">=</span> <span class="p">(</span><span class="n">L</span> <span class="o">+</span> <span class="n">DT</span> <span class="o">*</span> <span class="p">(</span><span class="n">inflow</span> <span class="o">-</span> <span class="n">outflow</span><span class="p">))</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">T_new</span><span class="p">,</span> <span class="n">f_new</span><span class="p">,</span> <span class="n">v_new</span><span class="p">,</span> <span class="n">d_new</span><span class="p">,</span> <span class="n">L_new</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Before training the hybrid ensemble, it is essential to run <code>diagnose_physics_coverage</code> to verify that the physics model is actually useful:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">ensemble</span><span class="o">.</span><span class="n">diagnose_physics_coverage</span><span class="p">(</span><span class="n">norm_dataset</span><span class="p">)</span>
+
+<span class="c1"># Expected output:</span>
+<span class="c1">#   Physics model coverage (fraction of variance explained):</span>
+<span class="c1">#   state dim 0 (temperature):     91.3%  ██████████████████░░</span>
+<span class="c1">#   state dim 1 (filler_fraction): 83.7%  ████████████████░░░░</span>
+<span class="c1">#   state dim 2 (viscosity):       64.2%  ████████████░░░░░░░░</span>
+<span class="c1">#   state dim 3 (density):         79.8%  ████████████████░░░░</span>
+<span class="c1">#   state dim 4 (level):           93.1%  ██████████████████░░</span>
+<span class="c1">#   Overall: 82.4%</span>
+</code></pre></div>
+
+<p>Coverage above 80% overall means the residual network needs to learn a 20%-amplitude correction — roughly one quarter the network capacity of a pure black-box model at the same prediction accuracy.</p>
+<hr />
+<h2>Algorithm 1: Behavioral Cloning</h2>
+<p>BC is the baseline: clone the behavior policy directly. Its failure mode on industrial data is predictable — compounding error during setpoint transitions and disturbances, where the agent encounters states it never saw during training.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">bc</span> <span class="o">=</span> <span class="n">CQLBCAgent</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="n">train_bc</span><span class="p">(</span><span class="n">bc</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+</code></pre></div>
+
+<p>BC's DA will be high in normal-operation episodes (the behavior policy was a competent proportional controller) and low during disturbance recovery. Constraint violations are rare in normal operation and frequent in disturbances — exactly the scenarios BC was least trained for.</p>
+<hr />
+<h2>Algorithm 2: CQL</h2>
+<p>CQL (Chapter 3) adds conservatism via the penalty on out-of-distribution Q-values. On industrial data it consistently outperforms BC in disturbance scenarios because the pessimistic Q-function prevents the policy from taking actions that look good under the learned Q but are rare in the dataset.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">cql</span> <span class="o">=</span> <span class="n">CQLAgent</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">,</span> <span class="n">alpha_cql</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="n">train_cql_agent</span><span class="p">(</span><span class="n">cql</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+</code></pre></div>
+
+<p>CQL's remaining weakness: it has no mechanism to avoid physically inconsistent actions. A setpoint command that CQL's Q-function rates highly may still violate a mass balance or push the level toward a constraint boundary.</p>
+<hr />
+<h2>Algorithm 3: CQL + Physics Reward Shaping</h2>
+<p><code>PhysicsInformedCQL</code> wraps <code>CQLAgent</code> with <code>PhysicsRewardWrapper</code> (Chapter 8). The modification to the training loop is exactly one line: replace the batch reward <code>r</code> with <code>r - penalty</code> before calling <code>CQLAgent.update</code>.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span> <span class="o">=</span> <span class="n">make_coating_constraints</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">PhysicsInformedCQL</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">):</span>
+        <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">]</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">penalty</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+                <span class="n">lam</span> <span class="o">*</span> <span class="n">g</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cql</span><span class="o">.</span><span class="n">update</span><span class="p">((</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span> <span class="o">-</span> <span class="n">penalty</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+</code></pre></div>
+
+<p>The <code>lambdas</code> are calibrated via <code>calibrate_lambda</code> (Theorem 6.1): set $\lambda$ so that the Theorem 6.1 optimality gap is at most 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.</p>
+<p>Three constraints are active:
+1. <strong>Operating bounds</strong> — all five state variables within hard limits
+2. <strong>Temperature first-order consistency</strong> — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
+3. <strong>Filler fraction first-order consistency</strong> — same for filler</p>
+<p>The first-order consistency constraints do not punish the agent for choosing unusual setpoints — they punish the dynamics model for predicting physically impossible transitions, which indirectly constrains the policy to stay in regions where dynamics are predictable.</p>
+<hr />
+<h2>Algorithm 4: HybridMOReL</h2>
+<p><code>HybridMOReL</code> combines the model-based approach from Chapter 7 with the hybrid dynamics model from Chapter 6. The structure is a two-phase training loop.</p>
+<p><strong>Phase 1 — Dynamics training:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="n">hm</span> <span class="o">=</span> <span class="n">HybridMOReL</span><span class="p">(</span>
+    <span class="n">state_dim</span>   <span class="o">=</span> <span class="n">STATE_DIM</span><span class="p">,</span>
+    <span class="n">action_dim</span>  <span class="o">=</span> <span class="n">ACTION_DIM</span><span class="p">,</span>
+    <span class="n">physics_fn</span>  <span class="o">=</span> <span class="n">coating_physics_fn</span><span class="p">,</span>
+    <span class="n">n_ensemble</span>  <span class="o">=</span> <span class="mi">4</span><span class="p">,</span>
+    <span class="n">hidden_dim</span>  <span class="o">=</span> <span class="mi">128</span><span class="p">,</span>
+    <span class="n">halt_thresh</span> <span class="o">=</span> <span class="mf">0.15</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">hm</span><span class="o">.</span><span class="n">train_dynamics</span><span class="p">(</span><span class="n">norm_dataset</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+<span class="c1"># Output:</span>
+<span class="c1">#   Physics coverage: 82.4% — strong</span>
+<span class="c1">#   Training hybrid ensemble: 4 models × 30 epochs</span>
+<span class="c1">#   ✓ HybridEnsemble installed in MOReL</span>
+</code></pre></div>
+
+<p>After training, the hybrid ensemble is installed in the MOReL agent by swapping <code>morel_agent.ensemble</code>. The MOReL rollout generator (<code>generate_synthetic_data</code>) continues to call <code>ensemble.predict_with_uncertainty</code> — it does not know or care whether the ensemble is pure black-box or hybrid.</p>
+<p><strong>Phase 2 — Policy training via MOReL:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="n">train_morel</span><span class="p">(</span>
+    <span class="n">agent</span>               <span class="o">=</span> <span class="n">hm</span><span class="o">.</span><span class="n">morel_agent</span><span class="p">,</span>
+    <span class="n">dataset</span>             <span class="o">=</span> <span class="n">norm_dataset</span><span class="p">,</span>
+    <span class="n">env</span>                 <span class="o">=</span> <span class="n">env</span><span class="p">,</span>         <span class="c1"># real env for evaluation only</span>
+    <span class="n">n_outer_iters</span>       <span class="o">=</span> <span class="mi">15</span><span class="p">,</span>
+    <span class="n">sac_steps_per_iter</span>  <span class="o">=</span> <span class="mi">300</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>MOReL's P-MDP construction applies the HALT penalty whenever ensemble uncertainty exceeds <code>halt_thresh</code>. With the hybrid ensemble, uncertainty estimates are better calibrated: in OOD regions where the residual network has no training data, the physics term keeps the prediction physically plausible rather than arbitrary. This reduces spurious HALT events caused by the pure black-box ensemble producing nonsensical predictions in physically reachable but data-sparse states.</p>
+<hr />
+<h2>Results</h2>
+<p>Running the full benchmark:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">run_industrial_benchmark</span><span class="p">(</span>
+    <span class="n">device</span>       <span class="o">=</span> <span class="s1">&#39;cpu&#39;</span><span class="p">,</span>
+    <span class="n">n_train_ep</span>   <span class="o">=</span> <span class="mi">400</span><span class="p">,</span>
+    <span class="n">n_bc_epochs</span>  <span class="o">=</span> <span class="mi">60</span><span class="p">,</span>
+    <span class="n">n_cql_epochs</span> <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>
+    <span class="n">n_morel_iters</span><span class="o">=</span> <span class="mi">15</span><span class="p">,</span>
+    <span class="n">n_eval_ep</span>    <span class="o">=</span> <span class="mi">20</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>Typical output (exact numbers depend on random seed):</p>
+<div class="codehilite"><pre><span></span><code>══════════════════════════════════════════════════════════════
+  CHAPTER 7 — INDUSTRIAL BENCHMARK RESULTS
+══════════════════════════════════════════════════════════════
+Metric                BC      CQL   CQL+Phys  HybridMOReL
+──────────────────────────────────────────────────────────────
+Reward (mean)       -18.4   -14.2    -13.8   ▶  -12.1
+DA (mean)            61.3%   71.8%   73.4%  ▶   79.2%
+DA temperature       64.1%   73.5%   75.1%  ▶   81.3%
+DA filler            58.4%   70.1%   71.6%  ▶   77.1%
+T RMSE               0.0921  0.0712  0.0698  ▶  0.0581
+f RMSE               0.1043  0.0834  0.0811  ▶  0.0693
+Level RMSE           0.0874  0.0748  0.0701  ▶  0.0612
+Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+══════════════════════════════════════════════════════════════
+</code></pre></div>
+
+<h3>Reading the Results</h3>
+<p><strong>BC</strong> performs adequately in normal operation but fails during disturbances. Its DA is just above 60% — better than random, but below the 80% industrial threshold. Constraint violations occur because BC never saw the level variable near its bounds during training.</p>
+<p><strong>CQL</strong> improves across all metrics. Conservatism in the Q-function prevents the worst extrapolation failures. But violation rate remains at 2.8% — CQL has no mechanism to specifically avoid constraint boundaries.</p>
+<p><strong>CQL+Physics</strong> reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions. The violation severity also drops even more than the rate, meaning that when violations do occur they are shallower.</p>
+<p><strong>HybridMOReL</strong> achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.</p>
+<h3>The Complementary Structure</h3>
+<p>These results reveal a complementary structure worth understanding.</p>
+<p><strong>CQL+Physics</strong> is the violation minimizer: it explicitly penalizes constraint approaches and achieves the lowest violation rate. But it uses only real data — its synthetic experience is zero.</p>
+<p><strong>HybridMOReL</strong> is the performance maximizer: model-based rollouts push the policy to higher reward and DA, but without explicit constraint penalties the violation rate is slightly elevated.</p>
+<p>In a real deployment, the natural combination is <strong>HybridMOReL + physics reward shaping</strong> — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to <code>train_hybrid_morel_agent</code>: pass the <code>PhysicsRewardWrapper</code> into the rollout generator. Chapter 8 showed exactly how to do this.</p>
+<hr />
+<h2>Engineering Decisions Revisited</h2>
+<p>Working through this case study surfaces several decisions that do not appear in benchmark papers.</p>
+<h3>The Transport Delay Problem</h3>
+<p>The filler equation has a two-step delay: the agent's flow input at time $t$ affects the filler fraction at time $t+2$, not $t+1$. The physics model ignores this delay — it predicts an immediate first-order response.</p>
+<p>This means the hybrid ensemble's residual must learn the delay effect from data. With enough transitions, it can. The tell-tale sign of a delay mismatch is a systematic residual that is positive when flow_input recently increased and negative when it recently decreased. If <code>diagnose_physics_coverage</code> shows low coverage for the filler dimension (below 60%), the likely cause is an unmodeled delay.</p>
+<p>The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model account for them. The engineering knowledge required is only the approximate delay length — the exact value can be learned from the residual.</p>
+<h3>Constraint Calibration</h3>
+<p><code>make_coating_constraints</code> uses <code>calibrate_lambda</code> for the bounds constraint and sets $\lambda = 2.0$ manually for the first-order consistency constraints. The manual values are reasonable starting points but should be verified:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Check constraint violation rates on the training dataset</span>
+<span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span><span class="p">):</span>
+    <span class="n">violations</span> <span class="o">=</span> <span class="n">g</span><span class="p">(</span><span class="n">s_train</span><span class="p">,</span> <span class="n">a_train</span><span class="p">,</span> <span class="n">s2_train</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  λ=</span><span class="si">{</span><span class="n">lam</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> | violations: </span><span class="si">{</span><span class="p">(</span><span class="n">violations</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">float</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2"> &quot;</span>
+          <span class="sa">f</span><span class="s2">&quot;| mean_magnitude: </span><span class="si">{</span><span class="n">violations</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>If a constraint is violated on more than 20% of training transitions, either the tolerance is too tight or the physics model is inaccurate for that variable. In both cases, increasing the tolerance or loosening the manual $\lambda$ is better than tightening the constraint — a constraint that fires too often becomes a second reward signal rather than a physics correction.</p>
+<h3>Normalizing the 5D State</h3>
+<p>Five variables with different physical scales and variances require per-dimension normalization. The provided <code>normalize_dataset</code> normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — centering the reward would remove the sign information that distinguishes good states from bad.</p>
+<hr />
+<h2>Summary</h2>
+<p>This chapter translated the tools from Chapters 1–8 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
+<p>The comparison across four algorithms reveals a clean hierarchy:</p>
+<table>
+<thead>
+<tr>
+<th>Algorithm</th>
+<th>Relies on</th>
+<th>Strength</th>
+<th>Weakness</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BC</td>
+<td>Data imitation</td>
+<td>Simple, interpretable</td>
+<td>Compounding error; constraint-blind</td>
+</tr>
+<tr>
+<td>CQL</td>
+<td>Conservative Q-values</td>
+<td>Better OOD generalization</td>
+<td>No physical constraint mechanism</td>
+</tr>
+<tr>
+<td>CQL+Physics</td>
+<td>CQL + penalty</td>
+<td>Lowest violation rate</td>
+<td>Uses only real data</td>
+</tr>
+<tr>
+<td>HybridMOReL</td>
+<td>Model-based + hybrid</td>
+<td>Best reward and DA</td>
+<td>Higher violation rate without explicit penalty</td>
+</tr>
+</tbody>
+</table>
+<p>The practical recommendation for industrial deployment: <strong>start with CQL+Physics</strong> (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, <strong>add the hybrid ensemble</strong> as a source of diverse synthetic experience.</p>
+<p>Chapter 10 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.</p>
 <hr />
 <h2>References</h2>
-<p><strong>Decision Transformers and Sequence Models</strong></p>
 <ul>
-<li>Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., &amp; Mordatch, I. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
-<li>Janner, M., Li, Q., &amp; Levine, S. (2021). <em>Offline Reinforcement Learning as One Big Sequence Modeling Problem.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.02039">arXiv:2106.02039</a>. <em>(Trajectory Transformer)</em></li>
-<li>Yamagata, T., Khalil, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.</em> <a href="https://arxiv.org/abs/2309.10150">arXiv:2309.10150</a>.</li>
-</ul>
-<p><strong>Diffusion Models for Offline RL</strong></p>
-<ul>
-<li>Janner, M., Du, Y., Tenenbaum, J., &amp; Levine, S. (2022). <em>Planning with Diffusion Models.</em> ICML. <a href="https://arxiv.org/abs/2205.09991">arXiv:2205.09991</a>. <em>(Diffuser)</em></li>
-<li>Ajay, A., Du, Y., Gupta, A., Tenenbaum, J., Jaakkola, T., &amp; Agrawal, P. (2023). <em>Is Conditional Generative Modeling all you need for Decision-Making?</em> ICLR. <a href="https://arxiv.org/abs/2211.15657">arXiv:2211.15657</a>. <em>(Decision Diffuser)</em></li>
-<li>Chi, C., Feng, S., Du, Y., Xu, Z., Cousineau, E., Burchfiel, B., &amp; Song, S. (2023). <em>Diffusion Policy: Visuomotor Policy Learning via Action Diffusion.</em> RSS. <a href="https://arxiv.org/abs/2303.04137">arXiv:2303.04137</a>.</li>
-</ul>
-<p><strong>Diffusion Models and Transformers for Offline RL</strong></p>
-<ul>
-<li>Peebles, W., &amp; Xie, S. (2023). <em>Scalable Diffusion Models with Transformers.</em> ICCV. <a href="https://arxiv.org/abs/2212.09748">arXiv:2212.09748</a>. <em>(DiT architecture — the backbone trend)</em></li>
-<li>Wang, Z., Hunt, J.J., &amp; Zhou, M. (2023). <em>Diffusion Policies as an Expressive Policy Class for Offline Reinforcement Learning.</em> ICLR. <a href="https://arxiv.org/abs/2208.06193">arXiv:2208.06193</a>. <em>(DQL — diffusion as policy class)</em></li>
-<li>Chen, T., Wang, Z., &amp; Zhou, M. (2024). <em>Diffusion Policies creating a Trust Region for Offline Reinforcement Learning.</em> NeurIPS. <a href="https://arxiv.org/abs/2405.19690">arXiv:2405.19690</a>. <em>(DTQL — fast inference)</em></li>
-<li>Venkatraman, S., Khaitan, S., Akella, R.T., Dolan, J., Schneider, J., &amp; Berseth, G. (2024). <em>Reasoning with Latent Diffusion in Offline Reinforcement Learning.</em> ICLR. <em>(diffusion in latent world model space)</em></li>
-</ul>
-<p><strong>Flow Matching and Consistency Models</strong></p>
-<ul>
-<li>Lipman, Y., Chen, R.T.Q., Ben-Hamu, H., Nickel, M., &amp; Le, M. (2022). <em>Flow Matching for Generative Modeling.</em> <a href="https://arxiv.org/abs/2210.02747">arXiv:2210.02747</a>.</li>
-<li>Song, Y., Dhariwal, P., Chen, M., &amp; Sutskever, I. (2023). <em>Consistency Models.</em> ICML. <a href="https://arxiv.org/abs/2303.01469">arXiv:2303.01469</a>.</li>
-</ul>
-<p><strong>Offline-to-Online RL</strong></p>
-<ul>
-<li>Kostrikov, I., Nair, A., &amp; Levine, S. (2021). <em>Offline Reinforcement Learning with Implicit Q-Learning.</em> ICLR 2022. <a href="https://arxiv.org/abs/2110.06169">arXiv:2110.06169</a>. <em>(IQL + online fine-tuning)</em></li>
-<li>Nakamoto, M., Zhai, Y., Singh, A., Mark, M.S., Ma, Y., Finn, C., Kumar, A., &amp; Levine, S. (2023). <em>Cal-QL: Calibrated Offline RL Pre-Training for Efficient Online Fine-Tuning.</em> NeurIPS. <a href="https://arxiv.org/abs/2303.05479">arXiv:2303.05479</a>.</li>
-</ul>
-<p><strong>Safe Offline RL</strong></p>
-<ul>
-<li>Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., &amp; Zhao, D. (2022). <em>Constrained Variational Policy Optimization for Safe Reinforcement Learning.</em> ICML. <a href="https://arxiv.org/abs/2201.11927">arXiv:2201.11927</a>. <em>(CVPO)</em></li>
-<li>Berkenkamp, F., Turchetta, M., Schoellig, A., &amp; Krause, A. (2017). <em>Safe Model-based Reinforcement Learning with Stability Guarantees.</em> NeurIPS. <a href="https://arxiv.org/abs/1705.08551">arXiv:1705.08551</a>.</li>
-</ul>
-<p><strong>LLM-Based Reward Design</strong></p>
-<ul>
-<li>Ma, Y.J., Liang, W., Wang, G., Huang, D.A., Bastani, O., Jayaraman, D., Zhu, Y., Fan, L., &amp; Anandkumar, A. (2023). <em>Eureka: Human-Level Reward Design via Coding Large Language Models.</em> <a href="https://arxiv.org/abs/2310.12931">arXiv:2310.12931</a>.</li>
-</ul>
-<p><strong>Surveys and Foundations</strong></p>
-<ul>
-<li>Levine, S., Kumar, A., Tucker, G., &amp; Fu, J. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
-<li>Prudencio, R.F., Maximo, M.R.O.A., &amp; Colombini, E.L. (2023). <em>A Survey on Offline Reinforcement Learning.</em> IEEE TNNLS. <a href="https://arxiv.org/abs/2203.01387">arXiv:2203.01387</a>.</li>
-</ul>
+<li>All references from Chapters 1–8 apply to the algorithms used here.</li>
+<li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(PID baseline, first-order process models)</em></li>
+<li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(industrial process control, transport delay)</em></li>
+<li>Rawlings, J.B., Mayne, D.Q., &amp; Diehl, M. (2017). <em>Model Predictive Control.</em> Nob Hill. <em>(MPC for comparison context)</em></li>
+</ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/en/chapter8.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Explainability in Offline RL</span></a>
-<a href="/offline-rl-book/index.html" class="next"><span class="nav-label">Contents →</span><span class="nav-title">Back to book</span></a>
+<a href="/offline-rl-book/en/chapter8.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Physics-Informed Offline RL</span></a>
+    <a href="/offline-rl-book/en/chapter10.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Explainability in Offline RL</span></a>
 </nav>
-</main>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">
     Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>

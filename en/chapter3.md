@@ -175,67 +175,37 @@ class GaussianPolicy(nn.Module):
 This is the core: the standard TD loss plus the CQL penalty.
 
 ```python
-def cql_loss(
-    Q1, Q2, Q1_target, Q2_target,
-    policy,
-    states, actions, rewards, next_states, dones,
-    alpha_cql: float = 1.0,
-    gamma: float = 0.99,
-    n_action_samples: int = 10,
-):
+def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
+                     states, actions, rewards, next_states, dones,
+                     alpha_cql=1.0, alpha_ent=0.1, gamma=0.99, n_samples=10):
     """
-    Compute CQL loss for one Q-network (call twice for Q1 and Q2).
-
-    alpha_cql: conservatism strength. Higher = more pessimistic.
-    n_action_samples: how many OOD actions to sample per state.
+    CQL loss = TD_loss + alpha_cql * CQL_penalty.
+    Call twice for Q1 and Q2 (swap Q/Q_other and targets for the second call).
+    Returns: (loss, info_dict) with 'td_loss', 'cql_penalty', 'q_data', 'q_ood'.
     """
-    batch_size = states.shape[0]
+    B = states.shape[0]
+    dev = states.device
 
-    # ── 1. Standard TD target ────────────────────────────────────────────
     with torch.no_grad():
-        next_actions, next_log_probs = policy.sample(next_states)
-        q1_next = Q1_target(next_states, next_actions)
-        q2_next = Q2_target(next_states, next_actions)
-        q_next  = torch.min(q1_next, q2_next) - 0.1 * next_log_probs  # SAC entropy
-        td_target = rewards + gamma * (1 - dones) * q_next
+        a_next, lp_next = policy.sample(next_states)
+        v_next = (torch.min(Q_tgt(next_states, a_next), Q_other_tgt(next_states, a_next))
+                  - alpha_ent * lp_next)
+        td_target = rewards + gamma * (1 - dones) * v_next
 
-    td_loss = F.mse_loss(Q1(states, actions), td_target)
+    q_data  = Q(states, actions)
+    td_loss = F.mse_loss(q_data, td_target)
 
-    # ── 2. CQL penalty ────────────────────────────────────────────────────
-    # Sample random OOD actions from uniform distribution
-    random_actions = torch.FloatTensor(
-        batch_size * n_action_samples, actions.shape[-1]
-    ).uniform_(-1, 1).to(states.device)
-
-    # Sample actions from current policy (in-distribution, but may differ from dataset)
-    states_rep = states.unsqueeze(1).repeat(1, n_action_samples, 1).view(
-        batch_size * n_action_samples, -1)
-    policy_actions, policy_log_probs = policy.sample(states_rep)
-
-    # Q-values for random OOD actions
-    states_rep_rand = states.unsqueeze(1).repeat(1, n_action_samples, 1).view(
-        batch_size * n_action_samples, -1)
-    q_rand = Q1(states_rep_rand, random_actions).view(batch_size, n_action_samples)
-
-    # Q-values for policy actions — with importance weight correction.
-    # We subtract log π(a|s) because we sample a ~ π but need E_{uniform}[exp Q].
-    # See the importance sampling derivation above.
-    q_policy_raw = Q1(states_rep, policy_actions).view(batch_size, n_action_samples)
-    lp = policy_log_probs.detach().view(batch_size, n_action_samples)
-    q_policy = q_policy_raw - lp     # importance weight: exp(Q) / π → exp(Q - log π)
-
-    # Q-values for dataset actions (the ones we want to keep high)
-    q_data = Q1(states, actions)
-
-    # logsumexp over random + policy actions (importance-corrected)
-    # Approximates log Σ_a exp Q(s,a) — the "push down" term
-    q_ood = torch.cat([q_rand, q_policy], dim=1)  # (batch, 2*n_samples)
-    logsumexp = torch.logsumexp(q_ood, dim=1)     # (batch,)
-
-    # CQL penalty: push down OOD, push up dataset
+    s_rep = states.unsqueeze(1).expand(-1, n_samples, -1).reshape(B * n_samples, -1)
+    a_rand = torch.FloatTensor(B * n_samples, actions.shape[-1]).uniform_(-1, 1).to(dev)
+    a_pi, lp_pi = policy.sample(s_rep)
+    q_rand = Q(s_rep, a_rand).reshape(B, n_samples)
+    q_pi   = (Q(s_rep, a_pi) - lp_pi.detach()).reshape(B, n_samples)
+    logsumexp   = torch.logsumexp(torch.cat([q_rand, q_pi], dim=1), dim=1)
     cql_penalty = (logsumexp - q_data).mean()
 
-    return td_loss + alpha_cql * cql_penalty, td_loss.item(), cql_penalty.item()
+    loss = td_loss + alpha_cql * cql_penalty
+    return loss, {'td_loss': td_loss.item(), 'cql_penalty': cql_penalty.item(),
+                 'q_data': q_data.mean().item(), 'q_ood': logsumexp.mean().item()}
 ```
 
 ### Training Loop
@@ -244,14 +214,18 @@ def cql_loss(
 import torch.optim as optim
 
 class CQLAgent:
-    def __init__(self, state_dim, action_dim, alpha_cql=1.0, device='cpu'):
+    def __init__(self, state_dim, action_dim, alpha_cql=1.0, alpha_ent=0.1,
+                 gamma=0.99, tau=0.005, device='cpu'):
         self.device = device
         self.alpha_cql = alpha_cql
+        self.alpha_ent = alpha_ent
+        self.gamma = gamma
+        self.tau = tau
 
         self.Q1 = QNetwork(state_dim, action_dim).to(device)
         self.Q2 = QNetwork(state_dim, action_dim).to(device)
-        self.Q1_target = deepcopy(self.Q1)
-        self.Q2_target = deepcopy(self.Q2)
+        self.Q1_tgt = deepcopy(self.Q1)
+        self.Q2_tgt = deepcopy(self.Q2)
         self.policy = GaussianPolicy(state_dim, action_dim).to(device)
 
         self.q_opt  = optim.Adam(
@@ -261,40 +235,31 @@ class CQLAgent:
     def update(self, batch):
         s, a, r, s2, d = [x.to(self.device) for x in batch]
 
-        # ── Q update ──────────────────────────────────────────────────────
-        loss_q1, td1, cql1 = cql_loss(
-            self.Q1, self.Q2, self.Q1_target, self.Q2_target,
-            self.policy, s, a, r, s2, d, alpha_cql=self.alpha_cql)
-        loss_q2, td2, cql2 = cql_loss(
-            self.Q2, self.Q1, self.Q2_target, self.Q1_target,
-            self.policy, s, a, r, s2, d, alpha_cql=self.alpha_cql)
-
+        l1, i1 = compute_cql_loss(self.Q1, self.Q2, self.Q1_tgt, self.Q2_tgt,
+                                  self.policy, s, a, r, s2, d,
+                                  self.alpha_cql, self.alpha_ent, self.gamma)
+        l2, i2 = compute_cql_loss(self.Q2, self.Q1, self.Q2_tgt, self.Q1_tgt,
+                                  self.policy, s, a, r, s2, d,
+                                  self.alpha_cql, self.alpha_ent, self.gamma)
         self.q_opt.zero_grad()
-        (loss_q1 + loss_q2).backward()
-        torch.nn.utils.clip_grad_norm_(
-            list(self.Q1.parameters()) + list(self.Q2.parameters()), 1.0)
+        (l1 + l2).backward()
+        nn.utils.clip_grad_norm_(list(self.Q1.parameters()) +
+                                 list(self.Q2.parameters()), 1.0)
         self.q_opt.step()
 
-        # ── Policy update (maximize Q) ────────────────────────────────────
-        pi_actions, log_probs = self.policy.sample(s)
-        q_pi = torch.min(self.Q1(s, pi_actions), self.Q2(s, pi_actions))
-        loss_pi = (0.1 * log_probs - q_pi).mean()   # SAC: entropy - Q
-        # ↑ 0.1 is a fixed entropy coefficient. In full SAC, this is tuned
-        #   automatically to match target entropy H* = -dim(A). See the
-        #   alpha_ent note at the end of this section.
+        a_pi, lp = self.policy.sample(s)
+        q_pi = torch.min(self.Q1(s, a_pi), self.Q2(s, a_pi))
+        lpi  = (self.alpha_ent * lp - q_pi).mean()
+        self.pi_opt.zero_grad(); lpi.backward(); self.pi_opt.step()
 
-        self.pi_opt.zero_grad()
-        loss_pi.backward()
-        self.pi_opt.step()
+        for p, pt in zip(self.Q1.parameters(), self.Q1_tgt.parameters()):
+            pt.data.mul_(1 - self.tau).add_(self.tau * p.data)
+        for p, pt in zip(self.Q2.parameters(), self.Q2_tgt.parameters()):
+            pt.data.mul_(1 - self.tau).add_(self.tau * p.data)
 
-        # ── Soft target update ────────────────────────────────────────────
-        for p, pt in zip(self.Q1.parameters(), self.Q1_target.parameters()):
-            pt.data.mul_(0.995).add_(0.005 * p.data)
-        for p, pt in zip(self.Q2.parameters(), self.Q2_target.parameters()):
-            pt.data.mul_(0.995).add_(0.005 * p.data)
-
-        return {'td_loss': (td1+td2)/2, 'cql_penalty': (cql1+cql2)/2,
-                'policy_loss': loss_pi.item()}
+        return {'td_loss': (i1['td_loss']+i2['td_loss'])/2,
+                'cql_penalty': (i1['cql_penalty']+i2['cql_penalty'])/2,
+                'policy_loss': lpi.item()}
 ```
 
 ---
@@ -460,7 +425,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 
 **Sensitive to reward scale.** The balance between the TD loss and CQL penalty depends on the reward magnitude. If rewards are large (e.g., in the thousands), the TD loss dominates and CQL has little effect. Normalize rewards to $[-1, 1]$ or $[0, 1]$.
 
-**Conservative by design.** CQL will not outperform the behavior policy by a large margin in regions with sparse data. It is designed to be safe, not to extrapolate aggressively. For tasks requiring significant extrapolation beyond the dataset, model-based methods (Chapter 5) are more appropriate.
+**Conservative by design.** CQL will not outperform the behavior policy by a large margin in regions with sparse data. It is designed to be safe, not to extrapolate aggressively. For tasks requiring significant extrapolation beyond the dataset, model-based methods (Chapter 7) are more appropriate.
 
 **Continuous action spaces need sampling.** The logsumexp over actions requires sampling — typically 10 uniform + 10 policy samples per state. This adds computational overhead compared to BC or TD3+BC.
 
@@ -479,7 +444,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 
 CQL closes the gap between behavioral cloning and full offline RL. It uses reward information to improve over the behavior policy, while pessimism about OOD actions prevents the catastrophic failures of standard Q-learning.
 
-The remaining limitation: CQL is **model-free**. It learns from the data as-is, with no model of how the system transitions. Chapter 4 (IQL) refines the value pessimism idea. Chapter 5 (MOPO) shows how learning a world model enables generating synthetic data — extending the effective dataset beyond what was collected.
+The remaining limitation: CQL is **model-free**. It learns from the data as-is, with no model of how the system transitions. Chapter 4 (IQL) refines the value pessimism idea. Chapter 7 (MOPO) shows how learning a world model enables generating synthetic data — extending the effective dataset beyond what was collected.
 
 ---
 

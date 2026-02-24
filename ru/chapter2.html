@@ -95,7 +95,7 @@
 <h2>Формальная оценка: разрыв в производительности</h2>
 <p>Пусть $\hat{\pi}$ — жадная политика относительно обученной Q-функции:</p>
 <p><div class="math-display">$$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$</div></p>
-<p>Определим <strong>оценённую производительность</strong> $\hat{J}(\hat\pi) = \mathbb{E}_{s,a \sim d^{\hat\pi}}[Q_\theta(s,a)]$ — то, что Q-функция <em>предсказывает</em> для данной политики — и <strong>реальную производительность</strong> $J(\hat\pi)$ — то, что политика фактически получит в среде.</p>
+<p>Определим <strong>оценённую производительность</strong> $\hat{J}(\hat\pi) = \mathbb{E}<em>{s,a \sim d^{\hat\pi}}[Q</em>\theta(s,a)]$ — то, что Q-функция <em>предсказывает</em> для данной политики — и <strong>реальную производительность</strong> $J(\hat\pi)$ — то, что политика фактически получит в среде.</p>
 <p>Разрыв между ними ограничен сверху (Kumar et al., 2020, Prop. 3.1):</p>
 <p><div class="math-display">$$\hat{J}(\hat\pi) - J(\hat\pi) \leq \frac{2\gamma}{(1-\gamma)^2} \mathbb{E}_{s \sim d^{\hat\pi}}\left[\max_a \left| Q_\theta(s,a) - Q^*(s,a) \right|\right]$$</div></p>
 <p>Именно так правильно формулировать проблему. Левая часть — то, чего мы боимся: <strong>разрыв между обещанной и реальной наградой</strong>. Правая показывает, что его порождает: ошибка Q-функции, взятая под $d^{\hat\pi}$ — распределением состояний <em>обученной</em> политики, а не поведенческой.</p>
@@ -116,43 +116,45 @@
 <blockquote>
 <p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/extrapolation_error.py"><code>extrapolation_error.py</code></a></p>
 </blockquote>
-<pre><code class="language-python">import torch
-import torch.nn as nn
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
 
-class QNetwork(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden=128):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(state_dim + action_dim, hidden), nn.ReLU(),
-            nn.Linear(hidden, hidden), nn.ReLU(),
-            nn.Linear(hidden, 1),
-        )
-    def forward(self, s, a):
-        return self.net(torch.cat([s, a], dim=-1)).squeeze(-1)
+<span class="k">class</span> <span class="nc">QNetwork</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden</span><span class="o">=</span><span class="mi">128</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 
 
-def measure_ood_overestimation(Q, dataset_actions, all_actions, state):
-    &quot;&quot;&quot;
-    Сравниваем Q-значения для действий из датасета и OOD-действий.
-    &quot;&quot;&quot;
-    s = state.unsqueeze(0).expand(len(all_actions), -1)
+<span class="k">def</span> <span class="nf">measure_ood_overestimation</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">dataset_actions</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Сравниваем Q-значения для действий из датасета и OOD-действий.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">all_actions</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 
-    with torch.no_grad():
-        q_all     = Q(s, all_actions)
-        q_in_dist = Q(
-            state.unsqueeze(0).expand(len(dataset_actions), -1),
-            dataset_actions
-        )
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">q_all</span>     <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">)</span>
+        <span class="n">q_in_dist</span> <span class="o">=</span> <span class="n">Q</span><span class="p">(</span>
+            <span class="n">state</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">dataset_actions</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+            <span class="n">dataset_actions</span>
+        <span class="p">)</span>
 
-    print(f&quot;Действия из датасета     | Q mean: {q_in_dist.mean():.3f}, max: {q_in_dist.max():.3f}&quot;)
-    print(f&quot;Все действия (+ OOD)     | Q mean: {q_all.mean():.3f},     max: {q_all.max():.3f}&quot;)
-    print(f&quot;Коэф. переоценки OOD     : {q_all.max().item() / q_in_dist.max().item():.2f}x&quot;)
-</code></pre>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Действия из датасета     | Q mean: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, max: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Все действия (+ OOD)     | Q mean: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">,     max: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Коэф. переоценки OOD     : </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">)</span>
+</code></pre></div>
+
 <p>Результат после обучения vanilla Q-learning на датасете с действиями в <code>[-0.5, 0.5]</code> при пространстве действий <code>[-2, 2]</code>:</p>
-<pre><code>Действия из датасета     | Q mean: 0.412, max: 0.731
+<div class="codehilite"><pre><span></span><code>Действия из датасета     | Q mean: 0.412, max: 0.731
 Все действия (+ OOD)     | Q mean: 0.893, max: 3.847
 Коэф. переоценки OOD     : 5.26x
-</code></pre>
+</code></pre></div>
+
 <p>Q-функция присваивает значения, в <strong>5 раз превышающие</strong> максимальное в датасете, действиям, которых никогда не видела. Жадная политика уверенно выберет именно их.</p>
 <hr />
 <h2>Ключевое противоречие</h2>
@@ -185,6 +187,11 @@ def measure_ood_overestimation(Q, dataset_actions, all_actions, state):
 <p><div class="math-display">$$Q^* = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]$$</div></p>
 <p>Интуиция: если OOD Q-значения искусственно занижены, жадная политика естественным образом предпочтёт действия из распределения данных.</p>
 <p>Это подход <strong>CQL</strong> (глава 3) и <strong>IQL</strong> (глава 4).</p>
+<h3>Ландшафт алгоритмов Offline RL</h3>
+<p>Помимо пессимизма по значениям, широко используются ещё два семейства. В этой книге подробно разобраны <strong>value-based</strong> (CQL, IQL) и <strong>модельные</strong> (глава 5) методы; ниже — краткая карта.</p>
+<p><strong>Методы с ограничением политики и Actor-Critic</strong> удерживают обученную политику близко к поведенческой — явными ограничениями или регуляризацией актора к данным. <strong>TD3+BC</strong> (Fujimoto &amp; Gu, 2021) добавляет к loss актора член поведенческого клонирования: $\pi$ максимизирует $Q(s, \pi(s)) + \lambda \cdot \log \pi_\beta(a|s)$, оставаясь близко к данным и улучшаясь. <strong>AWAC</strong> (Advantage-Weighted Actor-Critic) и <strong>AWR</strong> (Advantage-Weighted Regression) подгоняют политику с весами по преимуществу (advantage); актор использует только пары $(s, a)$ из датасета, без OOD-запросов к Q. <strong>BEAR</strong> и <strong>BCQ</strong> ограничивают носитель политики (например, действиями близкими к данным или сгенерированными условным VAE). Все они — <em>actor-critic</em> (есть и критик Q/V, и актор), но актор ограничен или регуляризован, а не просто жадный по неограниченной Q.</p>
+<p><strong>Decision Transformers (DT)</strong> (Chen et al., 2021) — другой взгляд: офлайн RL как <strong>моделирование последовательностей</strong>. Модель по префиксу траектории (состояния, действия, return-to-go или награды) предсказывает следующее действие авторегрессионно. Нет Bellman-бэкапа и явной Q-функции; «политика» задаётся условным распределением по действиям при заданном контексте и желаемом return. <strong>Offline DT</strong> обучают supervised learning по кускам $(s, a, R)$ из датасета, часто с return-conditioning: на тесте можно запрашивать поведение с «высоким return». Экстраполяционная ошибка в явном виде отсутствует (нет $\max_{a'}$ по OOD-действиям), но сложность переносится на обобщение последовательностной модели и выбор conditioning. Варианты включают <strong>Q-learning DT</strong> (например, QDT), комбинирующие return-conditioning с TD для лучшего credit assignment.</p>
+<p>Для практиков: пессимизм по значениям (CQL, IQL) и модельные методы (глава 5) — надёжный выбор по умолчанию для непрерывного управления и технологических данных; методы с ограничением политики (например, TD3+BC) и DT стоит пробовать при длинных горизонтах, мультизадачных данных или предпочтении инструментов для sequence modeling. Ссылки на эти семейства приведены в конце главы.</p>
 <hr />
 <h2>Почему бы просто не использовать BC?</h2>
 <p>Разумный вопрос: если офлайн Q-обучение так опасно, почему бы не использовать BC?</p>
@@ -228,7 +235,7 @@ def measure_ood_overestimation(Q, dataset_actions, all_actions, state):
 </tr>
 </tbody>
 </table>
-<p>Два основных средства: <strong>ограничение политики</strong> (держаться близко к $\pi_\beta$) и <strong>пессимизм по значениям</strong> (занижать OOD Q-значения). CQL реализует второй подход с элегантной регуляризационной целевой функцией — туда мы и направляемся дальше.</p>
+<p>Два основных средства: <strong>ограничение политики</strong> (держаться близко к $\pi_\beta$) и <strong>пессимизм по значениям</strong> (занижать OOD Q-значения). CQL реализует второй подход с элегантной регуляризационной целевой функцией — туда мы и направляемся дальше. В главе 2 также намечен более широкий ландшафт: policy-constraint / Actor-Critic (TD3+BC, AWAC, BEAR, BCQ) и Decision Transformers; далее в книге фокус на пессимизме по значениям (главы 3–4) и модельных методах (глава 5).</p>
 <hr />
 <h2>Литература</h2>
 <ul>
@@ -236,10 +243,14 @@ def measure_ood_overestimation(Q, dataset_actions, all_actions, state):
 <li>Kumar, A. et al. (2019). <em>Stabilizing Off-Policy Q-Learning via Bootstrapping Error Reduction (BEAR).</em> NeurIPS. <a href="https://arxiv.org/abs/1906.00949">arXiv:1906.00949</a>.</li>
 <li>Fujimoto, S. et al. (2019). <em>Off-Policy Deep Reinforcement Learning without Exploration (BCQ).</em> ICML. <a href="https://arxiv.org/abs/1902.08754">arXiv:1902.08754</a>.</li>
 <li>Kumar, A. et al. (2020). <em>Conservative Q-Learning for Offline Reinforcement Learning (CQL).</em> NeurIPS. <a href="https://arxiv.org/abs/2006.04779">arXiv:2006.04779</a>.</li>
+<li>Fujimoto, S. &amp; Gu, S.S. (2021). <em>A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
+<li>Nair, A. et al. (2020). <em>Accelerating Online Reinforcement Learning with Offline Datasets (AWAC).</em> <a href="https://arxiv.org/abs/2006.09359">arXiv:2006.09359</a>.</li>
+<li>Chen, L. et al. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
+<li>Sutton, R. et al. (1999). <em>Policy Gradient Methods for Reinforcement Learning.</em> NeurIPS. <em>(обсуждение смертельной триады)</em></li>
 </ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/ru/chapter1.html" class="prev"><span class="nav-label">← Предыдущая</span><span class="nav-title">Поведенческое клонирование</span></a>
-<a href="/offline-rl-book/ru/chapter3.html" class="next"><span class="nav-label">Следующая →</span><span class="nav-title">Консервативное Q-обучение (CQL)</span></a>
+<a href="/offline-rl-book/ru/chapter1.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Поведенческое клонирование</span></a>
+    <a href="/offline-rl-book/ru/chapter3.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Консервативное Q-обучение (CQL)</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

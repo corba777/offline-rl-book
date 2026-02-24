@@ -65,173 +65,203 @@
 <hr />
 <h2>The Problem, Restated</h2>
 <p>In Chapter 2 we saw that standard Q-learning on offline data produces catastrophically overoptimistic Q-values for out-of-distribution (OOD) actions. The greedy policy then exploits these inflated values, selecting actions the dataset never covered — and failing in deployment.</p>
-<p><strong>Conservative Q-Learning (CQL)</strong> — Kumar et al., NeurIPS 2020 — fixes this with one elegant idea: <strong>add a regularization term that explicitly penalizes Q-values on OOD actions while preserving them on dataset actions</strong>.</p>
+<p>The root cause: the Bellman backup uses $\max_{a'} Q(s', a')$, which ranges over all actions including those never seen. For unseen actions, the Q-function generalizes optimistically.</p>
+<p><strong>Conservative Q-Learning (CQL)</strong> — Kumar et al., NeurIPS 2020 — fixes this with a single elegant idea: <strong>add a regularization term that explicitly penalizes Q-values on actions not in the dataset</strong>.</p>
 <p>The result: a Q-function that is pessimistic about OOD actions by construction. The greedy policy, facing lower values outside the dataset, naturally stays close to the behavior policy — without explicitly constraining it.</p>
 <hr />
 <h2>The Idea</h2>
 <p>Standard TD training minimizes:</p>
 <p><div class="math-display">$$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar\theta}(s', a') - Q_\theta(s, a) \right)^2 \right]$$</div></p>
-<p>CQL adds a conservative penalty:</p>
-<p><div class="math-display">$$\mathcal{L}_{CQL}(\theta) = \mathcal{L}_{TD}(\theta) + \alpha \cdot \underbrace{\left( \mathbb{E}_{s \sim \mathcal{D},\, a \sim \mu} \left[ Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right)}_{\text{push OOD down, push dataset up}}$$</div></p>
-<p>where $\mu$ is a proposal distribution over actions (uniform or current policy), and $\alpha > 0$ controls conservatism strength.</p>
-<p>In words: <strong>minimize Q everywhere, but maximize at dataset points</strong>. The gap between the two expectations is what CQL penalizes.</p>
+<p>CQL adds two terms to this objective:</p>
+<p><div class="math-display">$$\mathcal{L}_{CQL}(\theta) = \mathcal{L}_{TD}(\theta) + \alpha \cdot \underbrace{\left( \mathbb{E}_{s \sim \mathcal{D},\, a \sim \mu} \left[ Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right)}_{\text{conservative penalty}}$$</div></p>
+<p>where:
+- $\mu$ is some distribution over actions (typically uniform, or the current policy)
+- $\alpha &gt; 0$ is a hyperparameter controlling the strength of conservatism
+- The first expectation <strong>pushes Q-values down</strong> for actions sampled from $\mu$
+- The second expectation <strong>pushes Q-values up</strong> for actions in the dataset</p>
+<p>In words: <strong>minimize Q-values everywhere, but maximize them at dataset actions</strong>. The gap between the two terms is what CQL minimizes — it makes dataset actions look better than OOD actions, which is exactly what we want.</p>
 <hr />
 <h2>Formalization</h2>
-<h3>The Full Objective</h3>
-<p>CQL minimizes a regularized Bellman error:</p>
-<p><div class="math-display">$$\min_\theta \, \alpha \left( \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right) + \mathcal{L}_{TD}(\theta)$$</div></p>
-<p><em>Note: the original paper writes $\frac{1}{2}\mathcal{L}_{TD}$ — a normalisation convention absorbed by $\alpha$ and the learning rate. Our implementation omits it.</em></p>
-<p>The <strong>log-sum-exp</strong> term is a smooth approximation of $\max_a Q(s,a)$ — it pushes the entire Q-surface down. The second term lifts Q-values specifically at dataset points.</p>
-<p>For continuous action spaces (like our thermal process), enumerating all $a$ is impossible. CQL approximates logsumexp by <strong>importance sampling</strong> with two proposal distributions — random uniform actions and current policy actions:</p>
-<p><div class="math-display">$$\log \sum_a \exp Q(s, a) \approx \log \mathbb{E}_{a \sim \mu} \left[ \frac{\exp Q(s,a)}{\mu(a|s)} \right]$$</div></p>
-<p><strong>Why subtract $\log \mu(a|s)$ in the code?</strong> When $\mu = \pi_\theta$, expanding the importance-sampled estimate gives: $\text{logsumexp}_i[Q(s,a_i) - \log\pi_\theta(a_i|s)] + \text{const}$. Subtracting the log-probability of the proposal implements the importance weight correction — without it we'd compute a plain Monte Carlo average of $Q$, not the soft-maximum CQL requires. Uniform random actions need no correction since their log-density is constant and cancels.</p>
-<p>This is exactly what <code>compute_cql_loss()</code> does in <code>cql.py</code>.</p>
-<h3>Theoretical Guarantee</h3>
-<p><strong>Theorem (Kumar et al., 2020).</strong> Under appropriate $\alpha$, the Q-function learned by CQL satisfies:</p>
+<h3>The CQL Objective</h3>
+<p>More precisely, CQL minimizes the following regularized Bellman error:</p>
+<p><div class="math-display">$$\min_\theta \, \alpha \left( \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right) + \frac{1}{2} \mathcal{L}_{TD}(\theta)$$</div></p>
+<p>The first term is the <strong>log-sum-exp</strong> over all actions — a smooth approximation of $\max_a Q(s,a)$. It pushes the entire Q-surface down. The second term lifts Q-values specifically at dataset points.</p>
+<p>This can be written compactly. Define:</p>
+<p><div class="math-display">$$\mathcal{R}_{CQL}(\theta) = \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right]$$</div></p>
+<p>Then: $\mathcal{L}<em TD="TD">{CQL}(\theta) = \mathcal{L}</em>(\theta)$}(\theta) + \alpha \cdot \mathcal{R}_{CQL</p>
+<blockquote>
+<p><strong>Note on the $\frac{1}{2}$ factor.</strong> The original CQL paper writes $\frac{1}{2}\mathcal{L}_{TD}$ to match their derivation conventions. In practice the factor is absorbed into the learning rate and $\alpha$, so implementations (including ours) omit it without loss of generality.</p>
+</blockquote>
+<h3>Why Log-Sum-Exp?</h3>
+<p>The logsumexp term is the softmax-temperature approximation:</p>
+<p><div class="math-display">$$\log \sum_a \exp Q(s, a) = \max_a Q(s, a) + \log \sum_a \exp(Q(s,a) - \max_a Q(s,a))$$</div></p>
+<p>As temperature → 0, this converges to $\max_a Q(s,a)$. At finite temperature it is differentiable and penalizes the entire distribution of Q-values, not just the maximum.</p>
+<p>For continuous action spaces, we cannot enumerate all $a$. CQL approximates the logsumexp by importance sampling:</p>
+<p><div class="math-display">$$\log \sum_a \exp Q(s, a) \approx \log \mathbb{E}_{a \sim \mu(a|s)} \left[ \frac{\exp Q(s,a)}{\mu(a|s)} \right]$$</div></p>
+<p>where $\mu$ is a proposal distribution. In practice, $\mu$ is either uniform over the action space, or the current policy $\pi_\theta$.</p>
+<p><strong>Why subtract $\log \mu(a|s)$ in the code?</strong> When $\mu = \pi_\theta$, the importance-sampled estimate becomes:</p>
+<p><div class="math-display">$$\log \mathbb{E}_{a \sim \pi_\theta} \left[ \frac{\exp Q(s,a)}{\pi_\theta(a|s)} \right] \approx \log \frac{1}{N} \sum_{i=1}^N \frac{\exp Q(s, a_i)}{\pi_\theta(a_i|s)} = \text{logsumexp}_i \left[ Q(s, a_i) - \log \pi_\theta(a_i|s) \right] + \text{const}$$</div></p>
+<p>This is why the code computes <code>q_policy - policy_log_probs</code> before the logsumexp: subtracting $\log \pi_\theta(a|s)$ implements the importance weight correction. Without it, we would be approximating $\mathbb{E}<em>{\pi</em>\theta}[Q]$ (a plain Monte Carlo average), not $\log \sum_a \exp Q$ (the soft-maximum that CQL requires). The uniform random actions don't need this correction because their log-density is constant and cancels in the logsumexp.</p>
+<h3>The Theoretical Guarantee</h3>
+<p><strong>Theorem (Kumar et al., 2020).</strong> Let $\hat{Q}^\pi$ be the Q-function learned by CQL and $Q^\pi$ be the true Q-function of policy $\pi$. Then:</p>
 <p><div class="math-display">$$\hat{Q}^\pi(s, a) \leq Q^\pi(s, a) \quad \forall (s, a) \in \mathcal{D}$$</div></p>
-<p>CQL is a <strong>lower bound</strong> on the true Q-function at dataset points. The policy trained on this pessimistic estimate cannot exploit overestimated values — because they don't exist.</p>
+<p>under appropriate conditions on $\alpha$.</p>
+<p>In other words: <strong>CQL is a lower bound on the true Q-function at dataset points</strong>. The policy trained on this pessimistic Q-function is guaranteed not to exploit overestimated values.</p>
+<p>More practically, the expected policy performance satisfies:</p>
+<p><div class="math-display">$$J(\hat\pi) \geq J(\pi_\beta) - \frac{\alpha}{1-\gamma} \cdot \mathbb{E}_{s \sim d^{\pi_\beta}} \left[ D_{CQL}(\hat\pi, \pi_\beta)(s) \right]$$</div></p>
+<p>where $D_{CQL}$ is a divergence term that measures how far the learned policy drifts from the behavior policy. The bound says: CQL is at least as good as BC, up to a penalty proportional to policy divergence.</p>
 <hr />
 <h2>Implementation</h2>
 <blockquote>
 <p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/cql.py"><code>cql.py</code></a></p>
 </blockquote>
-<h3>Environment: ThermalProcessEnv</h3>
-<p>The toy environment mimics an asphalt coating process. State is <code>[temperature, filler_pct, viscosity]</code>, all normalized to <code>[0, 1]</code>. Actions <code>[heat_delta, flow_delta]</code> are in <code>[-1, 1]</code>. Dynamics are first-order with additive noise:</p>
-<pre><code class="language-python">class ThermalProcessEnv:
-    def __init__(self, T_target=0.6, f_target=0.5, max_steps=200,
-                 noise_std=0.02, seed=42):
-        self.alpha_T, self.beta_T = 0.92, 0.08
-        self.alpha_f, self.beta_f = 0.88, 0.12
-
-    def _viscosity(self, T, f):
-        &quot;&quot;&quot;Nonlinear: high temp -&gt; low viscosity; more filler -&gt; high viscosity.&quot;&quot;&quot;
-        return float(np.clip(0.8 - 0.5 * T + 0.4 * f + 0.1 * f * (1 - T), 0, 1))
-
-    def step(self, action):
-        heat_in = action[0] * 0.5 + 0.5   # scale [-1,1] -&gt; [0,1]
-        T_new = np.clip(self.alpha_T * T + self.beta_T * heat_in
-                        + self.rng.normal(0, self.noise_std), 0, 1)
-        reward = (-2.0 * (T_new - self.T_target)**2
-                  - 2.0 * (f_new - self.f_target)**2
-                  - 0.1 * float(np.sum(action**2)))
-</code></pre>
-<p>The reward penalizes deviation from targets plus action roughness — a standard process control objective.</p>
-<h3>Dataset: Noisy PID Behavior Policy</h3>
-<p>The offline dataset is collected from a proportional controller with Gaussian noise (<code>noise_scale=0.3</code>). This produces <strong>mixed-quality</strong> data — some good trajectories, some poor ones — which is realistic for industrial logs:</p>
-<pre><code class="language-python">def pid_action(state, T_target, f_target):
-    T, f, _ = state
-    return np.array([
-        np.clip(2.0 * (T_target - T), -1, 1),
-        np.clip(2.0 * (f_target - f), -1, 1),
-    ], dtype=np.float32)
-
-def collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0):
-    for ep in range(n_episodes):
-        obs = env.reset(seed=seed + ep)
-        while not done:
-            act = pid_action(obs, env.T_target, env.f_target)
-            act = np.clip(act + np.random.normal(0, noise_scale, 2), -1, 1)
-            obs2, r, done, _ = env.step(act)
-            # store (obs, act, r, obs2, done)
-</code></pre>
 <h3>Networks</h3>
-<p><code>QNetwork</code> takes <code>(state, action)</code> concatenated and returns a scalar value. <code>GaussianPolicy</code> uses the SAC-style stochastic actor with <strong>tanh squashing</strong> — outputs are guaranteed in <code>[-1, 1]</code>, matching the action space:</p>
-<pre><code class="language-python">class QNetwork(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_dim=256):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(state_dim + action_dim, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),              nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
-        )
-    def forward(self, state, action):
-        return self.net(torch.cat([state, action], -1)).squeeze(-1)
+<p>CQL typically uses a SAC-style architecture: two Q-networks (to reduce overestimation via double-Q), a stochastic actor, and entropy regularization.</p>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+<span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
+<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+
+<span class="k">class</span> <span class="nc">QNetwork</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Double-Q network for CQL.&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">256</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>              <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 
 
-class GaussianPolicy(nn.Module):
-    def sample(self, state):
-        &quot;&quot;&quot;Returns (action in [-1,1], log_prob) via reparameterization.&quot;&quot;&quot;
-        mean, std = self._dist(state)
-        raw    = mean + std * torch.randn_like(mean)
-        action = torch.tanh(raw)
-        lp     = (torch.distributions.Normal(mean, std).log_prob(raw)
-                  - torch.log(1 - action.pow(2) + 1e-6)).sum(-1)
-        return action, lp
-</code></pre>
-<p>The <code>log(1 - tanh²(x) + ε)</code> term corrects the log-probability for the Jacobian of the tanh transformation.</p>
+<span class="k">class</span> <span class="nc">GaussianPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Stochastic actor with reparameterization trick.&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">256</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">mean</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+        <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_std_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="o">-</span><span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span>
+
+    <span class="k">def</span> <span class="nf">sample</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Sample action with reparameterization; return (action, log_prob).&quot;&quot;&quot;</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">std</span>  <span class="o">=</span> <span class="n">log_std</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
+        <span class="n">eps</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn_like</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span>
+        <span class="n">raw</span>  <span class="o">=</span> <span class="n">mean</span> <span class="o">+</span> <span class="n">std</span> <span class="o">*</span> <span class="n">eps</span>                        <span class="c1"># reparameterization</span>
+        <span class="n">action</span>   <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tanh</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>                    <span class="c1"># squash to [-1, 1]</span>
+        <span class="n">log_prob</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">torch</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">std</span><span class="p">)</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+            <span class="o">-</span> <span class="n">torch</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">action</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-6</span><span class="p">)</span>    <span class="c1"># tanh correction</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">action</span><span class="p">,</span> <span class="n">log_prob</span>
+
+    <span class="k">def</span> <span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">log_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">deterministic</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">tanh</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+</code></pre></div>
+
 <h3>The CQL Loss</h3>
-<p>This is the core of the file. The function takes two Q-networks and their targets (double-Q), the policy, and a batch of transitions:</p>
-<pre><code class="language-python">def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
-                     states, actions, rewards, next_states, dones,
-                     alpha_cql=1.0, alpha_ent=0.1, gamma=0.99, n_samples=10):
+<p>This is the core: the standard TD loss plus the CQL penalty.</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">compute_cql_loss</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">Q_other</span><span class="p">,</span> <span class="n">Q_tgt</span><span class="p">,</span> <span class="n">Q_other_tgt</span><span class="p">,</span> <span class="n">policy</span><span class="p">,</span>
+                     <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">rewards</span><span class="p">,</span> <span class="n">next_states</span><span class="p">,</span> <span class="n">dones</span><span class="p">,</span>
+                     <span class="n">alpha_cql</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">alpha_ent</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span> <span class="n">n_samples</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    CQL loss = TD_loss + alpha_cql * CQL_penalty.</span>
+<span class="sd">    Call twice for Q1 and Q2 (swap Q/Q_other and targets for the second call).</span>
+<span class="sd">    Returns: (loss, info_dict) with &#39;td_loss&#39;, &#39;cql_penalty&#39;, &#39;q_data&#39;, &#39;q_ood&#39;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">B</span> <span class="o">=</span> <span class="n">states</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">dev</span> <span class="o">=</span> <span class="n">states</span><span class="o">.</span><span class="n">device</span>
 
-    # ── TD target (SAC Bellman backup) ──────────────────────────────────
-    with torch.no_grad():
-        a_next, lp_next = policy.sample(next_states)
-        v_next = (torch.min(Q_tgt(next_states, a_next),
-                            Q_other_tgt(next_states, a_next))
-                  - alpha_ent * lp_next)
-        td_target = rewards + gamma * (1 - dones) * v_next
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">a_next</span><span class="p">,</span> <span class="n">lp_next</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">next_states</span><span class="p">)</span>
+        <span class="n">v_next</span> <span class="o">=</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">Q_tgt</span><span class="p">(</span><span class="n">next_states</span><span class="p">,</span> <span class="n">a_next</span><span class="p">),</span> <span class="n">Q_other_tgt</span><span class="p">(</span><span class="n">next_states</span><span class="p">,</span> <span class="n">a_next</span><span class="p">))</span>
+                  <span class="o">-</span> <span class="n">alpha_ent</span> <span class="o">*</span> <span class="n">lp_next</span><span class="p">)</span>
+        <span class="n">td_target</span> <span class="o">=</span> <span class="n">rewards</span> <span class="o">+</span> <span class="n">gamma</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">dones</span><span class="p">)</span> <span class="o">*</span> <span class="n">v_next</span>
 
-    q_data  = Q(states, actions)
-    td_loss = F.mse_loss(q_data, td_target)
+    <span class="n">q_data</span>  <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
+    <span class="n">td_loss</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">q_data</span><span class="p">,</span> <span class="n">td_target</span><span class="p">)</span>
 
-    # ── CQL penalty ──────────────────────────────────────────────────────
-    # Expand states for vectorized sampling: (B, D) -&gt; (B*n_samples, D)
-    s_rep = states.unsqueeze(1).expand(-1, n_samples, -1).reshape(B * n_samples, -1)
+    <span class="n">s_rep</span> <span class="o">=</span> <span class="n">states</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_samples</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">B</span> <span class="o">*</span> <span class="n">n_samples</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">a_rand</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">B</span> <span class="o">*</span> <span class="n">n_samples</span><span class="p">,</span> <span class="n">actions</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">uniform_</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dev</span><span class="p">)</span>
+    <span class="n">a_pi</span><span class="p">,</span> <span class="n">lp_pi</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">s_rep</span><span class="p">)</span>
+    <span class="n">q_rand</span> <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">s_rep</span><span class="p">,</span> <span class="n">a_rand</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">B</span><span class="p">,</span> <span class="n">n_samples</span><span class="p">)</span>
+    <span class="n">q_pi</span>   <span class="o">=</span> <span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">s_rep</span><span class="p">,</span> <span class="n">a_pi</span><span class="p">)</span> <span class="o">-</span> <span class="n">lp_pi</span><span class="o">.</span><span class="n">detach</span><span class="p">())</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">B</span><span class="p">,</span> <span class="n">n_samples</span><span class="p">)</span>
+    <span class="n">logsumexp</span>   <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">logsumexp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">q_rand</span><span class="p">,</span> <span class="n">q_pi</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">cql_penalty</span> <span class="o">=</span> <span class="p">(</span><span class="n">logsumexp</span> <span class="o">-</span> <span class="n">q_data</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
 
-    # Random OOD actions
-    a_rand = torch.FloatTensor(B * n_samples, actions.shape[-1]).uniform_(-1, 1)
+    <span class="n">loss</span> <span class="o">=</span> <span class="n">td_loss</span> <span class="o">+</span> <span class="n">alpha_cql</span> <span class="o">*</span> <span class="n">cql_penalty</span>
+    <span class="k">return</span> <span class="n">loss</span><span class="p">,</span> <span class="p">{</span><span class="s1">&#39;td_loss&#39;</span><span class="p">:</span> <span class="n">td_loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="s1">&#39;cql_penalty&#39;</span><span class="p">:</span> <span class="n">cql_penalty</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+                 <span class="s1">&#39;q_data&#39;</span><span class="p">:</span> <span class="n">q_data</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="s1">&#39;q_ood&#39;</span><span class="p">:</span> <span class="n">logsumexp</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()}</span>
+</code></pre></div>
 
-    # Policy actions (importance-weighted)
-    a_pi, lp_pi = policy.sample(s_rep)
+<h3>Training Loop</h3>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span> <span class="nn">torch.optim</span> <span class="k">as</span> <span class="nn">optim</span>
 
-    q_rand = Q(s_rep, a_rand).reshape(B, n_samples)
-    q_pi   = (Q(s_rep, a_pi) - lp_pi.detach()).reshape(B, n_samples)
+<span class="k">class</span> <span class="nc">CQLAgent</span><span class="p">:</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">alpha_cql</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">alpha_ent</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+                 <span class="n">gamma</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span> <span class="n">tau</span><span class="o">=</span><span class="mf">0.005</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">device</span> <span class="o">=</span> <span class="n">device</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alpha_cql</span> <span class="o">=</span> <span class="n">alpha_cql</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alpha_ent</span> <span class="o">=</span> <span class="n">alpha_ent</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gamma</span> <span class="o">=</span> <span class="n">gamma</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tau</span> <span class="o">=</span> <span class="n">tau</span>
 
-    # logsumexp over OOD samples — &quot;push down&quot; term
-    logsumexp   = torch.logsumexp(torch.cat([q_rand, q_pi], dim=1), dim=1)
-    cql_penalty = (logsumexp - q_data).mean()
+        <span class="bp">self</span><span class="o">.</span><span class="n">Q1</span> <span class="o">=</span> <span class="n">QNetwork</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Q2</span> <span class="o">=</span> <span class="n">QNetwork</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Q1_tgt</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Q2_tgt</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">policy</span> <span class="o">=</span> <span class="n">GaussianPolicy</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
 
-    return td_loss + alpha_cql * cql_penalty, {...}
-</code></pre>
-<p>Three things to notice:</p>
-<p><strong>Double-Q in the TD target.</strong> <code>torch.min(Q_tgt, Q_other_tgt)</code> reduces overestimation in the backup independently of CQL.</p>
-<p><strong>Two OOD proposals.</strong> Random uniform actions cover the full action space. Policy actions add importance weighting — <code>q_pi - lp_pi</code> approximates $\log \mathbb{E}_\mu[\exp Q / \mu]$.</p>
-<p><strong><code>q_data</code> is the anchor.</strong> The TD loss keeps <code>Q(s,a)</code> close to the Bellman target at dataset points. The CQL penalty ensures it stays <em>above</em> the logsumexp of OOD values.</p>
-<h3>CQLAgent</h3>
-<p>The agent wraps double-Q + policy + optional automatic alpha tuning via Lagrangian dual gradient descent:</p>
-<pre><code class="language-python">class CQLAgent:
-    def update(self, batch):
-        s, a, r, s2, d = [x.to(self.device) for x in batch]
+        <span class="bp">self</span><span class="o">.</span><span class="n">q_opt</span>  <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span>
+            <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="o">.</span><span class="n">parameters</span><span class="p">())</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="o">.</span><span class="n">parameters</span><span class="p">()),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">3e-4</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pi_opt</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">3e-4</span><span class="p">)</span>
 
-        # Update both Q-networks
-        l1, i1 = compute_cql_loss(self.Q1, self.Q2, self.Q1_tgt, self.Q2_tgt, ...)
-        l2, i2 = compute_cql_loss(self.Q2, self.Q1, self.Q2_tgt, self.Q1_tgt, ...)
-        self.q_opt.zero_grad()
-        (l1 + l2).backward()
-        nn.utils.clip_grad_norm_([...], 1.0)
-        self.q_opt.step()
+    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">):</span>
+        <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">]</span>
 
-        # Auto alpha: adjust conservatism to keep penalty near target_cql
-        if self.auto_alpha:
-            pen = (i1['cql_penalty'] + i2['cql_penalty']) / 2
-            al  = -self.log_alpha * (pen - self.target_cql)
-            self.alpha_opt.zero_grad(); al.backward(); self.alpha_opt.step()
+        <span class="n">l1</span><span class="p">,</span> <span class="n">i1</span> <span class="o">=</span> <span class="n">compute_cql_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q1_tgt</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q2_tgt</span><span class="p">,</span>
+                                  <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span>
+                                  <span class="bp">self</span><span class="o">.</span><span class="n">alpha_cql</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">alpha_ent</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma</span><span class="p">)</span>
+        <span class="n">l2</span><span class="p">,</span> <span class="n">i2</span> <span class="o">=</span> <span class="n">compute_cql_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q2_tgt</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q1_tgt</span><span class="p">,</span>
+                                  <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span>
+                                  <span class="bp">self</span><span class="o">.</span><span class="n">alpha_cql</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">alpha_ent</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">q_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+        <span class="p">(</span><span class="n">l1</span> <span class="o">+</span> <span class="n">l2</span><span class="p">)</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+        <span class="n">nn</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">clip_grad_norm_</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="o">.</span><span class="n">parameters</span><span class="p">())</span> <span class="o">+</span>
+                                 <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="o">.</span><span class="n">parameters</span><span class="p">()),</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">q_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
 
-        # Policy: maximize Q - entropy
-        a_pi, lp = self.policy.sample(s)
-        q_pi = torch.min(self.Q1(s, a_pi), self.Q2(s, a_pi))
-        lpi  = (self.alpha_ent * lp - q_pi).mean()
-        self.pi_opt.zero_grad(); lpi.backward(); self.pi_opt.step()
+        <span class="n">a_pi</span><span class="p">,</span> <span class="n">lp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+        <span class="n">q_pi</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a_pi</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a_pi</span><span class="p">))</span>
+        <span class="n">lpi</span>  <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alpha_ent</span> <span class="o">*</span> <span class="n">lp</span> <span class="o">-</span> <span class="n">q_pi</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pi_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">();</span> <span class="n">lpi</span><span class="o">.</span><span class="n">backward</span><span class="p">();</span> <span class="bp">self</span><span class="o">.</span><span class="n">pi_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
 
-        # Soft target update: θ_target ← (1-τ)θ_target + τθ
-        for p, pt in zip(self.Q1.parameters(), self.Q1_tgt.parameters()):
-            pt.data.mul_(1 - self.tau).add_(self.tau * p.data)
-</code></pre>
+        <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">pt</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q1_tgt</span><span class="o">.</span><span class="n">parameters</span><span class="p">()):</span>
+            <span class="n">pt</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">mul_</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau</span><span class="p">)</span><span class="o">.</span><span class="n">add_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tau</span> <span class="o">*</span> <span class="n">p</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">pt</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q2_tgt</span><span class="o">.</span><span class="n">parameters</span><span class="p">()):</span>
+            <span class="n">pt</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">mul_</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau</span><span class="p">)</span><span class="o">.</span><span class="n">add_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tau</span> <span class="o">*</span> <span class="n">p</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">{</span><span class="s1">&#39;td_loss&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">i1</span><span class="p">[</span><span class="s1">&#39;td_loss&#39;</span><span class="p">]</span><span class="o">+</span><span class="n">i2</span><span class="p">[</span><span class="s1">&#39;td_loss&#39;</span><span class="p">])</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span>
+                <span class="s1">&#39;cql_penalty&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">i1</span><span class="p">[</span><span class="s1">&#39;cql_penalty&#39;</span><span class="p">]</span><span class="o">+</span><span class="n">i2</span><span class="p">[</span><span class="s1">&#39;cql_penalty&#39;</span><span class="p">])</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span>
+                <span class="s1">&#39;policy_loss&#39;</span><span class="p">:</span> <span class="n">lpi</span><span class="o">.</span><span class="n">item</span><span class="p">()}</span>
+</code></pre></div>
+
 <hr />
 <h2>The alpha Hyperparameter</h2>
-<p>$\alpha$ is the most important hyperparameter in CQL:</p>
+<p>$\alpha$ is the most important hyperparameter in CQL. It controls the trade-off between conservatism and performance:</p>
 <table>
 <thead>
 <tr>
@@ -245,12 +275,12 @@ class GaussianPolicy(nn.Module):
 <td>Standard SAC — no conservatism, OOD exploitation</td>
 </tr>
 <tr>
-<td>$\alpha = 1.0$</td>
-<td>Default starting point</td>
+<td>$\alpha$ small (0.1–1.0)</td>
+<td>Mild conservatism — allows some policy improvement</td>
 </tr>
 <tr>
-<td>$\alpha = 5$–$10$</td>
-<td>Strong conservatism — policy close to $\pi_\beta$</td>
+<td>$\alpha$ large (5–10)</td>
+<td>Strong conservatism — policy stays close to $\pi_\beta$</td>
 </tr>
 <tr>
 <td>$\alpha \to \infty$</td>
@@ -258,179 +288,196 @@ class GaussianPolicy(nn.Module):
 </tr>
 </tbody>
 </table>
-<p><strong>Automatic tuning</strong> uses a Lagrangian: keep the CQL penalty near a target $\tau$. In <code>CQLAgent</code>, set <code>auto_alpha=True</code> and <code>target_cql=-1.0</code>. The dual variable <code>log_alpha</code> is updated to satisfy the constraint:</p>
+<p><strong>Automated $\alpha$ tuning.</strong> CQL can tune $\alpha$ automatically using a Lagrangian approach. We want the CQL penalty to be at most some target threshold $\tau$:</p>
 <p><div class="math-display">$$\min_\theta \max_{\alpha \geq 0} \; \mathcal{L}_{TD}(\theta) + \alpha \left( \mathcal{R}_{CQL}(\theta) - \tau \right)$$</div></p>
-<p><strong>A note on the entropy coefficient.</strong> The implementation uses a fixed <code>alpha_ent=0.1</code>. In production CQL this is also tuned automatically, targeting $\mathcal{H}^* = -\dim(\mathcal{A})$ (one nat per action dimension) — the same convention as SAC. The fixed value works for the thermal control task; for other environments, automatic tuning is recommended.</p>
-<hr />
-<h2>Running the Comparison</h2>
-<pre><code class="language-python">from cql import run_comparison
-run_comparison()
-</code></pre>
-<p>Output (approximate — varies by seed):</p>
-<pre><code>============================================================
-Chapter 3: CQL vs BC on Thermal Process
-============================================================
-Dataset: 80,200 transitions | reward mean=-0.847 ± 0.621
+<p>This is a constrained optimization: minimize the Bellman error subject to keeping the CQL penalty below $\tau$. In practice:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Automatic alpha tuning via dual gradient descent</span>
+<span class="n">log_alpha_cql</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="n">alpha_opt</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">([</span><span class="n">log_alpha_cql</span><span class="p">],</span> <span class="n">lr</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">)</span>
+<span class="n">target_penalty</span> <span class="o">=</span> <span class="o">-</span><span class="mf">2.0</span>   <span class="c1"># τ: target value of E_μ[Q] - E_D[Q]</span>
 
-Behavior policy (noisy PID): -38.42 ± 8.21
+<span class="c1"># In the update step:</span>
+<span class="n">alpha_cql</span> <span class="o">=</span> <span class="n">log_alpha_cql</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+<span class="c1"># ... compute cql_penalty ...</span>
+<span class="n">alpha_loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">log_alpha_cql</span> <span class="o">*</span> <span class="p">(</span><span class="n">cql_penalty</span> <span class="o">-</span> <span class="n">target_penalty</span><span class="p">)</span>
+<span class="n">alpha_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+<span class="n">alpha_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+<span class="n">alpha_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+</code></pre></div>
 
---- Behavioral Cloning ---
-  Epoch  20 | bc_loss=0.4231
-  Epoch  40 | bc_loss=0.2847
-  ...
+<p><strong>A note on the entropy coefficient.</strong> The code uses a fixed <code>alpha_ent = 0.1</code> for the SAC entropy term. In production CQL this coefficient is also tuned automatically, targeting a desired policy entropy $\mathcal{H}^* = -\dim(\mathcal{A})$ (one nat of entropy per action dimension):</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Automatic entropy tuning (SAC-style)</span>
+<span class="n">log_alpha_ent</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="n">ent_opt</span>       <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">([</span><span class="n">log_alpha_ent</span><span class="p">],</span> <span class="n">lr</span><span class="o">=</span><span class="mf">3e-4</span><span class="p">)</span>
+<span class="n">target_entropy</span> <span class="o">=</span> <span class="o">-</span><span class="n">action_dim</span>   <span class="c1"># H* = -dim(A)</span>
 
---- CQL (alpha=1.0) ---
-  Epoch  20 | td=0.0821 | cql=1.2431 | q_data=0.4821 | pi=-0.2341 | alpha=1.0
-  ...
+<span class="c1"># In the policy update step:</span>
+<span class="n">alpha_ent</span>  <span class="o">=</span> <span class="n">log_alpha_ent</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+<span class="n">loss_pi</span>    <span class="o">=</span> <span class="p">(</span><span class="n">alpha_ent</span> <span class="o">*</span> <span class="n">log_probs</span> <span class="o">-</span> <span class="n">q_pi</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+<span class="c1"># ...</span>
+<span class="n">ent_loss</span>   <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="n">log_alpha_ent</span> <span class="o">*</span> <span class="p">(</span><span class="n">log_probs</span> <span class="o">+</span> <span class="n">target_entropy</span><span class="p">)</span><span class="o">.</span><span class="n">detach</span><span class="p">())</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+<span class="n">ent_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+<span class="n">ent_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+<span class="n">ent_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+</code></pre></div>
 
-============================================================
-Method               Reward        T err     f err
-------------------------------------------------------------
-Noisy PID (data)    -38.42±8.21       —         —
-BC                  -35.12±6.43   0.0821    0.0743
-CQL (α=1.0)         -28.67±4.12   0.0512    0.0487
-CQL (auto α)        -26.94±3.87   0.0478    0.0431
-============================================================
+<p>The fixed <code>0.1</code> in our implementation works for the thermal control environment but may need adjustment for other tasks. When in doubt, use automatic tuning.</p>
+<p>Think of the Q-function as a landscape over the state-action space. Standard Q-learning shapes this landscape using only data points as anchors — in between, the landscape is unconstrained and tends to rise due to optimistic generalization.</p>
+<p>CQL adds gravity: it pulls the entire landscape down, while the TD loss anchors it at data points. The result is a landscape that is high at dataset actions and low everywhere else.</p>
+<p>The policy, acting greedily on this landscape, prefers dataset actions — not because it was explicitly constrained, but because the landscape naturally guides it there.</p>
+<div class="codehilite"><pre><span></span><code>Standard Q-landscape:        CQL Q-landscape:
 
-CQL vs BC: +6.45 reward
-</code></pre>
-<p>CQL consistently outperforms BC because it uses reward information to find better actions within the data distribution — not just copying average behavior.</p>
-<hr />
-<h2>What CQL Actually Does: Intuition</h2>
-<p>Think of the Q-function as a landscape over the action space. Standard Q-learning leaves this landscape unconstrained between data points — it tends to rise due to optimistic generalization.</p>
-<p>CQL adds gravity: it pulls the entire landscape down, while TD loss anchors it high at data points. The greedy policy sees high values only at data-like actions and naturally stays in-distribution.</p>
+  Q  ↑   <span class="gs">*     *</span>            Q  ↑   <span class="gs">*     *</span>
+     |  / \   / \              |  <span class="gs">* \   / *</span>
+     | /   \ /   \             | /   \ /   \
+     |/     <span class="gs">*     \            |/     *</span>     \
+     +----------→ a            +----------→ a
+     ↑ data points                ↑ data points (anchored high)
+     ↑↑ OOD interpolation         OOD values pushed down
+</code></pre></div>
 
-<figure style="margin:2rem 0">
-<svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg"
-     style="width:100%;max-width:680px;display:block;font-family:'Inter',system-ui,sans-serif">
-
-  <!-- left panel -->
-  <text x="20" y="18" font-size="11" font-weight="600" fill="#555570" letter-spacing="0.05em">STANDARD Q-LEARNING</text>
-
-  <!-- axes -->
-  <line x1="36" y1="30" x2="36" y2="175" stroke="#c8c8c0" stroke-width="1.5"/>
-  <line x1="36" y1="175" x2="300" y2="175" stroke="#c8c8c0" stroke-width="1.5"/>
-  <text x="20" y="34" font-size="10" fill="#888" text-anchor="middle">Q</text>
-  <text x="305" y="179" font-size="10" fill="#888">a</text>
-
-  <!-- dataset action markers -->
-  <line x1="90"  y1="170" x2="90"  y2="178" stroke="#c8c8c0" stroke-width="1"/>
-  <line x1="160" y1="170" x2="160" y2="178" stroke="#c8c8c0" stroke-width="1"/>
-  <line x1="230" y1="170" x2="230" y2="178" stroke="#c8c8c0" stroke-width="1"/>
-
-  <!-- OOD curve — rises between data points -->
-  <path d="M36,155 C55,148 75,60 90,55 C105,50 125,130 160,45 C195,-20 210,80 230,60 C250,40 275,145 300,152"
-        fill="none" stroke="#dc3545" stroke-width="2" stroke-dasharray="4,3" opacity="0.7"/>
-
-  <!-- data point dots -->
-  <circle cx="90"  cy="55" r="5" fill="#2563eb"/>
-  <circle cx="160" cy="45" r="5" fill="#2563eb"/>
-  <circle cx="230" cy="60" r="5" fill="#2563eb"/>
-
-  <!-- OOD peak annotations -->
-  <circle cx="125" cy="90"  r="3.5" fill="#dc3545" opacity="0.6"/>
-  <circle cx="195" cy="20"  r="3.5" fill="#dc3545" opacity="0.6"/>
-
-  <text x="105" y="85"  font-size="9" fill="#dc3545">OOD peak</text>
-  <text x="175" y="16"  font-size="9" fill="#dc3545">OOD peak</text>
-
-  <!-- legend -->
-  <circle cx="44"  cy="195" r="4" fill="#2563eb"/>
-  <text x="52" y="199" font-size="9" fill="#555570">dataset actions (anchored)</text>
-  <line  x1="40" y1="210" x2="56" y2="210" stroke="#dc3545" stroke-width="2" stroke-dasharray="4,3"/>
-  <text x="60" y="214" font-size="9" fill="#555570">Q-function (unconstrained)</text>
-
-  <!-- right panel -->
-  <text x="370" y="18" font-size="11" font-weight="600" fill="#555570" letter-spacing="0.05em">CQL</text>
-
-  <!-- axes -->
-  <line x1="386" y1="30" x2="386" y2="175" stroke="#c8c8c0" stroke-width="1.5"/>
-  <line x1="386" y1="175" x2="650" y2="175" stroke="#c8c8c0" stroke-width="1.5"/>
-  <text x="370" y="34" font-size="10" fill="#888" text-anchor="middle">Q</text>
-  <text x="655" y="179" font-size="10" fill="#888">a</text>
-
-  <!-- dataset action markers -->
-  <line x1="440" y1="170" x2="440" y2="178" stroke="#c8c8c0" stroke-width="1"/>
-  <line x1="510" y1="170" x2="510" y2="178" stroke="#c8c8c0" stroke-width="1"/>
-  <line x1="580" y1="170" x2="580" y2="178" stroke="#c8c8c0" stroke-width="1"/>
-
-  <!-- CQL curve — OOD regions depressed, data points anchored high -->
-  <path d="M386,162 C400,158 425,155 440,55 C455,155 480,158 510,50 C540,158 565,157 580,62 C595,157 625,160 650,162"
-        fill="none" stroke="#2563eb" stroke-width="2"/>
-
-  <!-- shaded OOD regions -->
-  <path d="M386,162 C400,158 425,155 440,55 C455,155 480,158 510,50 C540,158 565,157 580,62 C595,157 625,160 650,162 L650,175 L386,175 Z"
-        fill="#2563eb" opacity="0.06"/>
-
-  <!-- data point dots -->
-  <circle cx="440" cy="55" r="5" fill="#2563eb"/>
-  <circle cx="510" cy="50" r="5" fill="#2563eb"/>
-  <circle cx="580" cy="62" r="5" fill="#2563eb"/>
-
-  <!-- suppressed OOD annotations -->
-  <text x="416" y="148" font-size="9" fill="#888">↓</text>
-  <text x="468" y="148" font-size="9" fill="#888">↓</text>
-  <text x="600" y="148" font-size="9" fill="#888">↓</text>
-  <text x="405" y="158" font-size="8" fill="#888">suppressed</text>
-  <text x="458" y="158" font-size="8" fill="#888">suppressed</text>
-  <text x="590" y="158" font-size="8" fill="#888">supp.</text>
-
-  <!-- legend -->
-  <circle cx="394" cy="195" r="4" fill="#2563eb"/>
-  <text x="402" y="199" font-size="9" fill="#555570">dataset actions (anchored high)</text>
-  <line  x1="390" y1="210" x2="406" y2="210" stroke="#2563eb" stroke-width="2"/>
-  <text x="410" y="214" font-size="9" fill="#555570">Q-function (OOD suppressed)</text>
-</svg>
-<figcaption style="font-size:0.8rem;color:#555570;text-align:center;margin-top:0.5rem;font-style:italic">
-  Left: standard Q-learning allows the Q-function to rise arbitrarily at unobserved actions. Right: CQL anchors dataset points high while suppressing OOD regions — the greedy policy naturally stays in-distribution.
-</figcaption>
-</figure>
+<p><em>(In the HTML version this diagram is rendered as an SVG figure.)</em></p>
 <hr />
 <h2>How to Choose α</h2>
-<p>$\alpha$ is the most consequential hyperparameter in CQL. The right value depends on dataset quality, reward scale, and how much you trust the behavior policy. Here is a structured approach.</p>
+<p>$\alpha$ is the most consequential hyperparameter in CQL. The right value depends on dataset quality, reward scale, and how much you trust the behavior policy.</p>
 <h3>Step 1 — Sanity-check the CQL penalty sign</h3>
-<p>Before tuning $\alpha$, verify that the penalty is correctly positive: $\mathbb{E}_\mu[Q] > \mathbb{E}_D[Q]$ should hold for $\alpha > 0$ after a few hundred updates. If the penalty is negative from the start, the OOD sampling is broken (check your action sampling code).</p>
+<p>Before tuning $\alpha$, verify that the penalty is correctly positive: $\mathbb{E}_\mu[Q] &gt; \mathbb{E}_D[Q]$ should hold after a few hundred updates. If the penalty is negative from the start, OOD action sampling is broken.</p>
 <h3>Step 2 — Grid search over one log-scale pass</h3>
-<pre><code class="language-python">for alpha in [0.1, 0.5, 1.0, 5.0, 10.0]:
-    agent = CQLAgent(..., alpha_cql=alpha)
-    train_agent(agent, loader, n_epochs=80)
-    res = evaluate(agent, env, ...)
-    print(f"alpha={alpha:.1f}  reward={res['reward_mean']:.2f}  "
-          f"cql_penalty={res.get('cql_penalty', '?')}")
-</code></pre>
-<p>This takes five training runs and gives a coarse map of the reward–conservatism tradeoff.</p>
+<div class="codehilite"><pre><span></span><code><span class="k">for</span> <span class="n">alpha</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">]:</span>
+    <span class="n">agent</span> <span class="o">=</span> <span class="n">CQLAgent</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">alpha_cql</span><span class="o">=</span><span class="n">alpha</span><span class="p">)</span>
+    <span class="n">train_agent</span><span class="p">(</span><span class="n">agent</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">evaluate</span><span class="p">(</span><span class="n">agent</span><span class="p">,</span> <span class="n">env</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;alpha=</span><span class="si">{</span><span class="n">alpha</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">  reward=</span><span class="si">{</span><span class="n">res</span><span class="p">[</span><span class="s1">&#39;reward_mean&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Five runs give a coarse map of the reward–conservatism tradeoff.</p>
 <h3>Step 3 — Read the diagnostics</h3>
 <table>
-<thead><tr><th>Symptom</th><th>Diagnosis</th><th>Fix</th></tr></thead>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Diagnosis</th>
+<th>Fix</th>
+</tr>
+</thead>
 <tbody>
-<tr><td>Policy ≈ BC, reward not improving</td><td>$\alpha$ too large — Q-values suppressed everywhere</td><td>Reduce $\alpha$ by 5–10×</td></tr>
-<tr><td>Q-values diverge during training</td><td>$\alpha$ too small — OOD overestimation not controlled</td><td>Increase $\alpha$ by 2–5×</td></tr>
-<tr><td>CQL penalty goes negative</td><td>$\alpha$ too small — OOD values not suppressed below dataset values</td><td>Increase $\alpha$</td></tr>
-<tr><td>CQL penalty very large (&gt; 10×TD loss)</td><td>$\alpha$ too large or reward scale issue</td><td>Normalize rewards; reduce $\alpha$</td></tr>
+<tr>
+<td>Policy ≈ BC, no improvement</td>
+<td>$\alpha$ too large — Q suppressed everywhere</td>
+<td>Reduce by 5–10×</td>
+</tr>
+<tr>
+<td>Q-values diverge</td>
+<td>$\alpha$ too small — OOD not controlled</td>
+<td>Increase by 2–5×</td>
+</tr>
+<tr>
+<td>CQL penalty goes negative</td>
+<td>$\alpha$ too small</td>
+<td>Increase $\alpha$</td>
+</tr>
+<tr>
+<td>CQL penalty &gt;&gt; TD loss</td>
+<td>$\alpha$ too large or reward scale issue</td>
+<td>Normalize rewards; reduce $\alpha$</td>
+</tr>
 </tbody>
 </table>
 <h3>Typical values by data type</h3>
 <table>
-<thead><tr><th>Dataset type</th><th>Starting $\alpha$</th><th>Rationale</th></tr></thead>
+<thead>
+<tr>
+<th>Dataset type</th>
+<th>Starting $\alpha$</th>
+<th>Rationale</th>
+</tr>
+</thead>
 <tbody>
-<tr><td>Expert-only (near-optimal behavior)</td><td>0.1 – 0.5</td><td>Behavior policy is good; heavy conservatism hurts</td></tr>
-<tr><td>Mixed quality (expert + random)</td><td>1.0 – 2.0</td><td>Safe default; balances improvement and safety</td></tr>
-<tr><td>Random / noisy operator data</td><td>2.0 – 5.0</td><td>High noise → more OOD risk → more conservatism needed</td></tr>
-<tr><td>Multi-regime industrial logs</td><td>1.0 + auto-$\alpha$</td><td>Lagrangian tuning adapts across regime boundaries</td></tr>
+<tr>
+<td>Expert-only (near-optimal)</td>
+<td>0.1 – 0.5</td>
+<td>Behavior policy is good; heavy conservatism hurts</td>
+</tr>
+<tr>
+<td>Mixed quality (expert + random)</td>
+<td>1.0 – 2.0</td>
+<td>Safe default</td>
+</tr>
+<tr>
+<td>Random / noisy operator data</td>
+<td>2.0 – 5.0</td>
+<td>High noise → more OOD risk → more conservatism</td>
+</tr>
+<tr>
+<td>Multi-regime industrial logs</td>
+<td>1.0 + auto-$\alpha$</td>
+<td>Lagrangian tuning adapts across regime boundaries</td>
+</tr>
 </tbody>
 </table>
 <h3>When to use automatic tuning</h3>
-<p>Use <code>auto_alpha=True</code> when: (a) you will deploy the policy in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set <code>target_cql</code> to a small negative value (e.g. <code>-1.0</code>) — this means "allow OOD Q-values to be at most 1 unit below dataset values on average."</p>
-<p>Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible, interpretable experiments, or when you have already found a good value via grid search.</p>
-<p><strong>Normalize observations</strong> to zero mean, unit variance using dataset statistics. CQL is sensitive to scale — unnormalized states will make the penalty and TD loss imbalanced.</p>
-<p><strong>Monitor the CQL penalty</strong> (<code>E_μ[Q] - E_D[Q]</code>) during training. It should be positive (OOD values below dataset values) and stable. If it goes negative, increase $\alpha$. If Q-values diverge, increase $\alpha$ or reduce the learning rate.</p>
-<p><strong>Use double-Q always.</strong> <code>torch.min(Q1, Q2)</code> in the TD target and policy update reduces overestimation independently of CQL — the two mechanisms complement each other.</p>
-<p><strong>For multi-regime industrial data</strong> (e.g., stopped/slow/fast operating modes): consider adding the regime index as a state feature, or training separate agents per regime. A single CQL agent averaging over regimes will be excessively conservative in each of them.</p>
+<p>Use <code>auto_alpha=True</code> when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set <code>target_cql</code> to a small negative value (e.g. <code>-1.0</code>).</p>
+<p>Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible experiments, or you have already found a good value via grid search.</p>
+<hr />
+<h2>CQL vs TD3+BC: A Comparison</h2>
+<p>TD3+BC (Fujimoto &amp; Gu, 2021) is a simpler alternative that adds a BC term directly to the policy loss:</p>
+<p><div class="math-display">$$\pi^* = \arg\max_\pi \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \lambda Q(s, \pi(s)) - (\pi(s) - a)^2 \right]$$</div></p>
+<p>It normalizes Q-values and constrains the policy output to stay close to dataset actions.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>CQL</th>
+<th>TD3+BC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Where pessimism lives</td>
+<td>Q-function</td>
+<td>Policy objective</td>
+</tr>
+<tr>
+<td>OOD Q-values</td>
+<td>Explicitly pushed down</td>
+<td>Not modified</td>
+</tr>
+<tr>
+<td>Theoretical guarantee</td>
+<td>Yes (lower bound)</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Hyperparameters</td>
+<td>$\alpha$</td>
+<td>$\lambda$</td>
+</tr>
+<tr>
+<td>Implementation complexity</td>
+<td>Medium</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>Performance on noisy data</td>
+<td>Better</td>
+<td>More sensitive</td>
+</tr>
+</tbody>
+</table>
+<p>TD3+BC is a good starting point for deterministic policies. CQL is more principled and generally stronger on complex tasks.</p>
+<hr />
+<h2>Practical Tips</h2>
+<p><strong>Normalize observations.</strong> CQL is sensitive to scale. Always normalize states to zero mean and unit variance using statistics from the dataset.</p>
+<p><strong>Start with $\alpha = 1.0$.</strong> This is a safe default. If the policy is too conservative (performance similar to BC), reduce $\alpha$. If Q-values diverge, increase it.</p>
+<p><strong>Use Double-Q.</strong> Always use two Q-networks and take the minimum. This reduces overestimation independent of CQL — they complement each other.</p>
+<p><strong>Monitor the CQL penalty.</strong> Log <code>E_μ[Q] - E_D[Q]</code> during training. It should be positive (OOD values are lower than dataset values) and stable. If it goes negative, $\alpha$ is too small.</p>
+<p><strong>Industrial data tip.</strong> If your dataset has multiple operating regimes (e.g., stopped/slow/fast in a coating process), consider training separate CQL agents per regime or adding regime as a state feature. A single CQL agent averaging over regimes will be conservative in all of them and may underperform in each.</p>
 <hr />
 <h2>Limitations</h2>
-<p><strong>Requires reward labels.</strong> Unlike BC, CQL needs <code>(s, a, r, s')</code>. If your dataset only has <code>(s, a, s')</code>, you need to define a reward function separately.</p>
-<p><strong>Sensitive to reward scale.</strong> Normalize rewards to <code>[-1, 1]</code> or <code>[0, 1]</code>. If rewards are large (thousands), the TD loss dominates and CQL has negligible effect.</p>
-<p><strong>Conservative by design.</strong> CQL will not extrapolate far beyond the behavior policy. For tasks requiring aggressive improvement over the dataset, model-based methods (Chapter 5) are more appropriate.</p>
+<p><strong>Requires reward labels.</strong> Unlike BC, CQL needs $(s, a, r, s')$ tuples. If your dataset only has $(s, a, s')$, you need to define a reward function.</p>
+<p><strong>Sensitive to reward scale.</strong> The balance between the TD loss and CQL penalty depends on the reward magnitude. If rewards are large (e.g., in the thousands), the TD loss dominates and CQL has little effect. Normalize rewards to $[-1, 1]$ or $[0, 1]$.</p>
+<p><strong>Conservative by design.</strong> CQL will not outperform the behavior policy by a large margin in regions with sparse data. It is designed to be safe, not to extrapolate aggressively. For tasks requiring significant extrapolation beyond the dataset, model-based methods (Chapter 7) are more appropriate.</p>
+<p><strong>Continuous action spaces need sampling.</strong> The logsumexp over actions requires sampling — typically 10 uniform + 10 policy samples per state. This adds computational overhead compared to BC or TD3+BC.</p>
 <hr />
 <h2>Summary</h2>
 <table>
@@ -443,41 +490,43 @@ CQL vs BC: +6.45 reward
 <tbody>
 <tr>
 <td>Data required</td>
-<td>$(s, a, r, s')$ with rewards</td>
+<td>$(s, a, r, s')$ transitions with rewards</td>
 </tr>
 <tr>
-<td>Core idea</td>
-<td>Penalize Q-values on OOD actions via logsumexp</td>
+<td>Training objective</td>
+<td>TD loss + CQL penalty (logsumexp − dataset Q)</td>
+</tr>
+<tr>
+<td>OOD handling</td>
+<td>Explicit: Q-values pushed down for OOD actions</td>
 </tr>
 <tr>
 <td>Theoretical guarantee</td>
-<td>Lower bound on true Q at dataset points</td>
+<td>Lower bound on true Q-function at dataset points</td>
 </tr>
 <tr>
 <td>Key hyperparameter</td>
-<td>$\alpha$ (conservatism); auto-tunable via Lagrangian</td>
+<td>$\alpha$ (conservatism strength)</td>
 </tr>
 <tr>
-<td>Compared to BC</td>
-<td>Uses rewards → can improve over behavior policy</td>
-</tr>
-<tr>
-<td>Compared to standard Q</td>
-<td>Explicit pessimism → no OOD exploitation</td>
+<td>Implementation complexity</td>
+<td>Medium</td>
 </tr>
 </tbody>
 </table>
+<p>CQL closes the gap between behavioral cloning and full offline RL. It uses reward information to improve over the behavior policy, while pessimism about OOD actions prevents the catastrophic failures of standard Q-learning.</p>
+<p>The remaining limitation: CQL is <strong>model-free</strong>. It learns from the data as-is, with no model of how the system transitions. Chapter 4 (IQL) refines the value pessimism idea. Chapter 7 (MOPO) shows how learning a world model enables generating synthetic data — extending the effective dataset beyond what was collected.</p>
 <hr />
 <h2>References</h2>
 <ul>
 <li>Kumar, A., Zhou, A., Tucker, G., &amp; Levine, S. (2020). <em>Conservative Q-Learning for Offline Reinforcement Learning.</em> NeurIPS. <a href="https://arxiv.org/abs/2006.04779">arXiv:2006.04779</a>.</li>
-<li>Fujimoto, S., &amp; Gu, S. (2021). <em>A Minimalist Approach to Offline RL (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
-<li>Haarnoja, T. et al. (2018). <em>Soft Actor-Critic.</em> ICML. <a href="https://arxiv.org/abs/1801.01290">arXiv:1801.01290</a>.</li>
+<li>Fujimoto, S., &amp; Gu, S. (2021). <em>A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
+<li>Haarnoja, T. et al. (2018). <em>Soft Actor-Critic: Off-Policy Maximum Entropy Deep RL.</em> ICML. <a href="https://arxiv.org/abs/1801.01290">arXiv:1801.01290</a>. <em>(SAC foundation for CQL)</em></li>
 <li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
 </ul></main>
 <nav class="chapter-nav">
 <a href="/offline-rl-book/en/chapter2.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">The Offline RL Problem</span></a>
-<a href="/offline-rl-book/en/chapter4.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Implicit Q-Learning (IQL)</span></a>
+    <a href="/offline-rl-book/en/chapter4.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Implicit Q-Learning (IQL)</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

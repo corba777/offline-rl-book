@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chapter 8: Explainability in Offline RL</title>
+  <title>Chapter 8: Physics-Informed Offline RL</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -58,314 +58,375 @@
   </div>
 </header>
 <main>
-<h1>Chapter 8: Explainability in Offline RL</h1>
+<h1>Chapter 8: Physics-Informed Offline RL</h1>
 <blockquote>
-<p><em>"A policy that achieves 80% Directional Accuracy but cannot explain why it chose each action is hard to trust and impossible to certify."</em></p>
+<p><em>"A black-box model that fits the data perfectly inside the training distribution is still useless if it predicts that energy is not conserved outside it."</em></p>
 </blockquote>
 <hr />
-<h2>Why Explainability Matters in Industrial Offline RL</h2>
-<p>The algorithms in Chapters 1–7 produce policies that achieve high reward, respect physical constraints, and generalize to unseen operating regimes. What they do not produce is an answer to the question an operator will inevitably ask: <em>why did the agent command this setpoint at this moment?</em></p>
-<p>This is not merely a regulatory concern, though in many industries it is that too. It is a practical reliability question. A policy whose decisions are opaque cannot be diagnosed when it fails. An operator who does not understand the agent's reasoning cannot override it intelligently. A model that fits data well but for the wrong reasons will fail silently when the process changes.</p>
-<p>Explainability in Offline RL is harder than in standard supervised learning for three reasons specific to the offline setting.</p>
-<p><strong>There are three separate models to explain.</strong> A trained Offline RL agent contains a Q-function (the critic), a policy (the actor), and optionally a dynamics model. Each answers a different question, and their explanations do not always agree. The Q-function might rate an action highly because temperature is near its setpoint; the policy might choose that action because level is near its lower bound. Understanding the discrepancy is as important as understanding the agreement.</p>
-<p><strong>The Q-function's input is a concatenation of state and action.</strong> Unlike a classifier whose input is a single feature vector, the Q-function takes $(s, a)$ as input. SHAP values computed over this concatenated space tell you whether the high Q-value comes from the state (the situation was favorable) or the action (the specific action was appropriate for this situation).</p>
-<p><strong>The behavior policy's distribution is uneven.</strong> SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset — dense near the operating setpoint and sparse near disturbances. SHAP values answer: <em>"how does this instance differ from the typical operating point, and how does that difference affect the output?"</em></p>
+<h2>Why Physics?</h2>
+<p>Chapters 3–7 treated the world as a black box: we fed in states and actions, observed next states and rewards, and let neural networks figure out the rest. For benchmark tasks like MuJoCo locomotion this is fine — the environment is a simulation, data is plentiful, and there are no hard physical constraints that must hold.</p>
+<p>Industrial processes are different. Three things distinguish them:</p>
+<p><strong>Data is scarce and narrow.</strong> A manufacturing line runs in a small region of its theoretical operating envelope — the operator keeps it there deliberately. An offline dataset from six months of normal operation may contain almost no examples of the process near its physical limits. Any model that tries to reason about those regions is extrapolating.</p>
+<p><strong>Physical laws are partially known.</strong> For most industrial systems, engineers know a great deal: conservation of mass and energy, thermodynamic relationships, transport phenomena, first-order dynamics. This knowledge is imperfect (real systems have unmeasured disturbances, aging equipment, composition variation) but it is not zero. Ignoring it wastes a free source of information.</p>
+<p><strong>Violations of physics are costly.</strong> A policy that violates a mass balance might command an impossible setpoint. A model that predicts temperature decreasing when heat is added is not just inaccurate — it will produce a control policy that actively damages the process.</p>
+<p>Physics-informed offline RL exploits known structure in three places:</p>
+<ol>
+<li><strong>Reward shaping</strong> — encode physical constraints as soft penalties in the reward signal</li>
+<li><strong>Hybrid dynamics model</strong> — replace the pure black-box ensemble with a model that respects known physics exactly and learns the unknown residual</li>
+<li><strong>Constraint-based policy</strong> — embed hard constraints directly into policy optimization (brief treatment, as this overlaps with safe RL)</li>
+</ol>
+<hr />
+<h2>Part I: Physics as Reward Shaping</h2>
+<h3>The Idea</h3>
+<p>The simplest way to use physics: add penalty terms to the reward whenever the system violates known constraints. This works with <em>any</em> offline RL algorithm — CQL, IQL, MOPO — without changing the algorithm itself.</p>
+<p>For a process with state $s = (x_1, \ldots, x_n)$ and known constraint $g(s) \leq 0$:</p>
+<p><div class="math-display">$$\tilde{r}(s, a, s') = r(s, a) - \lambda \cdot \max\bigl(0,\ g(s')\bigr)$$</div></p>
+<p>The $\max(0, \cdot)$ activates the penalty only when the constraint is violated; inside the feasible region it contributes nothing. $\lambda$ controls the trade-off between reward maximization and constraint satisfaction.</p>
+<h3>Types of Physical Constraints</h3>
+<p><strong>Monotone relationships.</strong> Many physical relationships are guaranteed to be monotone. Viscosity of a liquid decreases with temperature (for most fluids in normal operating ranges). Conversion in a reactor increases with residence time up to some limit. If the learned dynamics model predicts the wrong sign, it is physically wrong.</p>
+<p><div class="math-display">$$g_{mono}(s, s') = \max\Bigl(0,\ \text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\Bigr)$$</div></p>
+<p><strong>Conservation laws.</strong> Mass and energy must balance. For a mixing process with input flows $q_{in}$ and output flow $q_{out}$ and a tank of volume $V$:</p>
+<p><div class="math-display">$$\frac{dV}{dt} = q_{in} - q_{out}$$</div></p>
+<p>If a discrete-time model predicts $V_{t+1}$ inconsistent with this, the violation magnitude is:</p>
+<p><div class="math-display">$$g_{mass}(s_t, s_{t+1}) = \bigl| V_{t+1} - V_t - \Delta t (q_{in,t} - q_{out,t}) \bigr| - \delta$$</div></p>
+<p>where $\delta$ is a tolerance for measurement noise and unmodeled flows.</p>
+<p><strong>Feasibility bounds.</strong> Physical state variables have hard limits from thermodynamics, equipment ratings, or safety considerations. Temperature cannot exceed the boiling point of the medium. Concentration cannot be negative. A valve position is in $[0, 1]$.</p>
+<p><div class="math-display">$$g_{bounds}(s) = \sum_i \max(0,\ s_i - s_i^{max}) + \max(0,\ s_i^{min} - s_i)$$</div></p>
+<h3>Implementation</h3>
 <blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8.py"><code>chapter8.py</code></a></p>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/physics_informed.py"><code>physics_informed.py</code></a></p>
 </blockquote>
-<hr />
-<h2>SHAP Background</h2>
-<p>SHAP (SHapley Additive exPlanations, Lundberg &amp; Lee, 2017) decomposes the output of a model $f$ into additive contributions from each input feature:</p>
-<p>$$f(x) = \phi_0 + \sum_{i=1}^{n} \phi_i(x)$$</p>
-<p>where $\phi_0 = \mathbb{E}[f(X)]$ is the expected model output over the background distribution, and $\phi_i(x)$ is the contribution of feature $i$ to the prediction for instance $x$.</p>
-<p>The SHAP values ${\phi_i}$ are the unique decomposition satisfying:
-- <strong>Efficiency</strong>: $\sum_i \phi_i = f(x) - \phi_0$ — values sum to total prediction minus baseline
-- <strong>Symmetry</strong>: features with equal marginal contributions receive equal SHAP values
-- <strong>Dummy</strong>: a feature with zero marginal contribution receives $\phi_i = 0$</p>
-<p><strong>KernelExplainer</strong> computes SHAP values without architecture knowledge. It fits a weighted linear model to masked predictions:</p>
-<p>$$\phi = \arg\min_{\phi} \sum_{z \in {0,1}^n} \pi(z)\left[f(h(x, z)) - \phi_0 - \sum_i z_i \phi_i\right]^2$$</p>
-<p>where $z$ is a binary mask, $h(x, z)$ replaces masked features with background samples, and $\pi(z)$ weights coalitions by the Shapley kernel. This works on any black-box function — Q-networks, policy networks, ensemble dynamics — with no architecture assumptions.</p>
-<p>We use KernelExplainer throughout for consistency: all three explanations use the same method, making them directly comparable.</p>
-<h3>Toy example: what SHAP shows</h3>
-<p>A minimal example fixes intuition. Consider a toy Q-function with three inputs: $Q(s_1, s_2, a) = 2 s_1 - s_2 + 0.5 a$. So state_1 pushes Q up, state_2 pushes it down, and the action has a smaller positive effect. We draw a background from "typical" operation (values in $[0.3, 0.7]$) and explain a set of instances. SHAP attributes each prediction to the three features.</p>
-<p><strong>Which feature matters most?</strong> The bar chart below shows mean $|\phi_i|$ over the explained instances. State_1 and state_2 dominate (they have larger coefficients), and SHAP recovers that.</p>
-<p><img src="../figures/ch8/toy_shap_bar.png" alt="Toy Q: mean |SHAP| per feature" style="max-width:100%; height:auto;" /></p>
-<p><strong>Why is this one instance's Q high?</strong> The waterfall plot takes a single instance (e.g. high $s_1$, low $s_2$) and shows how each feature's SHAP value moves the output from the baseline $\phi_0 = \mathbb{E}[Q]$ to the final $Q(x)$. Positive bars (state_1, action) push Q up; the negative bar (state_2) pushes it down.</p>
-<p><img src="../figures/ch8/toy_shap_waterfall.png" alt="Toy Q: waterfall for one instance" style="max-width:100%; height:auto;" /></p>
-<p><strong>Spread across instances.</strong> A beeswarm plot shows one dot per instance per feature; the x-axis is SHAP value and the color is the feature's value (blue = low, red = high). You see that high state_1 tends to go with positive SHAP (red dots on the right) and high state_2 with negative SHAP — the model's monotone dependence is visible.</p>
-<p><img src="../figures/ch8/toy_shap_beeswarm.png" alt="Toy Q: beeswarm of SHAP values" style="max-width:100%; height:auto;" /></p>
-<p><strong>Toy policy: which state feature drives the action?</strong> Next, take a toy policy $\pi(s_1, s_2) = \text{clip}(0.5 + 0.4 s_1 - 0.3 s_2)$ with a single action. State_1 pushes the action up, state_2 pushes it down. Policy SHAP attributes the scalar action to the two state inputs. The bar chart shows which state variable the policy "looks at" most; the waterfall for one state shows how each feature's contribution moves the output from the average action $\mathbb{E}[\pi]$ to $\pi(s)$. In the real coating setup (Level 2) we have two action dimensions (heat_input, flow_input); we explain each separately and get one such bar and waterfall per action.</p>
-<p><img src="../figures/ch8/toy_policy_bar.png" alt="Toy policy: mean |SHAP| per state feature" style="max-width:100%; height:auto;" /></p>
-<p><img src="../figures/ch8/toy_policy_waterfall.png" alt="Toy policy: waterfall for one state" style="max-width:100%; height:auto;" /></p>
-<p><strong>Toy dynamics: which input drives the predicted next state?</strong> Finally, a toy dynamics model with two next-state dimensions: $\hat{s}_1' = 0.7 s_1 + 0.2 a$ and $\hat{s}_2' = 0.6 s_2 + 0.15 a$. So the first output is driven by current $s_1$ and action $a$; the second by $s_2$ and $a$. We explain each output separately (as in Level 3). The two-panel bar chart shows mean $|\phi_i|$ for the three inputs $(s_1, s_2, a)$ when predicting $\hat{s}_1'$ and $\hat{s}_2'$ — SHAP recovers that $s_1$ and $a$ matter for next_s1, and $s_2$ and $a$ for next_s2. The waterfall for one $(s, a)$ instance shows how each input's SHAP adds up from the baseline prediction to $\hat{s}_1'$.</p>
-<p><img src="../figures/ch8/toy_dynamics_bar.png" alt="Toy dynamics: which inputs drive next_s1 and next_s2?" style="max-width:100%; height:auto;" /></p>
-<p><img src="../figures/ch8/toy_dynamics_waterfall.png" alt="Toy dynamics: waterfall for one (s,a) → next_s1" style="max-width:100%; height:auto;" /></p>
-<p>All of these figures are produced by running <code>python code/chapter8_toy_figures.py</code> (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.</p>
-<hr />
-<h2>Three Levels of Explanation</h2>
-<h3>Level 1: Q-function SHAP — Why Does the Agent Value This Action?</h3>
-<p>The Q-function $Q(s, a)$ takes the concatenated $(s, a)$ vector as input and outputs a scalar value estimate. SHAP on this input answers which features — current state variables or the chosen action — contribute most to the Q-value.</p>
-<pre><code class="language-python">class QFunctionWrapper:
-    &quot;&quot;&quot;
-    Wrap QNetwork as numpy-in / numpy-out for SHAP KernelExplainer.
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">PhysicsRewardWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Wraps any reward function with physics-based penalty terms.</span>
 
-    Input:  X ∈ R^{n × (state_dim + action_dim)}  — [state | action]
-    Output: q ∈ R^n                                — Q-value per sample
-    &quot;&quot;&quot;
-    def __call__(self, X: np.ndarray) -&gt; np.ndarray:
-        with torch.no_grad():
-            x_t = torch.FloatTensor(X).to(self.device)
-            s   = x_t[:, :self.s_dim]
-            a   = x_t[:, self.s_dim:]
-            q   = self.q(s, a)
-        return q.cpu().numpy()
-</code></pre>
-<p>Feature vector: <code>[temperature, filler_frac, viscosity, density, level, heat_input, flow_input]</code>.</p>
-<p>State feature SHAP answers: "was this situation favorable?"
-Action feature SHAP answers: "was this action appropriately chosen for this state?"</p>
-<p><strong>Expected pattern for a well-trained CQL agent:</strong> state features near their setpoints → positive SHAP (favorable situation → high Q). If action SHAP values are near zero regardless of action magnitude, the Q-function ignores the action — a sign of Q-function collapse.</p>
-<h3>Level 2: Policy SHAP — Why Does the Agent Choose This Action?</h3>
-<p>We explain each action dimension separately (SHAP requires scalar output):</p>
-<pre><code class="language-python">class PolicySingleOutputWrapper:
-    &quot;&quot;&quot;
-    action_idx = 0 → heat_input
-    action_idx = 1 → flow_input
+<span class="sd">    Constraints are callables g(state, action, next_state) -&gt; float,</span>
+<span class="sd">    returning a non-negative violation magnitude (0 = constraint satisfied).</span>
 
-    Explains deterministic mean action tanh(μ_θ(s)) — not sampled,
-    so SHAP estimates are stable across calls.
-    &quot;&quot;&quot;
-    def __call__(self, S: np.ndarray) -&gt; np.ndarray:
-        with torch.no_grad():
-            s_t     = torch.FloatTensor(S).to(self.device)
-            mean, _ = self.policy._dist(s_t)
-            action  = torch.tanh(mean)
-        return action[:, self.action_idx].cpu().numpy()
-</code></pre>
-<p><strong>Expected pattern:</strong> <code>heat_input</code> driven primarily by <code>temperature</code> deviation; <code>flow_input</code> by <code>filler_frac</code> deviation. If <code>level</code> has high SHAP for <code>flow_input</code>, the policy learned that flow rate affects level — physically correct (level depends on inflow) and a sign that the agent has internalized the integrating dynamics.</p>
-<h3>Level 3: Dynamics SHAP — Why Does the Model Predict This Next State?</h3>
-<p>We explain three output dimensions: <code>next_temperature</code> (0), <code>next_filler_frac</code> (1), <code>next_level</code> (4):</p>
-<pre><code class="language-python">class DynamicsSingleOutputWrapper:
-    &quot;&quot;&quot;
-    Explains ensemble mean prediction for one next-state dimension.
-    &quot;&quot;&quot;
-    def __call__(self, X: np.ndarray) -&gt; np.ndarray:
-        with torch.no_grad():
-            s     = x_t[:, :self.s_dim]
-            a     = x_t[:, self.s_dim:]
-            s_next, _ = self.ensemble.predict_with_uncertainty(s, a)
-        return s_next[:, self.state_idx].cpu().numpy()
-</code></pre>
-<p><strong>Physics sanity check:</strong> <code>heat_input</code> must have positive mean SHAP for <code>next_temperature</code>; <code>flow_input</code> for <code>next_filler_frac</code>. These follow from first-order dynamics and hold for any physically reasonable model. If violated, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.</p>
-<hr />
-<h2>The Explainer Class</h2>
-<p><code>OfflineRLExplainer</code> manages background construction and SHAP computation for all three levels:</p>
-<pre><code class="language-python">class OfflineRLExplainer:
-    def __init__(self, agent, ensemble, dataset,
-                 s_mean, s_std, device='cpu', n_background=100):
-        # Background = representative sample from offline dataset
-        idx = np.random.default_rng(42).choice(
-            len(dataset['states']), size=n_background, replace=False)
-        self.bg_states  = dataset['states'][idx]
-        self.bg_actions = dataset['actions'][idx]
-        self.bg_sa      = np.concatenate(
-            [self.bg_states, self.bg_actions], axis=1)
-</code></pre>
-<p>The background defines $\phi_0$ — the average model output. Using the offline dataset means SHAP values answer: <em>"how does this transition differ from a typical observed transition?"</em></p>
-<pre><code class="language-python">results = explainer.explain_all(
-    n_explain    = 150,   # instances to explain
-    n_background = 80,    # background dataset size
-    n_samples    = 80,    # SHAP coalitions per instance
-)
-# results keys: 'states', 'actions', 'q_shap',
-#               'policy_shap', 'dynamics_shap', 'q_base'
-</code></pre>
-<p><code>n_samples</code> controls approximation quality. At 80, standard error is ~0.005 on normalized outputs — sufficient for feature ranking. At 500 the estimates are publication-quality but 6× slower.</p>
-<hr />
-<h2>Visualization</h2>
-<h3>Summary Plot (Q-function)</h3>
-<p>Beeswarm plot: each dot is one instance, colored by feature value (blue=low, red=high), x-axis is SHAP value.</p>
-<pre><code class="language-python">plot_q_summary(results['q_shap'], SA_NAMES,
-               save_path='ch8_q_summary.png')
-</code></pre>
-<p>Reading patterns:
-- <strong>Wide horizontal spread</strong> → feature has variable impact
-- <strong>Red-right / blue-left consistently</strong> → monotone relationship
-- <strong>Mixed colors</strong> → nonlinear or interaction-dependent</p>
-<h3>Bar Charts (Policy and Dynamics)</h3>
-<p>Mean |SHAP| per feature — answers "which features matter most?"</p>
-<pre><code class="language-python">plot_policy_bar(results['policy_shap'], STATE_NAMES,
-                save_path='ch8_policy_bar.png')
+<span class="sd">    Usage:</span>
+<span class="sd">        reward_fn = PhysicsRewardWrapper(</span>
+<span class="sd">            base_reward=my_reward,</span>
+<span class="sd">            constraints=[mass_balance_constraint, temperature_bound],</span>
+<span class="sd">            lambdas=[10.0, 5.0],</span>
+<span class="sd">        )</span>
+<span class="sd">        r_phys = reward_fn(state, action, next_state)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
-plot_dynamics_bar(results['dynamics_shap'], SA_NAMES, STATE_NAMES,
-                  save_path='ch8_dynamics_bar.png')
-</code></pre>
-<h3>Force Plot: Single Instance</h3>
-<p>The most operationally useful visualization. For a single time step, shows each feature's contribution as a waterfall from baseline to final Q-value:</p>
-<pre><code class="language-python">best = int(np.argmax(q_vals))   # highest-Q instance
-plot_force_single(
-    results['q_shap'][best], SA_NAMES,
-    q_value=q_vals[best], q_base=results['q_base'],
-    instance_label=f'Highest-Q instance (Q={q_vals[best]:.3f})',
-    save_path='ch8_force_best.png')
-</code></pre>
-<p>An operator can use this to answer: "why did the agent rate this moment as high-value?" If the answer is "temperature near setpoint, level stable" — sensible. If "viscosity unusually low" when the setpoint is on temperature — a spurious correlation to investigate.</p>
-<h3>Dependence Plot: Interactions</h3>
-<p>SHAP of feature A vs its raw value, colored by feature B — reveals interaction effects:</p>
-<pre><code class="language-python">plot_shap_dependence(
-    results['q_shap'][:, :len(STATE_NAMES)],
-    results['states'],
-    feature_idx=0,       # temperature
-    interaction_idx=1,   # colored by filler_frac
-    feature_names=STATE_NAMES,
-    title='Q-SHAP: temperature effect (colored by filler_frac)')
-</code></pre>
-<p>If temperature SHAP values split systematically by filler color, there is an interaction: the Q-function's response to temperature depends on filler level. For a physics-informed agent this is expected — viscosity is a nonlinear function of both.</p>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base_reward</span><span class="p">,</span> <span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">constraints</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">lambdas</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_reward</span> <span class="o">=</span> <span class="n">base_reward</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">constraints</span> <span class="o">=</span> <span class="n">constraints</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span>     <span class="o">=</span> <span class="n">lambdas</span>
+
+    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">state</span><span class="p">:</span>      <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                 <span class="n">action</span><span class="p">:</span>     <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                 <span class="n">next_state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_reward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span><span class="p">):</span>
+            <span class="n">violation</span> <span class="o">=</span> <span class="n">g</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>        <span class="c1"># (batch,) &gt;= 0</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">r</span> <span class="o">-</span> <span class="n">lam</span> <span class="o">*</span> <span class="n">violation</span>
+        <span class="k">return</span> <span class="n">r</span>
+</code></pre></div>
+
+<p><strong>Example constraint — first-order dynamics consistency:</strong></p>
+<p>A first-order process with known time constant $\tau$ and gain $K$ satisfies:</p>
+<p><div class="math-display">$$x_{t+1} \approx x_t + \frac{\Delta t}{\tau}(K \cdot u_t - x_t)$$</div></p>
+<p>If the learned model's prediction deviates significantly from this, the deviation is a constraint violation:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">first_order_consistency</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">,</span>
+                             <span class="n">tau</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">K</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Physics penalty: predicted next state should be consistent with</span>
+<span class="sd">    first-order dynamics x_{t+1} ≈ x_t + dt/tau * (K*u - x_t).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">x</span>    <span class="o">=</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>    <span class="c1"># process variable</span>
+    <span class="n">u</span>    <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>   <span class="c1"># control input</span>
+    <span class="n">x_phys</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">u</span> <span class="o">-</span> <span class="n">x</span><span class="p">)</span>
+    <span class="n">x_pred</span> <span class="o">=</span> <span class="n">next_state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+    <span class="n">violation</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x_pred</span> <span class="o">-</span> <span class="n">x_phys</span><span class="p">)</span> <span class="o">-</span> <span class="n">tol</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">violation</span>
+</code></pre></div>
+
+<h3>Choosing $\lambda$</h3>
+<p>The penalty weight $\lambda$ has the same role as $\alpha$ in CQL: too small and violations persist; too large and the policy becomes overly conservative, ignoring the reward signal.</p>
+<p>A practical calibration: compute the typical base reward magnitude $\bar{r}$ on the dataset, then set $\lambda$ so that a typical violation (say, 5% mass balance error) costs about 20–50% of $\bar{r}$. This makes the constraint "expensive but not catastrophic."</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Calibrate lambda from dataset statistics</span>
+<span class="n">r_mean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;rewards&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+<span class="n">typical_violation</span> <span class="o">=</span> <span class="mf">0.05</span>   <span class="c1"># expected violation magnitude in the region of interest</span>
+<span class="n">target_penalty_fraction</span> <span class="o">=</span> <span class="mf">0.3</span>   <span class="c1"># want penalty ≈ 30% of mean reward</span>
+
+<span class="n">lam</span> <span class="o">=</span> <span class="p">(</span><span class="n">target_penalty_fraction</span> <span class="o">*</span> <span class="n">r_mean</span><span class="p">)</span> <span class="o">/</span> <span class="n">typical_violation</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Calibrated lambda = </span><span class="si">{</span><span class="n">lam</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
 <hr />
-<h2>Consistency Check</h2>
-<pre><code class="language-python">metrics = check_explanation_consistency(results)
-print_consistency_report(metrics)
-</code></pre>
-<p>Expected output:</p>
-<pre><code>  Q ↔ policy rank correlation  : 0.71  ✓ aligned
-  heat_input → next_temperature: SHAP=+0.0412  ✓ positive (correct)
-  flow_input → next_filler     : SHAP=+0.0387  ✓ positive (correct)
-</code></pre>
-<p><strong>Q-policy Spearman $\rho$:</strong> ranks state features by mean |SHAP| in Q-function and policy. $\rho &gt; 0.6$ means the agent's critic and actor attend to the same features. $\rho &lt; 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.</p>
-<p><strong>Physics sign tests:</strong> <code>heat_input</code> → <code>next_temperature</code> SHAP must be positive; <code>flow_input</code> → <code>next_filler_frac</code> SHAP must be positive. Failure indicates the dynamics model learned a physically inverted relationship in some data region — common when coverage near boundaries is very sparse.</p>
+<h2>Part II: Hybrid Dynamics Models</h2>
+<h3>The Limitation of Pure Black-Box Ensembles</h3>
+<p>In Chapter 7, the dynamics ensemble is a pure neural network: it learns $\hat{T}(s' | s, a)$ entirely from data. This works well when:
+- The dataset covers the state-action space densely
+- The model is evaluated near the training distribution</p>
+<p>Outside the data support, a pure black-box model will extrapolate in whatever direction its weights happen to point — which often violates physics. The epistemic uncertainty from ensemble disagreement partially guards against this, but it cannot distinguish "uncertain because data is sparse" from "uncertain because the model is physically wrong."</p>
+<p>A <strong>hybrid model</strong> splits the prediction into two parts:</p>
+<p><div class="math-display">$$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{known physics}} + \underbrace{f_{NN}(s, a; \theta)}_{\text{learned residual}}$$</div></p>
+<p>The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong.</p>
+<h3>Why This Helps Offline RL</h3>
+<p><strong>Better extrapolation.</strong> The physics component provides a principled prediction even where data is sparse. The neural residual is near zero where data is sparse (prior to training, and by regularization), so the hybrid model degrades gracefully to the physics model in OOD regions rather than making wild predictions.</p>
+<p><strong>Smaller residuals = easier learning.</strong> If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model converges faster and generalizes better.</p>
+<p><strong>Improved uncertainty calibration.</strong> Ensemble disagreement now measures uncertainty about the <em>residual</em>, not the total dynamics. In OOD regions, the physics term is still active; only the residual is uncertain. This gives more meaningful uncertainty estimates.</p>
+<h3>Formalization</h3>
+<p>Let $f_{phys}(s, a)$ be the known physics model (deterministic, no parameters). The residual network predicts a Gaussian over the residual:</p>
+<p><div class="math-display">$$\hat{f}_{NN}(s, a; \theta) = \bigl(\mu_\theta(s, a),\ \sigma^2_\theta(s, a)\bigr)$$</div></p>
+<p>The full prediction is:</p>
+<p><div class="math-display">$$s' \sim \mathcal{N}\!\bigl(f_{phys}(s, a) + \mu_\theta(s, a),\ \sigma^2_\theta(s, a) \cdot I\bigr)$$</div></p>
+<p>Training minimizes the NLL of the residual $\delta = s' - f_{phys}(s, a)$:</p>
+<p><div class="math-display">$$\mathcal{L}(\theta) = \mathbb{E}_{(s,a,s') \sim \mathcal{D}} \!\left[\frac{\|\delta - \mu_\theta\|^2}{2\sigma^2_\theta} + \frac{1}{2}\log \sigma^2_\theta \right]$$</div></p>
+<p>This is identical to training the probabilistic ensemble in Chapter 7, except the <em>target</em> is the residual $\delta$ rather than the full $s'$.</p>
+<h3>Implementation</h3>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">HybridDynamicsNet</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hybrid dynamics model: physics baseline + learned residual.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        state_dim:   dimensionality of state</span>
+<span class="sd">        action_dim:  dimensionality of action</span>
+<span class="sd">        physics_fn:  callable (state, action) -&gt; next_state_physics</span>
+<span class="sd">                     Must operate on torch.Tensor inputs.</span>
+<span class="sd">        hidden_dim:  residual network hidden size</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                 <span class="n">physics_fn</span><span class="p">,</span>
+                 <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">128</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">physics_fn</span> <span class="o">=</span> <span class="n">physics_fn</span>
+
+        <span class="c1"># Residual network: smaller than a pure black-box model</span>
+        <span class="c1"># because residuals are smoother and lower-amplitude</span>
+        <span class="n">inp</span> <span class="o">=</span> <span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">inp</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_var_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
+
+        <span class="c1"># Tighter log_var bounds for residuals (smaller magnitude expected)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">8.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">1.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns (mean_next_state, log_var_residual).&quot;&quot;&quot;</span>
+        <span class="c1"># Physics prediction (no gradient needed)</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">phys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
+
+        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">],</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+        <span class="n">residual_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+        <span class="n">log_var</span>       <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_var_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+        <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">-</span> <span class="n">F</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">-</span> <span class="n">log_var</span><span class="p">)</span>
+        <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span> <span class="o">+</span> <span class="n">F</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="n">log_var</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="p">)</span>
+
+        <span class="c1"># Combine: full prediction = physics + residual</span>
+        <span class="k">return</span> <span class="n">phys</span> <span class="o">+</span> <span class="n">residual_mean</span><span class="p">,</span> <span class="n">log_var</span>
+
+    <span class="k">def</span> <span class="nf">nll_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                 <span class="n">next_state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;NLL of next_state; target is residual from physics.&quot;&quot;&quot;</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
+        <span class="c1"># The target is the full next_state; mean already includes physics</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="n">log_var</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
+        <span class="n">nll</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">log_var</span> <span class="o">+</span> <span class="p">(</span><span class="n">next_state</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">var</span><span class="p">)</span>
+        <span class="n">loss</span> <span class="o">=</span> <span class="n">nll</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="n">bound_reg</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">loss</span> <span class="o">+</span> <span class="n">bound_reg</span><span class="p">,</span> <span class="p">{</span>
+            <span class="s1">&#39;nll&#39;</span><span class="p">:</span> <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+            <span class="s1">&#39;residual_mse&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">next_state</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="p">}</span>
+</code></pre></div>
+
+<p><strong>Physics function for a generic first-order process:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">first_order_physics</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                        <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                        <span class="n">tau</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">10.0</span><span class="p">,</span>
+                        <span class="n">K</span><span class="p">:</span> <span class="nb">float</span>   <span class="o">=</span> <span class="mf">0.8</span><span class="p">,</span>
+                        <span class="n">dt</span><span class="p">:</span> <span class="nb">float</span>  <span class="o">=</span> <span class="mf">1.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Euler discretization of first-order ODE:</span>
+<span class="sd">        dx/dt = (K*u - x) / tau</span>
+<span class="sd">    =&gt;  x_{t+1} = x_t + dt/tau * (K*u_t - x_t)</span>
+
+<span class="sd">    For a multi-variable state, apply element-wise with per-variable</span>
+<span class="sd">    tau and K (pass as vectors).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">state</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">action</span><span class="p">[:,</span> <span class="p">:</span><span class="n">state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">-</span> <span class="n">state</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>Building a Hybrid Ensemble</h3>
+<p>The ensemble from Chapter 7 is straightforwardly extended — each model in the ensemble is a <code>HybridDynamicsNet</code> sharing the same <code>physics_fn</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">HybridEnsemble</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Ensemble of hybrid dynamics models sharing the same physics component.</span>
+<span class="sd">    Uncertainty = disagreement on the *residual* term across models.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_models</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                 <span class="n">physics_fn</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">128</span><span class="p">,</span>
+                 <span class="n">lr</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;cpu&#39;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_models</span>  <span class="o">=</span> <span class="n">n_models</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">device</span>    <span class="o">=</span> <span class="n">device</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">models</span>    <span class="o">=</span> <span class="p">[</span>
+            <span class="n">HybridDynamicsNet</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">physics_fn</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_models</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">optimizers</span> <span class="o">=</span> <span class="p">[</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">lr</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">train_ensemble</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dataset</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">n_epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+                       <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span> <span class="n">log_every</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Bootstrap training — identical structure to Chapter 7 ensemble.&quot;&quot;&quot;</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">])</span>
+        <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;next_states&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">opt</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizers</span><span class="p">)):</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="mf">0.8</span> <span class="o">*</span> <span class="n">n</span><span class="p">),))</span>
+            <span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">TensorDataset</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">a</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">s2</span><span class="p">[</span><span class="n">idx</span><span class="p">]),</span>
+                                <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">drop_last</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_epochs</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">total_nll</span><span class="p">,</span> <span class="n">nb</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mi">0</span>
+                <span class="k">for</span> <span class="n">s_b</span><span class="p">,</span> <span class="n">a_b</span><span class="p">,</span> <span class="n">s2_b</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
+                    <span class="n">loss</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">nll_loss</span><span class="p">(</span><span class="n">s_b</span><span class="p">,</span> <span class="n">a_b</span><span class="p">,</span> <span class="n">s2_b</span><span class="p">)</span>
+                    <span class="n">opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">();</span> <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">clip_grad_norm_</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="mf">5.0</span><span class="p">)</span>
+                    <span class="n">opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+                    <span class="n">total_nll</span> <span class="o">+=</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;nll&#39;</span><span class="p">];</span> <span class="n">nb</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">if</span> <span class="n">epoch</span> <span class="o">%</span> <span class="n">log_every</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  HybridModel </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> | epoch </span><span class="si">{</span><span class="n">epoch</span><span class="si">:</span><span class="s2">3d</span><span class="si">}</span><span class="s2"> | &quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;NLL=</span><span class="si">{</span><span class="n">total_nll</span><span class="o">/</span><span class="n">nb</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">predict_with_uncertainty</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                                  <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns (mean_next_state, epistemic_uncertainty).&quot;&quot;&quot;</span>
+        <span class="n">means</span> <span class="o">=</span> <span class="p">[</span><span class="n">m</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">]</span>
+        <span class="n">means</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">means</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">means</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">means</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>Comparing Hybrid vs Pure Black-Box</h3>
+<p>The key diagnostic is <strong>residual magnitude</strong> on the training data. If the physics model is reasonable, residuals should be small and smooth. If residuals are large or structured (have clear patterns), the physics model is missing something important.</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">diagnose_hybrid_model</span><span class="p">(</span><span class="n">hybrid_model</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span> <span class="n">physics_fn</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compare physics prediction vs true next_state.</span>
+<span class="sd">    Print residual statistics to assess physics model quality.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][:</span><span class="mi">500</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][:</span><span class="mi">500</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;next_states&#39;</span><span class="p">][:</span><span class="mi">500</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">phys_pred</span> <span class="o">=</span> <span class="n">physics_fn</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+        <span class="n">residuals</span> <span class="o">=</span> <span class="n">s2</span> <span class="o">-</span> <span class="n">phys_pred</span>                     <span class="c1"># what the NN must learn</span>
+        <span class="n">residual_std</span> <span class="o">=</span> <span class="n">residuals</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+        <span class="n">full_std</span>     <span class="o">=</span> <span class="n">s2</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="n">coverage</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="p">(</span><span class="n">residual_std</span> <span class="o">/</span> <span class="p">(</span><span class="n">full_std</span> <span class="o">+</span> <span class="mf">1e-8</span><span class="p">))</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Physics model coverage (fraction of variance explained):&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">cov</span><span class="p">,</span> <span class="n">rs</span><span class="p">,</span> <span class="n">fs</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">coverage</span><span class="p">,</span> <span class="n">residual_std</span><span class="p">,</span> <span class="n">full_std</span><span class="p">)):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  State dim </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">: physics covers </span><span class="si">{</span><span class="n">cov</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2">  &quot;</span>
+              <span class="sa">f</span><span class="s2">&quot;(residual std=</span><span class="si">{</span><span class="n">rs</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">, total std=</span><span class="si">{</span><span class="n">fs</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">coverage</span>
+</code></pre></div>
+
+<p>A physics model explaining 70–90% of variance is excellent; the residual model needs to learn only the remaining 10–30%, which requires far less data.</p>
 <hr />
-<h2>SHAP in Production: Practical Considerations</h2>
-<p><strong>Computational cost.</strong> KernelExplainer makes $n_\text{explain} \times n_\text{samples} \times n_\text{background}$ model evaluations. For 150 × 80 × 80 = 960,000 calls this takes minutes on CPU. Practical strategy: run offline before deployment on a held-out validation set; re-run monthly on recent operating data to detect distribution shift.</p>
-<p><strong>Background dataset choice</strong> is the most important hyperparameter. Full dataset background answers "difference from typical operation." Constraint-region background answers "what distinguishes near-violations from typical near-violations?" — useful for diagnosing why the agent approaches boundaries.</p>
-<p><strong>Physical units.</strong> States are normalized. To communicate with operators:</p>
-<pre><code class="language-python"># Convert SHAP back to physical units
-shap_physical = results['q_shap'][:, :S] * s_std
-# SHAP of 0.04 on normalized temperature = 0.04 × σ_T physical degrees
-</code></pre>
+<h2>Part III: Constraint-Based Policy (Brief)</h2>
+<h3>Hard vs Soft Constraints</h3>
+<p>Reward penalties (Part I) are <strong>soft constraints</strong>: the policy <em>prefers</em> to avoid violations but can still choose them if the reward benefit is large enough. For safety-critical systems this may be insufficient.</p>
+<p><strong>Hard constraints</strong> guarantee $g(s, a) \leq 0$ at every step. Two common approaches in offline RL:</p>
+<p><strong>Projection.</strong> After computing the policy action $a_{raw} = \pi_\theta(s)$, project it onto the feasible set:</p>
+<p><div class="math-display">$$a_{safe} = \arg\min_{a : g(s,a) \leq 0} \| a - a_{raw} \|^2$$</div></p>
+<p>This is trivial for box constraints (clamp) and for linear constraints (quadratic programming). For complex nonlinear constraints it requires a solver at inference time.</p>
+<p><strong>Lagrangian relaxation.</strong> Augment the objective with constraint multipliers and optimize jointly:</p>
+<p><div class="math-display">$$\max_{\pi} \min_{\lambda \geq 0}\ \mathbb{E}\bigl[R(\pi)\bigr] - \lambda \cdot \mathbb{E}\bigl[g(s, \pi(s))\bigr]$$</div></p>
+<p>The multiplier $\lambda$ is updated to increase whenever the constraint is violated, making violations increasingly costly. In offline RL this is applied to the offline dataset, not through environment interaction.</p>
+<p>For most industrial applications, <strong>soft constraints via reward shaping</strong> (Part I) combined with the KNOWN/UNKNOWN boundary from MOReL (Chapter 7) provide sufficient safety. The hard constraint machinery is warranted when:
+- A constraint violation is irreversible (equipment damage, safety incident)
+- The constraint boundary is precisely known
+- Online projection is computationally feasible</p>
 <hr />
-<h2>What SHAP Cannot Tell You</h2>
-<p><strong>SHAP ≠ causal effect.</strong> High SHAP for <code>viscosity</code> means the model uses viscosity as a predictor, not that viscosity causally affects Q-value. If viscosity is correlated with temperature (it is), SHAP may split credit between them in ways that don't match physics.</p>
-<p><strong>SHAP values depend on the background.</strong> A feature can have high SHAP against one background and low against another. Hold the background fixed when comparing across runs.</p>
-<p><strong>Temporal structure is lost.</strong> KernelExplainer explains each instance independently. For integrating states like level, the agent's reasoning depends on trajectory history. Single-step SHAP cannot capture this dependency.</p>
-<p><strong>SHAP explains the model, not whether the model is correct.</strong> If the Q-function overestimates in some region (a known offline RL failure mode), SHAP will faithfully explain the overestimation. Consistency checks can detect some failure modes, but SHAP is not a substitute for evaluation metrics from Chapter 7.</p>
+<h2>Part IV: When Physics Helps Most</h2>
+<p>Not every offline RL problem benefits equally from physics. The value of physical knowledge depends on three factors:</p>
+<p><strong>Data coverage.</strong> The sparser the dataset, the more physics helps. A dataset covering 20% of the operating envelope leaves 80% where only physics can guide the model.</p>
+<p><strong>Physics accuracy.</strong> A first-principles model that captures 90% of the dynamics is highly valuable. An analytical model that captures only 30% may still cause problems if its errors are systematic (i.e., confidently wrong in a predictable way). Validate the physics model on a held-out subset before trusting it.</p>
+<p><strong>Constraint hardness.</strong> Mass balance and energy conservation are exact (up to measurement error). Empirical correlations (viscosity-temperature-composition) are approximate. Use the former as hard constraints; use the latter as soft penalties or initial guesses for the neural residual.</p>
+<div class="codehilite"><pre><span></span><code>                    Physics Knowledge Available
+                    None         Partial       Strong
+                   ┌────────────┬─────────────┬──────────────┐
+Data   Sparse      │  Pure BC   │ Reward pen. │ Hybrid model │
+Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
+       Dense       │ CQL / IQL  │ CQL + pen.  │ Hybrid + CQL │
+                   └────────────┴─────────────┴──────────────┘
+</code></pre></div>
+
+<p>The bottom-left cell (dense data, no physics) is the D4RL benchmark — where Chapters 3–7 shine. Industrial settings typically live in the top-right: sparse data, partial physics knowledge.</p>
 <hr />
-<h2>Beyond SHAP: Causal AI in Offline RL</h2>
-<p>SHAP is a well-established tool for <em>attribution</em> — which inputs the model uses for a prediction. A different line of work asks: can we make Offline RL agents reason in terms of <em>cause and effect</em>, so they generalize better and avoid spurious correlations?</p>
-<p><strong>Why causality matters in Offline RL.</strong> Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones — e.g. in autonomous driving, "rain → wipers on" and "rain → braking" are correlated, but only one is a direct cause of the other.</p>
-<p><strong>Causal RL in practice.</strong> Recent work includes:</p>
-<ul>
-<li><strong>Causal world models.</strong> Instead of a single black-box $\hat{s}' = f(s, a)$, algorithms like FOCUS learn <em>causal structure</em> over state variables (which state factors cause which next-state factors). Theory shows that such structure can improve generalization bounds in offline model-based RL; experiments show more robust behavior when the environment or data distribution changes.</li>
-<li><strong>Deconfounding.</strong> When data is confounded (e.g. a hidden variable drives both action and outcome), do-calculus and latent causal transition models allow combining offline observational data with limited online interventional data safely.</li>
-<li><strong>Surveys and taxonomy.</strong> Causal RL is often categorized into: causal representation learning, counterfactual policy optimization, <em>offline</em> causal RL, causal transfer, and causal explainability. The last connects directly to this chapter: explanations that reflect cause–effect structure are easier to trust and to debug.</li>
-</ul>
-<p><strong>Resources.</strong> The survey by Deng et al. (2023) gives a unified view of causal RL and includes a section on offline/batch settings. The FOCUS paper (Zhang et al.) is a concrete example of causal-structured world models for offline model-based RL. For the link between off-policy evaluation and causal inference (treatment effect estimation), see the batch RL / causal inference literature (e.g. importance sampling and inverse propensity scoring). References are listed below.</p>
-<p><strong>Toy code example.</strong> A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: next_s1 = 0.8·s₁ + 0.2·a (causal parents: s₁, a). We add a nuisance variable z = s₁ + noise — correlated with s₁ but not a cause of next_s1. The "correlation" model predicts next_s1 from (s₂, z, a); the "causal" model uses (s₁, a) only. Under an intervention (z=0.9, s₁=0.2, a=0.5) true next_s1 is 0.26; the correlation model predicts high (misled by z), the causal model predicts 0.26. Run: <code>python code/chapter8_causal_toy.py</code>.</p>
-<pre><code class="language-python"># True dynamics (unknown to learner): next_s1 = 0.8*s1 + 0.2*a
-# Nuisance z = s1 + noise — correlated with s1, not a cause of next_s1
-# Correlation model: fit next_s1 from (s2, z, a)
-# Causal model:       fit next_s1 from (s1, a)
-# Intervention: s1=0.2, z=0.9, a=0.5 → true next_s1=0.26
-#   Correlation model (sees z=0.9, no s1) → predicts ~0.7 (wrong)
-#   Causal model (sees s1=0.2, a=0.5)    → predicts 0.26 (correct)
-</code></pre>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8_causal_toy.py">chapter8_causal_toy.py</a></p>
+<h2>Further Directions</h2>
+<p><strong>Koopman operator methods.</strong> Nonlinear dynamics become linear in a suitable latent space — the Koopman eigenspace. If this space can be learned or approximated, the dynamics model simplifies enormously: linear prediction, linear uncertainty propagation, and tractable optimal control. Active research area; not yet standardized for offline RL.</p>
+<p><strong>Gaussian Processes.</strong> GPs offer exact uncertainty quantification and naturally incorporate physical structure through kernel design. They are computationally expensive for large datasets but highly effective when data is very scarce (hundreds of transitions rather than thousands).</p>
+<p><strong>Physics-informed neural networks (PINNs).</strong> Instead of a residual model, enforce physics equations as a regularization loss during neural network training. A PINN predicting the wrong sign for a known derivative can be penalized during training. Compatible with any architecture.</p>
+<p><strong>Structured state spaces.</strong> If the physics dictates a specific state-space structure (e.g., a mass-spring-damper Lagrangian system), neural networks can be constrained to architectures that respect this structure (Hamiltonian or Lagrangian neural networks). Very effective when the structural assumption holds; brittle when it doesn't.</p>
 <hr />
 <h2>Summary</h2>
-<p>Three complementary SHAP explanations for a trained Offline RL agent:</p>
 <table>
 <thead>
 <tr>
-<th>Level</th>
-<th>Model</th>
-<th>Question</th>
-<th>Input space</th>
+<th>Approach</th>
+<th>What changes</th>
+<th>When to use</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Q-function SHAP</td>
-<td>Critic $Q(s,a)$</td>
-<td>Why is this action valued here?</td>
-<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+<td>Reward shaping</td>
+<td>Reward function</td>
+<td>Any algorithm; physical bounds known</td>
 </tr>
 <tr>
-<td>Policy SHAP</td>
-<td>Actor $\pi(s)$</td>
-<td>Why was this action chosen?</td>
-<td>$s \in \mathbb{R}^S$</td>
+<td>Hybrid dynamics</td>
+<td>Dynamics model</td>
+<td>Partial physics known; sparse data</td>
 </tr>
 <tr>
-<td>Dynamics SHAP</td>
-<td>$\hat{f}(s,a)$</td>
-<td>Why is this next state predicted?</td>
-<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+<td>Projection</td>
+<td>Policy output</td>
+<td>Box/linear constraints; safety-critical</td>
+</tr>
+<tr>
+<td>Lagrangian</td>
+<td>Objective</td>
+<td>Complex nonlinear constraints</td>
 </tr>
 </tbody>
 </table>
-<p>The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.</p>
-<p>Chapter 9 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
-<hr />
-<h2>Appendix 8.A: Choosing Between SHAP Variants</h2>
-<table>
-<thead>
-<tr>
-<th>Explainer</th>
-<th>Best for</th>
-<th>Speed</th>
-<th>Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>KernelExplainer</code></td>
-<td>Any black-box</td>
-<td>Slow</td>
-<td>Used throughout — consistent across all model types</td>
-</tr>
-<tr>
-<td><code>DeepExplainer</code></td>
-<td>PyTorch / TF nets</td>
-<td>Fast</td>
-<td>Uses backprop; less accurate near tanh saturation</td>
-</tr>
-<tr>
-<td><code>GradientExplainer</code></td>
-<td>Differentiable nets</td>
-<td>Medium</td>
-<td>Gradient × input; fast but noisy</td>
-</tr>
-<tr>
-<td><code>TreeExplainer</code></td>
-<td>XGBoost, RF</td>
-<td>Very fast</td>
-<td>Exact SHAP; irrelevant for neural policies</td>
-</tr>
-<tr>
-<td><code>LinearExplainer</code></td>
-<td>Linear models</td>
-<td>Instant</td>
-<td>Exact; use if policy is distilled to a linear surrogate</td>
-</tr>
-</tbody>
-</table>
-<p>For fast per-step operator explanations in a deployed system: distill the policy to a shallow <code>DecisionTreeRegressor</code> and use <code>TreeExplainer</code>. The distillation loses some accuracy but makes each decision explainable in $&lt; 1$ms.</p>
+<p>Physics-informed methods are not a replacement for offline RL algorithms — they are a layer on top. Reward shaping plugs into CQL or IQL without modifying a line of algorithm code. The hybrid model replaces the ensemble in MOPO or MOReL while keeping everything else intact. The combination of a physically grounded dynamics model with a pessimistic offline RL algorithm (MOReL + hybrid ensemble) is the natural architecture for industrial settings where data is sparse but domain knowledge is rich.</p>
+<p>Chapter 9 works through an industrial case study showing how these pieces fit together in practice.</p>
 <hr />
 <h2>References</h2>
 <ul>
-<li>Lundberg, S.M., &amp; Lee, S.I. (2017). <em>A Unified Approach to Interpreting Model Predictions.</em> NeurIPS. <a href="https://arxiv.org/abs/1705.07874">arXiv:1705.07874</a>.</li>
-<li>Lundberg, S.M., Erion, G., Chen, H. et al. (2020). <em>From Local Explanations to Global Understanding with Explainable AI for Trees.</em> Nature Machine Intelligence. <a href="https://arxiv.org/abs/1905.04610">arXiv:1905.04610</a>.</li>
-<li>Shapley, L.S. (1953). <em>A Value for n-Person Games.</em> In Contributions to the Theory of Games.</li>
-<li>Ribeiro, M.T., Singh, S., &amp; Guestrin, C. (2016). <em>"Why Should I Trust You?": Explaining the Predictions of Any Classifier.</em> KDD. <a href="https://arxiv.org/abs/1602.04938">arXiv:1602.04938</a>.</li>
-<li>Molnar, C. (2022). <em><a href="https://interpretable-ml.github.io/">Interpretable Machine Learning</a>.</em> 2nd ed.</li>
-<li>Doshi-Velez, F., &amp; Kim, B. (2017). <em>Towards a Rigorous Science of Interpretable Machine Learning.</em> <a href="https://arxiv.org/abs/1702.08608">arXiv:1702.08608</a>.</li>
-<li>Deng, Z., Jiang, J., Long, G., &amp; Zhang, C. (2023). <em>Causal Reinforcement Learning: A Survey.</em> TMLR. <a href="https://arxiv.org/abs/2307.01452">arXiv:2307.01452</a>.</li>
-<li>Zhang, Y., et al. (2022). <em>Offline Model-Based Reinforcement Learning with Causal Structure.</em> Front. Comput. Sci. <a href="https://arxiv.org/abs/2206.01474">arXiv:2206.01474</a> (FOCUS).</li>
-<li>Buesing, L., et al. (2020). <em>Woulda, Coulda, Shoulda: Counterfactually-Guided Policy Search.</em> ICLR. <a href="https://arxiv.org/abs/2006.02579">arXiv:2006.02579</a> — connection between batch RL and causal inference.</li>
-</ul>
+<li>Banerjee, C., Nguyen, T., Fookes, C., &amp; Raissi, M. (2023). <em>A Survey on Physics Informed Reinforcement Learning.</em> Expert Systems with Applications. <a href="https://arxiv.org/abs/2309.01909">arXiv:2309.01909</a>.</li>
+<li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1811.10561">arXiv:1811.10561</a>.</li>
+<li>Liu, Y., &amp; Wang, X. (2021). <em>Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2008.05598">arXiv:2008.05598</a>.</li>
+<li>Lusch, B., Kutz, J.N., &amp; Brunton, S.L. (2018). <em>Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.</em> Nature Communications. <em>(Koopman)</em></li>
+<li>García, J., &amp; Fernández, F. (2015). <em>A Comprehensive Survey on Safe Reinforcement Learning.</em> JMLR. <em>(constraint methods)</em></li>
+<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
+</ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/en/chapter7.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Industrial Applications</span></a>
-<a href="/offline-rl-book/en/chapter9.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Conclusion and Future Directions</span></a>
+<a href="/offline-rl-book/en/chapter7.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Model-Based Offline RL (MOPO, MOReL)</span></a>
+    <a href="/offline-rl-book/en/chapter9.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Industrial Applications</span></a>
 </nav>
-</main>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">
     Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>

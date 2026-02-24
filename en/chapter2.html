@@ -95,7 +95,7 @@
 <h2>Formal Statement: The Performance Gap</h2>
 <p>Let $\hat{\pi}$ be the greedy policy with respect to a learned Q-function:</p>
 <p><div class="math-display">$$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$</div></p>
-<p>Define the <strong>estimated performance</strong> $\hat{J}(\hat\pi) = \mathbb{E}_{s,a \sim d^{\hat\pi}}[Q_\theta(s,a)]$ — what the Q-function <em>predicts</em> the policy will achieve — and the <strong>true performance</strong> $J(\hat\pi)$ — what it actually achieves in the environment.</p>
+<p>Define the <strong>estimated performance</strong> $\hat{J}(\hat\pi) = \mathbb{E}<em>{s,a \sim d^{\hat\pi}}[Q</em>\theta(s,a)]$ — what the Q-function <em>predicts</em> the policy will achieve — and the <strong>true performance</strong> $J(\hat\pi)$ — what it actually achieves in the environment.</p>
 <p>The gap between them is bounded by (Kumar et al., 2020, Prop. 3.1):</p>
 <p><div class="math-display">$$\hat{J}(\hat\pi) - J(\hat\pi) \leq \frac{2\gamma}{(1-\gamma)^2} \mathbb{E}_{s \sim d^{\hat\pi}}\left[\max_a \left| Q_\theta(s,a) - Q^*(s,a) \right|\right]$$</div></p>
 <p>This is the right way to frame the problem. The left side is what we fear: the <strong>gap between the promised and the real return</strong>. The right side shows what drives it: Q-function error evaluated under $d^{\hat\pi}$ — the state distribution of the <em>learned</em> policy, not the behavior policy.</p>
@@ -116,58 +116,61 @@
 <blockquote>
 <p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/extrapolation_error.py"><code>extrapolation_error.py</code></a></p>
 </blockquote>
-<pre><code class="language-python">import torch
-import torch.nn as nn
-import numpy as np
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 
-class QNetwork(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden=128):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(state_dim + action_dim, hidden), nn.ReLU(),
-            nn.Linear(hidden, hidden), nn.ReLU(),
-            nn.Linear(hidden, 1),
-        )
-    def forward(self, s, a):
-        return self.net(torch.cat([s, a], dim=-1)).squeeze(-1)
+<span class="k">class</span> <span class="nc">QNetwork</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden</span><span class="o">=</span><span class="mi">128</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 
 
-def measure_ood_overestimation(Q, dataset_actions, all_actions, state):
-    &quot;&quot;&quot;
-    Compare Q-values for in-distribution vs OOD actions at a fixed state.
-    &quot;&quot;&quot;
-    s = state.unsqueeze(0).expand(len(all_actions), -1)
+<span class="k">def</span> <span class="nf">measure_ood_overestimation</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">dataset_actions</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compare Q-values for in-distribution vs OOD actions at a fixed state.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">all_actions</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 
-    with torch.no_grad():
-        q_all      = Q(s, all_actions)
-        q_in_dist  = Q(
-            state.unsqueeze(0).expand(len(dataset_actions), -1),
-            dataset_actions
-        )
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">q_all</span>      <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">)</span>
+        <span class="n">q_in_dist</span>  <span class="o">=</span> <span class="n">Q</span><span class="p">(</span>
+            <span class="n">state</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">dataset_actions</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+            <span class="n">dataset_actions</span>
+        <span class="p">)</span>
 
-    print(f&quot;In-distribution actions  | Q mean: {q_in_dist.mean():.3f}, max: {q_in_dist.max():.3f}&quot;)
-    print(f&quot;All actions (incl. OOD)  | Q mean: {q_all.mean():.3f},     max: {q_all.max():.3f}&quot;)
-    print(f&quot;OOD overestimation ratio : {q_all.max().item() / q_in_dist.max().item():.2f}x&quot;)
-</code></pre>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;In-distribution actions  | Q mean: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, max: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;All actions (incl. OOD)  | Q mean: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">,     max: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;OOD overestimation ratio : </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">)</span>
+</code></pre></div>
+
 <p>Running this:</p>
-<pre><code class="language-python"># Dataset: actions restricted to [-0.5, 0.5]
-dataset = build_dataset(n=10_000)
+<div class="codehilite"><pre><span></span><code><span class="c1"># Dataset: actions restricted to [-0.5, 0.5]</span>
+<span class="n">dataset</span> <span class="o">=</span> <span class="n">build_dataset</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mi">10_000</span><span class="p">)</span>
 
-# Train Q-network with standard TD — max_{a'} searches over the FULL space [-2, 2]
-Q = train_q_network(dataset, epochs=200)
+<span class="c1"># Train Q-network with standard TD — max_{a&#39;} searches over the FULL space [-2, 2]</span>
+<span class="n">Q</span> <span class="o">=</span> <span class="n">train_q_network</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">200</span><span class="p">)</span>
 
-# Compare Q-values at a representative state
-eval_state      = torch.zeros(STATE_DIM)
-in_dist_actions = torch.clamp(torch.randn(2_000, ACTION_DIM) * 0.2, -0.5, 0.5)
-all_actions     = torch.rand(2_000, ACTION_DIM) * 4 - 2   # full range
+<span class="c1"># Compare Q-values at a representative state</span>
+<span class="n">eval_state</span>      <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">)</span>
+<span class="n">in_dist_actions</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2_000</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.2</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="n">all_actions</span>     <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2_000</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">)</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">-</span> <span class="mi">2</span>   <span class="c1"># full range</span>
 
-measure_ood_overestimation(Q, in_dist_actions, all_actions, eval_state)
-</code></pre>
+<span class="n">measure_ood_overestimation</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">in_dist_actions</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">,</span> <span class="n">eval_state</span><span class="p">)</span>
+</code></pre></div>
+
 <p>Output after training vanilla Q-learning on a dataset where actions are restricted to <code>[-0.5, 0.5]</code> but the action space is <code>[-2, 2]</code>:</p>
-<pre><code>In-distribution actions  | Q mean: 0.412, max: 0.731
+<div class="codehilite"><pre><span></span><code>In-distribution actions  | Q mean: 0.412, max: 0.731
 All actions (incl. OOD)  | Q mean: 0.893, max: 3.847
 OOD overestimation ratio : 5.26x
-</code></pre>
+</code></pre></div>
+
 <p>The Q-function assigns values <strong>5× higher</strong> to actions it has never seen. The greedy policy will select these actions confidently.</p>
 <hr />
 <h2>The Core Challenge</h2>
@@ -200,6 +203,11 @@ Too aggressive → policy exploits Q-function errors (catastrophic failure)</p>
 <p><div class="math-display">$$Q^* = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]$$</div></p>
 <p>The intuition: if OOD Q-values are artificially pushed <em>down</em>, the greedy policy will naturally prefer in-distribution actions.</p>
 <p>This is the approach of <strong>CQL</strong> (Chapter 3) and <strong>IQL</strong> (Chapter 4).</p>
+<h3>The Offline RL Algorithm Landscape</h3>
+<p>Beyond value-pessimism, two other families are widely used. This book focuses on <strong>value-based</strong> (CQL, IQL) and <strong>model-based</strong> (Chapter 5) methods for depth; the following map helps place them.</p>
+<p><strong>Policy-constraint and Actor-Critic methods</strong> keep the learned policy close to the behavior policy, either by explicit constraints or by regularizing the actor toward the data. <strong>TD3+BC</strong> (Fujimoto &amp; Gu, 2021) adds a behavioral cloning term to the actor loss: $\pi$ maximizes $Q(s, \pi(s)) + \lambda \cdot \log \pi_\beta(a|s)$ so it stays near the data while improving on it. <strong>AWAC</strong> (Advantage-Weighted Actor-Critic) and <strong>AWR</strong> (Advantage-Weighted Regression) fit the policy with importance weights derived from the advantage; they avoid querying Q at OOD actions by using only in-dataset $(s, a)$ for the actor. <strong>BEAR</strong> and <strong>BCQ</strong> restrict the policy support (e.g. to actions close to the dataset or generated by a conditional VAE). All of these are <em>actor-critic</em> in the sense that they train both a critic (Q or V) and an actor (policy), but the actor is constrained or regularized rather than greedy over an unconstrained Q.</p>
+<p><strong>Decision Transformers (DT)</strong> (Chen et al., 2021) take a different view: treat offline RL as <strong>sequence modeling</strong>. The model is given a trajectory prefix (states, actions, returns-to-go or rewards) and predicts the next action autoregressively. There is no Bellman backup and no explicit Q-function; the “policy” is implicit in the conditional distribution over actions given past context and desired return. <strong>Offline DT</strong> is trained by supervised learning on $(s, a, R)$ chunks from the dataset, often with return-conditioning so that at test time you can ask for “high return” behavior. This avoids extrapolation error by construction (no $\max_{a'}$ over OOD actions) but shifts the challenge to generalization of the sequence model and the choice of conditioning. Variants include <strong>Q-learning DT</strong> (e.g. QDT) that combine return-conditioning with TD learning for better credit assignment.</p>
+<p>For practitioners: value-pessimism (CQL, IQL) and model-based methods (Chapter 5) are a strong default for continuous control and process data; policy-constraint (e.g. TD3+BC) and DT are worth trying when you have long horizons, multi-task data, or a preference for sequence-model tooling. References for these families are listed at the end of this chapter.</p>
 <hr />
 <h2>Why Not Just Use BC?</h2>
 <p>A reasonable question at this point: if offline Q-learning is so dangerous, why not just use BC?</p>
@@ -243,7 +251,7 @@ Too aggressive → policy exploits Q-function errors (catastrophic failure)</p>
 </tr>
 </tbody>
 </table>
-<p>The two main remedies: <strong>policy constraints</strong> (stay near $\pi_\beta$) and <strong>value pessimism</strong> (push OOD Q-values down). CQL implements the second approach with an elegant regularization objective — which is where we go next.</p>
+<p>The two main remedies: <strong>policy constraints</strong> (stay near $\pi_\beta$) and <strong>value pessimism</strong> (push OOD Q-values down). CQL implements the second approach with an elegant regularization objective — which is where we go next. Chapter 2 also maps the broader landscape: policy-constraint / Actor-Critic (TD3+BC, AWAC, BEAR, BCQ) and Decision Transformers; the book then focuses on value-pessimism (Chapters 3–4) and model-based methods (Chapter 5).</p>
 <hr />
 <h2>References</h2>
 <ul>
@@ -251,11 +259,14 @@ Too aggressive → policy exploits Q-function errors (catastrophic failure)</p>
 <li>Kumar, A. et al. (2019). <em>Stabilizing Off-Policy Q-Learning via Bootstrapping Error Reduction (BEAR).</em> NeurIPS. <a href="https://arxiv.org/abs/1906.00949">arXiv:1906.00949</a>.</li>
 <li>Fujimoto, S. et al. (2019). <em>Off-Policy Deep Reinforcement Learning without Exploration (BCQ).</em> ICML. <a href="https://arxiv.org/abs/1902.08754">arXiv:1902.08754</a>.</li>
 <li>Kumar, A. et al. (2020). <em>Conservative Q-Learning for Offline Reinforcement Learning (CQL).</em> NeurIPS. <a href="https://arxiv.org/abs/2006.04779">arXiv:2006.04779</a>.</li>
+<li>Fujimoto, S. &amp; Gu, S.S. (2021). <em>A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
+<li>Nair, A. et al. (2020). <em>Accelerating Online Reinforcement Learning with Offline Datasets (AWAC).</em> <a href="https://arxiv.org/abs/2006.09359">arXiv:2006.09359</a>.</li>
+<li>Chen, L. et al. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
 <li>Sutton, R. et al. (1999). <em>Policy Gradient Methods for Reinforcement Learning.</em> NeurIPS. <em>(deadly triad discussion)</em></li>
 </ul></main>
 <nav class="chapter-nav">
 <a href="/offline-rl-book/en/chapter1.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Behavioral Cloning</span></a>
-<a href="/offline-rl-book/en/chapter3.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Conservative Q-Learning (CQL)</span></a>
+    <a href="/offline-rl-book/en/chapter3.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Conservative Q-Learning (CQL)</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

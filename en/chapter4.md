@@ -8,7 +8,7 @@ prev_chapter:
   title: "Conservative Q-Learning (CQL)"
 next_chapter:
   url: /en/chapter5/
-  title: "Model-Based Offline RL (MOPO)"
+  title: "Policy-Constraint and Actor-Critic (TD3+BC, AWAC)"
 permalink: "/offline-rl-book/en/chapter4/"
 ---
 
@@ -440,7 +440,7 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 ## Limitations
 
-**Cannot improve beyond the best actions in the dataset.** IQL's policy is a weighted average of dataset actions. It cannot discover actions better than what the behavior policy ever tried. CQL and model-based methods (Chapter 5) can in principle extrapolate — though this comes with risk.
+**Cannot improve beyond the best actions in the dataset.** IQL's policy is a weighted average of dataset actions. It cannot discover actions better than what the behavior policy ever tried. CQL and model-based methods (Chapter 7) can in principle extrapolate — though this comes with risk.
 
 **Two hyperparameters to tune.** $\tau$ and $\beta$ interact. Higher $\tau$ → higher advantages → higher $\beta$ needed to extract them. Tuning the pair takes more effort than tuning CQL's single $\alpha$.
 
@@ -462,7 +462,7 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 IQL represents the cleanest solution to offline RL among the model-free methods: the pessimism is structural — baked into the architecture — rather than algorithmic. It is the method of choice when training stability matters more than aggressive improvement over the behavior policy.
 
-The next step beyond model-free methods: learn a model of the world and use it to generate synthetic data. This allows offline RL to reason about transitions never seen in the dataset — at the cost of model error. That is the subject of Chapter 5.
+The next step beyond model-free methods: learn a model of the world and use it to generate synthetic data. This allows offline RL to reason about transitions never seen in the dataset — at the cost of model error. That is the subject of Chapter 7.
 
 ---
 

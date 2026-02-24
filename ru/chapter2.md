@@ -189,6 +189,16 @@ $$Q^* = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathca
 
 Это подход **CQL** (глава 3) и **IQL** (глава 4).
 
+### Ландшафт алгоритмов Offline RL
+
+Помимо пессимизма по значениям, широко используются ещё два семейства. В этой книге подробно разобраны **value-based** (CQL, IQL) и **модельные** (глава 5) методы; ниже — краткая карта.
+
+**Методы с ограничением политики и Actor-Critic** удерживают обученную политику близко к поведенческой — явными ограничениями или регуляризацией актора к данным. **TD3+BC** (Fujimoto & Gu, 2021) добавляет к loss актора член поведенческого клонирования: $\pi$ максимизирует $Q(s, \pi(s)) + \lambda \cdot \log \pi_\beta(a|s)$, оставаясь близко к данным и улучшаясь. **AWAC** (Advantage-Weighted Actor-Critic) и **AWR** (Advantage-Weighted Regression) подгоняют политику с весами по преимуществу (advantage); актор использует только пары $(s, a)$ из датасета, без OOD-запросов к Q. **BEAR** и **BCQ** ограничивают носитель политики (например, действиями близкими к данным или сгенерированными условным VAE). Все они — *actor-critic* (есть и критик Q/V, и актор), но актор ограничен или регуляризован, а не просто жадный по неограниченной Q.
+
+**Decision Transformers (DT)** (Chen et al., 2021) — другой взгляд: офлайн RL как **моделирование последовательностей**. Модель по префиксу траектории (состояния, действия, return-to-go или награды) предсказывает следующее действие авторегрессионно. Нет Bellman-бэкапа и явной Q-функции; «политика» задаётся условным распределением по действиям при заданном контексте и желаемом return. **Offline DT** обучают supervised learning по кускам $(s, a, R)$ из датасета, часто с return-conditioning: на тесте можно запрашивать поведение с «высоким return». Экстраполяционная ошибка в явном виде отсутствует (нет $\max_{a'}$ по OOD-действиям), но сложность переносится на обобщение последовательностной модели и выбор conditioning. Варианты включают **Q-learning DT** (например, QDT), комбинирующие return-conditioning с TD для лучшего credit assignment.
+
+Для практиков: пессимизм по значениям (CQL, IQL) и модельные методы (глава 5) — надёжный выбор по умолчанию для непрерывного управления и технологических данных; методы с ограничением политики (например, TD3+BC) и DT стоит пробовать при длинных горизонтах, мультизадачных данных или предпочтении инструментов для sequence modeling. Ссылки на эти семейства приведены в конце главы.
+
 ---
 
 ## Почему бы просто не использовать BC?
@@ -223,7 +233,7 @@ $$Q^* = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathca
 | Сдвиг распределения | Жадная политика посещает состояния/действия вне датасета |
 | Смертельная триада | Аппроксимация функций + бутстрэппинг + off-policy = нестабильность |
 
-Два основных средства: **ограничение политики** (держаться близко к $\pi_\beta$) и **пессимизм по значениям** (занижать OOD Q-значения). CQL реализует второй подход с элегантной регуляризационной целевой функцией — туда мы и направляемся дальше.
+Два основных средства: **ограничение политики** (держаться близко к $\pi_\beta$) и **пессимизм по значениям** (занижать OOD Q-значения). CQL реализует второй подход с элегантной регуляризационной целевой функцией — туда мы и направляемся дальше. В главе 2 также намечен более широкий ландшафт: policy-constraint / Actor-Critic (TD3+BC, AWAC, BEAR, BCQ) и Decision Transformers; далее в книге фокус на пессимизме по значениям (главы 3–4) и модельных методах (глава 5).
 
 ---
 
@@ -233,3 +243,7 @@ $$Q^* = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathca
 - Kumar, A. et al. (2019). *Stabilizing Off-Policy Q-Learning via Bootstrapping Error Reduction (BEAR).* NeurIPS. [arXiv:1906.00949](https://arxiv.org/abs/1906.00949).
 - Fujimoto, S. et al. (2019). *Off-Policy Deep Reinforcement Learning without Exploration (BCQ).* ICML. [arXiv:1902.08754](https://arxiv.org/abs/1902.08754).
 - Kumar, A. et al. (2020). *Conservative Q-Learning for Offline Reinforcement Learning (CQL).* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
+- Fujimoto, S. & Gu, S.S. (2021). *A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).* NeurIPS. [arXiv:2106.06860](https://arxiv.org/abs/2106.06860).
+- Nair, A. et al. (2020). *Accelerating Online Reinforcement Learning with Offline Datasets (AWAC).* [arXiv:2006.09359](https://arxiv.org/abs/2006.09359).
+- Chen, L. et al. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
+- Sutton, R. et al. (1999). *Policy Gradient Methods for Reinforcement Learning.* NeurIPS. *(обсуждение смертельной триады)*

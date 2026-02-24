@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chapter 7: Industrial Applications</title>
+  <title>Chapter 7: Model-Based Offline RL (MOPO, MOReL)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -58,423 +58,454 @@
   </div>
 </header>
 <main>
-<h1>Chapter 7: Industrial Applications</h1>
+<h1>Chapter 7: Model-Based Offline RL (MOPO, MOReL)</h1>
 <blockquote>
-<p><em>"The gap between a working benchmark result and a working industrial deployment is not a gap in algorithms — it is a gap in understanding the data."</em></p>
+<p><em>"If you can't run new experiments, build a simulator from the data you have — and experiment inside it. But remember: the simulator lies in the places you've never been."</em></p>
 </blockquote>
 <hr />
-<h2>From Benchmarks to Industry</h2>
-<p>The preceding six chapters built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on <code>ThermalProcessEnv</code> — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.</p>
-<p>Real industrial processes differ from that environment in every dimension that matters.</p>
-<p><strong>More variables, more coupling.</strong> A realistic coating process has dozens of sensor readings. Even a simplified model has temperature, filler fraction, viscosity, bulk density, and a surge tank level — five variables with physical dependencies between all of them. The level is an integrating state that drifts without active control; viscosity is a nonlinear function of temperature and filler that the agent cannot observe independently of its inputs.</p>
-<p><strong>Non-uniform data coverage.</strong> Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.</p>
-<p><strong>Lag and delay.</strong> Material fed into a coating line takes 30–90 minutes to appear at the quality measurement point. Within the dynamic model, this manifests as a transport delay: the agent's action at time $t$ affects the output at time $t + k$. A pure first-order model ignoring the delay will have systematic prediction errors whenever the feed rate changes.</p>
-<p><strong>Hard physical constraints.</strong> Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.</p>
-<p>This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–6. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.</p>
-<blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter7.py"><code>chapter7.py</code></a></p>
-</blockquote>
+<h2>Beyond Model-Free</h2>
+<p>Chapters 2–6 attacked offline RL from the same angle: modify the value function to be pessimistic about actions not in the dataset. CQL pushes Q-values down for OOD actions. IQL avoids querying OOD actions entirely.</p>
+<p>Both methods share a fundamental limitation: <strong>they can only use the transitions the behavior policy collected</strong>. If critical regions of the state-action space are simply absent from the dataset, model-free methods have nothing to learn from.</p>
+<p>Model-based offline RL takes a different approach: <strong>learn the dynamics of the system</strong>, then generate synthetic transitions in your head. Instead of constraining yourself to existing data, you construct a mental model and <em>imagine</em> what would happen under new actions.</p>
+<p>This is powerful — but dangerous. The model is wrong wherever the data is sparse, and a policy that exploits model errors will fail as catastrophically as one that exploits Q-function errors. The two algorithms in this chapter solve this differently:</p>
+<ul>
+<li><strong>MOPO</strong> (Yu et al., NeurIPS 2020) — penalize synthetic rewards by model uncertainty. Let the policy range freely but make uncertain regions unattractive.</li>
+<li><strong>MOReL</strong> (Kidambi et al., NeurIPS 2020) — construct an explicit boundary. Inside well-modeled regions the agent optimizes normally; outside it receives a large fixed penalty.</li>
+</ul>
+<p>Same goal, different geometry of pessimism.</p>
 <hr />
-<h2>The Coating Process</h2>
-<h3>Environment</h3>
-<p>The <code>CoatingProcessEnv</code> models a continuous thermal coating line with five state variables and two control inputs.</p>
-<p><strong>State</strong> $s \in \mathbb{R}^5$ (all normalized to $[0,1]$):</p>
+<h2>Part I: MOPO</h2>
+<h3>The Idea</h3>
+<p><strong>Model-Based Offline Policy Optimization (MOPO)</strong> works in three phases:</p>
+<ol>
+<li>
+<p><strong>Learn a dynamics model</strong> $\hat{T}(s' | s, a)$ from the offline dataset using an <strong>ensemble</strong> of neural networks. Each model in the ensemble makes slightly different predictions. Where they agree, the model is confident. Where they disagree, the model is uncertain.</p>
+</li>
+<li>
+<p><strong>Generate synthetic rollouts</strong> by branching from real states. Start at a real state $s \in \mathcal{D}$, choose an action, predict $s'$ with the model, repeat for $h$ steps. After each step, <strong>penalize the reward</strong> by the model's uncertainty:</p>
+</li>
+</ol>
+<p><div class="math-display">$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$</div></p>
+<ol>
+<li><strong>Train a standard RL algorithm</strong> (SAC) on the combined real + synthetic data. The penalty ensures the agent avoids regions where the model is unreliable.</li>
+</ol>
+<p>The result: an effective dataset 10–100× larger than the original, with built-in safety from the uncertainty penalty.</p>
+<h3>Formalization</h3>
+<h4>The Dynamics Ensemble</h4>
+<p>We train an ensemble of $N$ probabilistic models ${\hat{T}<em i="1">i}</em>^N$, each outputting a Gaussian over next states:</p>
+<p><div class="math-display">$$\hat{T}_i(s' | s, a) = \mathcal{N}\left(s + \mu_{\theta_i}(s, a), \; \sigma^2_{\theta_i}(s, a)\right)$$</div></p>
+<p>Key design choices:</p>
+<ul>
+<li><strong>Residual prediction</strong>: predict $\Delta s = s' - s$ rather than $s'$ directly. This gives the network an identity baseline — predicting "nothing changes" costs zero, and the network only needs to learn the correction.</li>
+<li><strong>NLL training</strong>: minimizing negative log-likelihood $-\log \hat{T}_i(s' | s, a)$ trains both the mean (accuracy) and variance (calibrated uncertainty).</li>
+<li><strong>Bootstrap sampling</strong>: each model is trained on a random 80% of the data, forcing diversity across ensemble members.</li>
+</ul>
+<h4>Uncertainty Estimation</h4>
+<p>Given $(s, a)$, each model predicts a mean $\hat{s}'_i$. The <strong>epistemic uncertainty</strong> — "how much do the models disagree?" — is:</p>
+<p><div class="math-display">$$u(s, a) = \left\| \text{Std}_{i=1}^N \left[ \hat{s}'_i \right] \right\|_2$$</div></p>
+<p>This is the standard deviation of predictions across ensemble members, collapsed to a scalar via L2 norm.</p>
+<p><strong>Why ensemble disagreement works</strong>: if all models saw similar data near $(s, a)$, they converge to similar predictions — low $u$. If the data is sparse, bootstrap resampling makes each model learn different spurious patterns — high $u$. This is the key mechanism: uncertainty is high exactly where the data is absent.</p>
+<h4>The MOPO Objective</h4>
+<p>MOPO constructs a <strong>pessimistic MDP</strong> $\tilde{\mathcal{M}}$ with penalized rewards and then optimizes the policy in this MDP:</p>
+<p><div class="math-display">$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$</div></p>
+<p><div class="math-display">$$\pi^* = \arg\max_\pi \; \mathbb{E}_{\tilde{\mathcal{M}}} \left[ \sum_t \gamma^t \tilde{r}(s_t, a_t) \right]$$</div></p>
+<p>The theoretical guarantee from Yu et al. (2020):</p>
+<p><div class="math-display">$$J(\pi) \geq \hat{J}_{\tilde{\mathcal{M}}}(\pi) - C \cdot \mathbb{E}_{s \sim d^\pi} \left[ \max_a u(s, a) \right]$$</div></p>
+<p>where $J(\pi)$ is the true return and $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ is the return in the pessimistic model. The bound says: optimizing in the penalized model gives a lower bound on real performance, with a gap proportional to the remaining model error.</p>
+<h4>Branched Rollouts</h4>
+<p>Rather than rolling out entire episodes from scratch, MOPO uses <strong>branched rollouts</strong>:</p>
+<ol>
+<li>Sample a starting state $s_0$ uniformly from the real dataset $\mathcal{D}$.</li>
+<li>Roll out for $h$ steps using the model and current policy.</li>
+<li>Each synthetic transition $(s_t, a_t, \tilde{r}<em t_1="t+1">t, s</em>)$ is added to a synthetic buffer.</li>
+</ol>
+<p>Starting from real states ensures the rollout begins in a well-modeled region. The short horizon $h$ limits error compounding. The penalized reward discourages visiting poorly modeled regions within the rollout.</p>
+<h3>Implementation</h3>
+<blockquote>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/mopo.py"><code>mopo.py</code></a></p>
+</blockquote>
+<h4>Probabilistic Dynamics Model</h4>
+<p>Each member of the ensemble outputs mean and log-variance for next-state residuals:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">ProbabilisticDynamicsNet</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Single probabilistic dynamics model: (s, a) -&gt; (mean, log_var) of s&#39;.</span>
+
+<span class="sd">    Outputs a Gaussian over next-state *residuals*:</span>
+<span class="sd">        s&#39;_pred ~ N(s + mean(s,a), exp(log_var(s,a)))</span>
+
+<span class="sd">    Residual prediction is critical for stability — the identity baseline</span>
+<span class="sd">    makes it easier to learn small corrections.</span>
+
+<span class="sd">    Trained with NLL — not MSE — so the network learns its own uncertainty.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">256</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="n">inp_dim</span> <span class="o">=</span> <span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">inp_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_var_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
+        <span class="c1"># Learnable bounds on log_var to prevent numerical issues</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">10.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="mf">0.5</span>  <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
+</code></pre></div>
+
+<p>The <code>SiLU</code> activation (swish) outperforms ReLU for dynamics models — smoother gradients help fit smooth physical transitions. The learnable log-variance bounds prevent the model from collapsing variance to zero (overconfidence) or infinity.</p>
+<h4>NLL Training</h4>
+<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">nll_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">):</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
+        <span class="n">residual</span> <span class="o">=</span> <span class="n">next_state</span> <span class="o">-</span> <span class="n">state</span>            <span class="c1"># true Δs</span>
+        <span class="n">var</span>      <span class="o">=</span> <span class="n">log_var</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
+        <span class="c1"># NLL = 0.5 * [ log_var + (residual - mean)² / var ]</span>
+        <span class="n">nll</span>      <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">log_var</span> <span class="o">+</span> <span class="p">(</span><span class="n">residual</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">var</span><span class="p">)</span>
+        <span class="n">loss</span>     <span class="o">=</span> <span class="n">nll</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="c1"># Regularize variance bounds (from PETS, Chua et al. 2018)</span>
+        <span class="n">bound_reg</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">loss</span> <span class="o">+</span> <span class="n">bound_reg</span>
+</code></pre></div>
+
+<p>Training with NLL rather than MSE is essential. MSE trains only the mean, leaving the variance unconstrained. NLL jointly trains mean (minimize prediction error) and variance (calibrate confidence) — making the learned $\sigma^2$ meaningful as an uncertainty proxy.</p>
+<h4>Synthetic Rollouts with Uncertainty Penalty</h4>
+<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">generate_synthetic_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">real_states</span><span class="p">):</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="n">real_states</span><span class="p">[</span><span class="n">random_idx</span><span class="p">]</span>  <span class="c1"># branch from real data</span>
+
+        <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rollout_horizon</span><span class="p">):</span>
+            <span class="n">action</span><span class="p">,</span> <span class="n">_</span>   <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+            <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
+                <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
+            <span class="n">reward</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
+
+            <span class="c1"># THE key line: penalize reward by epistemic uncertainty</span>
+            <span class="n">penalized_reward</span> <span class="o">=</span> <span class="n">reward</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span> <span class="o">*</span> <span class="n">uncertainty</span>
+
+            <span class="c1"># store (state, action, penalized_reward, next_state)</span>
+            <span class="n">state</span> <span class="o">=</span> <span class="n">next_state</span>  <span class="c1"># continue rollout</span>
+</code></pre></div>
+
+<p>The single subtraction <code>reward - self.lam * uncertainty</code> is what converts naive MBRL (dangerous) into MOPO (safe). Without it, the agent exploits model errors wherever the model erroneously predicts high reward. With it, uncertain predictions are automatically penalized — pushing the policy back toward data-supported regions.</p>
+<h4>Policy Training on Mixed Data</h4>
+<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">real_batch</span><span class="p">,</span> <span class="n">synthetic</span><span class="p">):</span>
+        <span class="c1"># Combine real + synthetic at specified ratio</span>
+        <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">s_real</span><span class="p">,</span>  <span class="n">s_synthetic</span><span class="p">],</span>  <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">a_real</span><span class="p">,</span>  <span class="n">a_synthetic</span><span class="p">],</span>  <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">r</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">r_real</span><span class="p">,</span>  <span class="n">r_synthetic</span><span class="p">],</span>  <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="c1"># Standard SAC TD update on combined data</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">a2</span><span class="p">,</span> <span class="n">lp2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">s2</span><span class="p">)</span>
+            <span class="n">q_next</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">Q1_tgt</span><span class="p">(</span><span class="n">s2</span><span class="p">,</span> <span class="n">a2</span><span class="p">),</span> <span class="n">Q2_tgt</span><span class="p">(</span><span class="n">s2</span><span class="p">,</span> <span class="n">a2</span><span class="p">))</span>
+            <span class="n">target</span>  <span class="o">=</span> <span class="n">r</span> <span class="o">+</span> <span class="n">gamma</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">d</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">q_next</span> <span class="o">-</span> <span class="n">alpha_ent</span> <span class="o">*</span> <span class="n">lp2</span><span class="p">)</span>
+        <span class="n">q_loss</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">Q1</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">),</span> <span class="n">target</span><span class="p">)</span> <span class="o">+</span> <span class="n">F</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">Q2</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">),</span> <span class="n">target</span><span class="p">)</span>
+</code></pre></div>
+
+<p>The <code>real_ratio</code> parameter (default 0.5) controls the mix. At <code>real_ratio=1.0</code> this reduces to pure model-free on real data. At <code>real_ratio=0.0</code> the agent trains entirely on synthetic data — rarely safe. Keeping 50–70% real data provides the best balance.</p>
+<hr />
+<h2>Part II: MOReL</h2>
+<h3>A Different Geometry of Pessimism</h3>
+<p>MOPO uses a <strong>continuous</strong> penalty: the further from the data, the larger the subtracted cost. The policy can still venture into uncertain regions — it just finds them less attractive.</p>
+<p>MOReL takes a <strong>discrete</strong> approach: partition the state-action space into "known" and "unknown" regions, and impose a <strong>hard penalty</strong> $\kappa$ in the unknown region. This creates a sharp boundary rather than a gradient.</p>
+<p><strong>Model-Based Offline Reinforcement Learning (MOReL)</strong> — Kidambi et al., NeurIPS 2020 — constructs a <strong>Pessimistic MDP (P-MDP)</strong> directly from the offline data, with a built-in absorbing failure state for OOD transitions.</p>
+<h3>The P-MDP Construction</h3>
+<p>Let $\mathcal{D}$ be the offline dataset. MOReL defines a threshold $\epsilon$ on prediction uncertainty and partitions state-action space:</p>
+<p><div class="math-display">$$\text{KNOWN}  = \{(s,a) : u(s,a) \leq \epsilon\}$$</div></p>
+<p><div class="math-display">$$\text{UNKNOWN} = \{(s,a) : u(s,a) > \epsilon\}$$</div></p>
+<p>The <strong>Pessimistic MDP</strong> $\tilde{\mathcal{M}} = (\mathcal{S} \cup {s_\perp}, \mathcal{A}, \tilde{T}, \tilde{r}, \gamma)$ is defined as:</p>
+<p><div class="math-display">$$\tilde{T}(s' | s, a) = \begin{cases} \hat{T}(s' | s, a) & \text{if } (s,a) \in \text{KNOWN} \\ \delta(s_\perp) & \text{if } (s,a) \in \text{UNKNOWN} \end{cases}$$</div></p>
+<p><div class="math-display">$$\tilde{r}(s, a) = \begin{cases} \hat{r}(s, a) & \text{if } s \neq s_\perp \\ -\kappa & \text{if } s = s_\perp \end{cases}$$</div></p>
+<p>where $s_\perp$ is an absorbing failure state and $\kappa &gt; 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive.</p>
+<h3>The Theoretical Guarantee</h3>
+<p><strong>Theorem (Kidambi et al., 2020).</strong> Let $\hat{\pi}$ be the optimal policy in the P-MDP $\tilde{\mathcal{M}}$. For any policy $\pi$, let $d^\pi$ denote its state-action occupancy measure. Then:</p>
+<p><div class="math-display">$$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^{\hat{\pi}}}[\text{UNKNOWN}]$$</div></p>
+<p>The bound says: the gap between the optimal policy and what MOReL finds is bounded by the probability of MOReL's policy entering the unknown region, weighted by the penalty. If the P-MDP is well-constructed (the known region covers $\hat{\pi}$'s trajectory), the gap is small.</p>
+<p>This is a stronger guarantee than MOPO's: it is <strong>distribution-free</strong> and does not require assumptions on the dynamics error distribution. The tradeoff is that the known/unknown boundary is hard and requires choosing $\epsilon$ carefully.</p>
+<h3>Implementation</h3>
+<blockquote>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/morel.py"><code>morel.py</code></a></p>
+</blockquote>
+<p>MOReL shares the ensemble architecture with MOPO (<code>ProbabilisticDynamicsNet</code>, <code>DynamicsEnsemble</code>) — see <code>mopo.py</code> for those details. The key MOReL-specific additions are:</p>
+<p><strong>Step 1 — Calibrate epsilon from in-distribution data:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># After training the ensemble, set epsilon at the 80th percentile</span>
+<span class="c1"># of uncertainty on *actual dataset transitions*.</span>
+<span class="c1"># This ensures 80% of real data is labelled KNOWN.</span>
+<span class="n">epsilon</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">calibrate_epsilon</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">percentile</span><span class="o">=</span><span class="mf">80.0</span><span class="p">)</span>
+</code></pre></div>
+
+<p><code>calibrate_epsilon()</code> queries the ensemble on <code>n_samples</code> real transitions and returns a quantile of the resulting uncertainty values. Setting <code>percentile=80</code> means the KNOWN region comfortably covers the dataset and extends into nearby well-modeled areas.</p>
+<p><strong>Step 2 — P-MDP rollouts with hard HALT:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Inside MOReLAgent.generate_synthetic_data():</span>
+<span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rollout_horizon</span><span class="p">):</span>
+    <span class="n">action</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">])</span>
+    <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
+        <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">)</span>
+
+    <span class="c1"># Hard boundary: if OOD, terminate with penalty</span>
+    <span class="n">ood</span> <span class="o">=</span> <span class="n">uncertainty</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span>          <span class="c1"># (batch,) bool</span>
+
+    <span class="n">reward</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+        <span class="n">ood</span><span class="p">,</span>
+        <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">kappa</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">ood</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">),</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">done</span> <span class="o">=</span> <span class="n">ood</span><span class="o">.</span><span class="n">float</span><span class="p">()</span>
+
+    <span class="c1"># Absorbing: halted rollouts stay at current state</span>
+    <span class="n">next_state_out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+        <span class="n">ood</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">next_state</span><span class="p">)</span>
+
+    <span class="c1"># Mark halted rollouts as inactive — they stop here</span>
+    <span class="n">active</span><span class="p">[</span><span class="n">active</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">as_tuple</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="n">ood</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="n">transitions</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">reward</span><span class="p">,</span> <span class="n">next_state</span><span class="p">,</span> <span class="n">done</span><span class="p">))</span>
+        <span class="c1"># Only continue non-terminated rollouts</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">ood_mask</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">state</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">transitions</span>
+</code></pre></div>
+
+<p>The <code>ood_mask</code> is the key difference from MOPO. Instead of subtracting a continuous penalty, OOD transitions are terminated immediately with <code>done=True</code> and reward $-\kappa$. The Q-learning target then sees zero future value after OOD transitions, which strongly discourages entering the unknown region.</p>
+<h3>Choosing $\epsilon$</h3>
+<p>The threshold $\epsilon$ controls the known/unknown boundary and is the critical hyperparameter in MOReL:</p>
 <table>
 <thead>
 <tr>
-<th>Index</th>
-<th>Variable</th>
-<th>Physical meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>$s_0$</td>
-<td><code>temperature</code></td>
-<td>Process temperature in the coating zone</td>
-</tr>
-<tr>
-<td>$s_1$</td>
-<td><code>filler_fraction</code></td>
-<td>Fraction of filler material in the blend</td>
-</tr>
-<tr>
-<td>$s_2$</td>
-<td><code>viscosity</code></td>
-<td>Blend viscosity — nonlinear function of $T$ and filler</td>
-</tr>
-<tr>
-<td>$s_3$</td>
-<td><code>density</code></td>
-<td>Bulk material density</td>
-</tr>
-<tr>
-<td>$s_4$</td>
-<td><code>level</code></td>
-<td>Surge tank fill level — integrating dynamics</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Actions</strong> $a \in [-1,1]^2$:</p>
-<table>
-<thead>
-<tr>
-<th>Index</th>
-<th>Action</th>
+<th>$\epsilon$</th>
 <th>Effect</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>$a_0$</td>
-<td><code>heat_input</code></td>
-<td>Heater setpoint delta</td>
+<td>Very small</td>
+<td>Tiny known region — agent confined near behavior policy (≈ BC)</td>
 </tr>
 <tr>
-<td>$a_1$</td>
-<td><code>flow_input</code></td>
-<td>Filler feed rate delta</td>
+<td>Moderate (default)</td>
+<td>Includes well-modeled extrapolations — good balance</td>
+</tr>
+<tr>
+<td>Very large</td>
+<td>Entire space is "known" — reverts to unconstrained MBRL</td>
 </tr>
 </tbody>
 </table>
-<p><strong>True dynamics</strong> (unknown to the agent):</p>
-<p>$$T_{t+1} = \left(1 - \frac{\Delta t}{\tau_T}\right)T_t + \frac{\Delta t}{\tau_T} K_T u_T + \underbrace{0.03 \cdot f_t \cdot u_T}_{\text{cross-coupling}} + \epsilon_T$$</p>
-<p>$$f_{t+1} = \left(1 - \frac{\Delta t}{\tau_f}\right)f_t + \frac{\Delta t}{\tau_f} K_f \cdot \underbrace{u_{f,t-2}}_{\text{delay}} + \epsilon_f$$</p>
-<p>$$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \epsilon_v$$</p>
-<p>$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_f}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_T}_{\text{outflow}}\right) + \epsilon_L$$</p>
-<p>Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$.</p>
-<p>Three things are deliberately hidden from the agent's physics model:
-1. The cross-coupling term $0.03 f_t u_T$ in the temperature equation
-2. The two-step transport delay in the filler equation
-3. The quadratic term $0.12 f(1-T)$ in the viscosity relationship</p>
-<p>These represent the gap between first-principles engineering knowledge and reality.</p>
-<p><strong>Reward</strong> function targets temperature, filler fraction, and level stability:</p>
-<p>$$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$</p>
-<p>with setpoints $T^* = 0.60$, $f^* = 0.50$, $L^* = 0.50$.</p>
-<p><strong>Hard constraints</strong> (violation = irreversible equipment damage or shutdown):</p>
+<p><strong>Practical guidance</strong>: set $\epsilon$ to the 70th–80th percentile of in-distribution uncertainty (i.e., uncertainty on actual dataset transitions). This ensures the known region covers the dataset comfortably and extends into nearby well-modeled areas.</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Calibrate epsilon from in-distribution data</span>
+<span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+    <span class="n">s_cal</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][:</span><span class="mi">2000</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">a_cal</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][:</span><span class="mi">2000</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">u_cal</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span><span class="n">s_cal</span><span class="p">,</span> <span class="n">a_cal</span><span class="p">)</span>
+<span class="n">epsilon</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">quantile</span><span class="p">(</span><span class="n">u_cal</span><span class="p">,</span> <span class="mf">0.80</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Calibrated epsilon = </span><span class="si">{</span><span class="n">epsilon</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<hr />
+<h2>MOPO vs MOReL vs Model-Free</h2>
 <table>
 <thead>
 <tr>
-<th>Variable</th>
-<th>Lower</th>
-<th>Upper</th>
+<th></th>
+<th>CQL</th>
+<th>IQL</th>
+<th>MOPO</th>
+<th>MOReL</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>temperature</td>
-<td>0.35</td>
-<td>0.85</td>
+<td>Uses model</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>filler fraction</td>
-<td>0.20</td>
-<td>0.75</td>
+<td>OOD handling</td>
+<td>Push Q down</td>
+<td>Never query OOD</td>
+<td>Continuous penalty $-\lambda u$</td>
+<td>Hard boundary + $-\kappa$</td>
 </tr>
 <tr>
-<td>viscosity</td>
-<td>0.10</td>
-<td>0.90</td>
+<td>Data augmentation</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>density</td>
-<td>0.30</td>
-<td>0.80</td>
+<td>Pessimism geometry</td>
+<td>Soft (Q penalty)</td>
+<td>Structural (V design)</td>
+<td>Soft (reward penalty)</td>
+<td>Hard (absorbing state)</td>
 </tr>
 <tr>
-<td>level</td>
-<td>0.15</td>
-<td>0.85</td>
+<td>Can extrapolate</td>
+<td>Limited</td>
+<td>No</td>
+<td>Yes (within confidence)</td>
+<td>Yes (within known region)</td>
+</tr>
+<tr>
+<td>Theoretical guarantee</td>
+<td>Lower bound on Q</td>
+<td>Implicit via V</td>
+<td>Lower bound on $J(\pi)$</td>
+<td>Distribution-free PAC bound</td>
+</tr>
+<tr>
+<td>Key hyperparameters</td>
+<td>$\alpha$</td>
+<td>$\tau, \beta$</td>
+<td>$\lambda, h, N$</td>
+<td>$\epsilon, \kappa, h, N$</td>
+</tr>
+<tr>
+<td>Compute cost</td>
+<td>Medium</td>
+<td>Low</td>
+<td>High</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Best for</td>
+<td>Dense datasets</td>
+<td>Stable training</td>
+<td>Sparse, smooth dynamics</td>
+<td>Safety-critical, need hard guarantees</td>
 </tr>
 </tbody>
 </table>
-<pre><code class="language-python">class CoatingProcessEnv:
-    STATE_DIM  = 5
-    ACTION_DIM = 2
-
-    T_TARGET     = 0.60
-    F_TARGET     = 0.50
-    LEVEL_TARGET = 0.50
-
-    BOUNDS = [
-        (0.35, 0.85),  # temperature
-        (0.20, 0.75),  # filler_fraction
-        (0.10, 0.90),  # viscosity
-        (0.30, 0.80),  # density
-        (0.15, 0.85),  # level
-    ]
-
-    TAU_T, TAU_F = 12.0, 8.0
-    K_T,   K_F   = 0.85, 0.90
-    DT           = 1.0
-</code></pre>
-<h3>Why the Level Variable is the Hardest</h3>
-<p>The first four state variables are <strong>self-regulating</strong>: if the heater is turned off, temperature eventually returns to ambient. The level variable is <strong>integrating</strong>: it has no natural setpoint. Left alone, it drifts in the direction of net flow imbalance. Controlling an integrating state requires the agent to predict the sign and magnitude of its own long-term effect — which is exactly what offline RL struggles with when data is sparse near the constraint boundaries.</p>
-<p>This is not a contrived difficulty. Surge tanks, buffer silos, and intermediate storage vessels are integrating elements in nearly every continuous manufacturing process.</p>
+<p><strong>When to choose MOPO</strong>: the dynamics are smooth and learnable, dataset coverage is uneven but not catastrophically sparse, and you want to maximize performance within a reasonable compute budget.</p>
+<p><strong>When to choose MOReL</strong>: safety constraints are hard (the policy must not enter uncertain regions even transiently), or when you need the stronger distribution-free guarantee and can afford careful calibration of $\epsilon$.</p>
 <hr />
-<h2>The Dataset: Operating Regimes</h2>
-<p>Industrial data is not uniformly distributed. <code>collect_industrial_dataset</code> simulates three operating regimes that appear in real historical logs:</p>
-<p><strong>Normal operation (60% of episodes):</strong> The process runs near its setpoints. The behavior policy is a proportional controller with moderate exploration noise. This is the bulk of the data — the region where all algorithms will perform reasonably.</p>
-<p><strong>Setpoint transitions (25%):</strong> Episodes start away from the nominal operating point. Higher noise, shifted initial states. These transitions stress-test the agent's ability to drive the process back to setpoint rather than just maintaining it.</p>
-<p><strong>Disturbances (15%):</strong> Unusual initial conditions — specifically, level disturbances where the surge tank starts far below normal. These are the episodes where constraint violations are most likely and where the physics model is most valuable.</p>
-<pre><code class="language-python">dataset = collect_industrial_dataset(
-    n_episodes=400,
-    episode_len=100,
-    noise_scale=0.30,
-    regime_split=(0.60, 0.25, 0.15),
-)
-</code></pre>
-<p>This distribution creates the characteristic industrial imbalance: the trained agents will encounter disturbance scenarios rarely during evaluation but must handle them correctly. An agent that learned only from normal-operation data will be systematically undertrained for the 15% of situations that matter most.</p>
+<h2>Hyperparameter Guide</h2>
+<h3>MOPO: $\lambda$ (uncertainty penalty weight)</h3>
+<table>
+<thead>
+<tr>
+<th>$\lambda$</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$\lambda = 0$</td>
+<td>No penalty — trust model completely (dangerous)</td>
+</tr>
+<tr>
+<td>$\lambda = 0.5$</td>
+<td>Light penalty — for high-quality models on simple systems</td>
+</tr>
+<tr>
+<td>$\lambda = 1.0$</td>
+<td>Default — reasonable pessimism</td>
+</tr>
+<tr>
+<td>$\lambda = 3.0$+</td>
+<td>Strong penalty — for noisy data or unreliable models</td>
+</tr>
+<tr>
+<td>$\lambda \to \infty$</td>
+<td>Reverts to model-free on real data only</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Diagnostic</strong>: plot <code>mean(uncertainty)</code> in synthetic rollouts over training. If it increases, the policy drifts into model-uncertain regions — increase $\lambda$.</p>
+<h3>Both: $h$ (rollout horizon)</h3>
+<ul>
+<li><code>h=1</code>: single-step predictions. Safest, but limited augmentation.</li>
+<li><code>h=5</code>: default. Good balance of augmentation vs error compounding.</li>
+<li><code>h=10+</code>: only if model one-step accuracy is very high.</li>
+</ul>
+<p><strong>Rule of thumb</strong>: if the model has $\epsilon_1$ one-step error, after $h$ steps you accumulate roughly $h \cdot \epsilon_1$ error. Set $h$ so that $h \cdot \epsilon_1 &lt; 0.1$ (10% accumulated error).</p>
+<h3>Both: $N$ (ensemble size)</h3>
+<ul>
+<li><code>N=3</code>: minimum for meaningful uncertainty (not recommended in production).</li>
+<li><code>N=5</code>: default — good uncertainty estimates.</li>
+<li><code>N=7–10</code>: better estimates, proportional compute cost.</li>
+</ul>
 <hr />
-<h2>Evaluation: Industrial Metrics</h2>
-<p>Standard RL metrics — episode return, normalized score — are insufficient for industrial evaluation. <code>IndustrialEvaluator</code> computes five metrics that matter in practice.</p>
-<h3>Directional Accuracy (DA)</h3>
-<p>$$\text{DA}_x = \frac{1}{T}\sum_{t=1}^T \mathbf{1}\!\left[\Delta x_t \cdot (x^* - x_{t-1}) \geq 0\right]$$</p>
-<p>DA measures whether the controlled variable moved <em>toward</em> its setpoint at each step, regardless of how far it moved. A policy that always moves in the right direction but slowly has DA = 1.0. A policy that systematically pushes variables the wrong way has DA &lt; 0.5 (worse than random).</p>
-<p>DA is often more informative than RMSE in industrial settings because:
-- A slow policy with DA ≈ 1.0 can be sped up by tuning the action scaling
-- A fast policy with DA ≈ 0.4 requires fundamental retraining
-- Operators can visually verify DA from trend plots without numerical analysis</p>
-<h3>RMSE and Constraint Violation Rate</h3>
-<p>RMSE from setpoint is computed per variable:</p>
-<p>$$\text{RMSE}_x = \sqrt{\frac{1}{T}\sum_t (x_t - x^*)^2}$$</p>
-<p>Constraint violation rate is the fraction of time steps where any state variable falls outside its hard bounds. Severity measures the mean violation magnitude <em>given</em> that a violation occurred:</p>
-<p>$$\text{severity} = \frac{\sum_t \max(0,\, g(s_t))}{\sum_t \mathbf{1}[g(s_t) &gt; 0]}$$</p>
-<pre><code class="language-python">class IndustrialEvaluator:
-    &quot;&quot;&quot;
-    Computes: reward_mean, reward_std, T_rmse, f_rmse, level_rmse,
-              da_T, da_f, da_mean, constraint_viol_rate,
-              constraint_viol_severity
-    &quot;&quot;&quot;
-
-    def evaluate(self, agent) -&gt; Dict[str, float]:
-        for ep in range(self.n_episodes):
-            obs = self.env.reset(seed=8000 + ep)
-            while not done:
-                prev_T, prev_f = obs[0], obs[1]
-                s_t  = torch.FloatTensor(
-                    (obs - self.s_mean) / self.s_std).unsqueeze(0)
-                act  = agent.policy.act(s_t, deterministic=True)
-                obs, r, done, info = self.env.step(act)
-
-                # Directional accuracy
-                da_T = 1.0 if (obs[0]-prev_T)*(env.T_TARGET-prev_T) &gt;= 0 else 0.0
-                da_f = 1.0 if (obs[1]-prev_f)*(env.F_TARGET-prev_f) &gt;= 0 else 0.0
-
-                # Constraint tracking
-                viol = info['constraint_violation']   # sum of boundary overruns
-</code></pre>
+<h2>Practical Tips</h2>
+<p><strong>Normalize everything.</strong> States, actions, rewards — all normalized before training the dynamics model. Dynamics networks approximate smooth functions; inputs in $[-1, 1]$ or $[0, 1]$ help enormously.</p>
+<p><strong>Residual prediction is non-negotiable.</strong> Always predict $\Delta s = s' - s$. For slowly changing systems (most industrial processes), the residual is orders of magnitude smaller than the absolute state, making it much easier to learn.</p>
+<p><strong>Monitor ensemble disagreement.</strong> The ratio <code>u(OOD) / u(in-distribution)</code> should be &gt;&gt; 1. If it is close to 1, the ensemble is not diverse enough — try different bootstrap ratios, random seeds, or add spectral normalization.</p>
+<p><strong>Regenerate synthetic data periodically.</strong> As the policy improves, it visits different regions of state space. Rollouts generated by the previous policy become stale. Regenerate every 5–10 SAC epochs.</p>
+<p><strong>Use the model for gradient signal, not accurate prediction.</strong> A 10% one-step prediction error is acceptable if the model correctly distinguishes good from bad actions. Global accuracy is not the goal.</p>
+<p><strong>For industrial applications</strong>: if you have a physics-based simulator (even approximate), train the neural ensemble on residuals between the physics model and real data rather than from scratch. This hybrid approach often requires dramatically less offline data. Chapter 8 develops this idea into a full methodology.</p>
 <hr />
-<h2>The Physics Model</h2>
-<p>The known physics for the coating process is encoded in <code>coating_physics_fn</code>. It implements the first-order responses and the mass balance exactly, but omits the cross-coupling, transport delay, and viscosity nonlinearity:</p>
-<pre><code class="language-python">def coating_physics_fn(state: torch.Tensor,
-                        action: torch.Tensor) -&gt; torch.Tensor:
-    T, f, L = state[:, 0], state[:, 1], state[:, 4]
-    heat_in  = action[:, 0] * 0.5 + 0.5
-    flow_in  = action[:, 1] * 0.5 + 0.5
-
-    T_new = (1 - DT/TAU_T) * T + (DT/TAU_T) * K_T * heat_in
-    f_new = (1 - DT/TAU_F) * f + (DT/TAU_F) * K_F * flow_in
-
-    # Linearized viscosity (true is nonlinear)
-    v_new = (0.75 - 0.45*T_new + 0.38*f_new).clamp(0.0, 1.0)
-    d_new = (0.55 + 0.25*f_new - 0.10*T_new).clamp(0.0, 1.0)
-
-    # Mass balance — good approximation of true level dynamics
-    inflow  = flow_in * 0.4
-    outflow = L * 0.35 + 0.05 * heat_in
-    L_new   = (L + DT * (inflow - outflow)).clamp(0.0, 1.0)
-
-    return torch.stack([T_new, f_new, v_new, d_new, L_new], dim=1)
-</code></pre>
-<p>Before training the hybrid ensemble, it is essential to run <code>diagnose_physics_coverage</code> to verify that the physics model is actually useful:</p>
-<pre><code class="language-python">ensemble.diagnose_physics_coverage(norm_dataset)
-
-# Expected output:
-#   Physics model coverage (fraction of variance explained):
-#   state dim 0 (temperature):     91.3%  ██████████████████░░
-#   state dim 1 (filler_fraction): 83.7%  ████████████████░░░░
-#   state dim 2 (viscosity):       64.2%  ████████████░░░░░░░░
-#   state dim 3 (density):         79.8%  ████████████████░░░░
-#   state dim 4 (level):           93.1%  ██████████████████░░
-#   Overall: 82.4%
-</code></pre>
-<p>Coverage above 80% overall means the residual network needs to learn a 20%-amplitude correction — roughly one quarter the network capacity of a pure black-box model at the same prediction accuracy.</p>
-<hr />
-<h2>Algorithm 1: Behavioral Cloning</h2>
-<p>BC is the baseline: clone the behavior policy directly. Its failure mode on industrial data is predictable — compounding error during setpoint transitions and disturbances, where the agent encounters states it never saw during training.</p>
-<pre><code class="language-python">bc = CQLBCAgent(STATE_DIM, ACTION_DIM, device=device)
-train_bc(bc, loader, n_epochs=60)
-</code></pre>
-<p>BC's DA will be high in normal-operation episodes (the behavior policy was a competent proportional controller) and low during disturbance recovery. Constraint violations are rare in normal operation and frequent in disturbances — exactly the scenarios BC was least trained for.</p>
-<hr />
-<h2>Algorithm 2: CQL</h2>
-<p>CQL (Chapter 3) adds conservatism via the penalty on out-of-distribution Q-values. On industrial data it consistently outperforms BC in disturbance scenarios because the pessimistic Q-function prevents the policy from taking actions that look good under the learned Q but are rare in the dataset.</p>
-<pre><code class="language-python">cql = CQLAgent(STATE_DIM, ACTION_DIM, alpha_cql=1.0, device=device)
-train_cql_agent(cql, loader, n_epochs=80)
-</code></pre>
-<p>CQL's remaining weakness: it has no mechanism to avoid physically inconsistent actions. A setpoint command that CQL's Q-function rates highly may still violate a mass balance or push the level toward a constraint boundary.</p>
-<hr />
-<h2>Algorithm 3: CQL + Physics Reward Shaping</h2>
-<p><code>PhysicsInformedCQL</code> wraps <code>CQLAgent</code> with <code>PhysicsRewardWrapper</code> (Chapter 6). The modification to the training loop is exactly one line: replace the batch reward <code>r</code> with <code>r - penalty</code> before calling <code>CQLAgent.update</code>.</p>
-<pre><code class="language-python">constraints, lambdas = make_coating_constraints(dataset, device)
-
-class PhysicsInformedCQL:
-    def update(self, batch):
-        s, a, r, s2, d = [x.to(self.device) for x in batch]
-        with torch.no_grad():
-            penalty = sum(
-                lam * g(s, a, s2)
-                for g, lam in zip(self.constraints, self.lambdas)
-            )
-        return self.cql.update((s, a, r - penalty, s2, d))
-</code></pre>
-<p>The <code>lambdas</code> are calibrated via <code>calibrate_lambda</code> (Theorem 6.1): set $\lambda$ so that the Theorem 6.1 optimality gap is at most 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.</p>
-<p>Three constraints are active:
-1. <strong>Operating bounds</strong> — all five state variables within hard limits
-2. <strong>Temperature first-order consistency</strong> — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
-3. <strong>Filler fraction first-order consistency</strong> — same for filler</p>
-<p>The first-order consistency constraints do not punish the agent for choosing unusual setpoints — they punish the dynamics model for predicting physically impossible transitions, which indirectly constrains the policy to stay in regions where dynamics are predictable.</p>
-<hr />
-<h2>Algorithm 4: HybridMOReL</h2>
-<p><code>HybridMOReL</code> combines the model-based approach from Chapter 5 with the hybrid dynamics model from Chapter 6. The structure is a two-phase training loop.</p>
-<p><strong>Phase 1 — Dynamics training:</strong></p>
-<pre><code class="language-python">hm = HybridMOReL(
-    state_dim   = STATE_DIM,
-    action_dim  = ACTION_DIM,
-    physics_fn  = coating_physics_fn,
-    n_ensemble  = 4,
-    hidden_dim  = 128,
-    halt_thresh = 0.15,
-)
-hm.train_dynamics(norm_dataset, n_epochs=30)
-# Output:
-#   Physics coverage: 82.4% — strong
-#   Training hybrid ensemble: 4 models × 30 epochs
-#   ✓ HybridEnsemble installed in MOReL
-</code></pre>
-<p>After training, the hybrid ensemble is installed in the MOReL agent by swapping <code>morel_agent.ensemble</code>. The MOReL rollout generator (<code>generate_synthetic_data</code>) continues to call <code>ensemble.predict_with_uncertainty</code> — it does not know or care whether the ensemble is pure black-box or hybrid.</p>
-<p><strong>Phase 2 — Policy training via MOReL:</strong></p>
-<pre><code class="language-python">train_morel(
-    agent               = hm.morel_agent,
-    dataset             = norm_dataset,
-    env                 = env,         # real env for evaluation only
-    n_outer_iters       = 15,
-    sac_steps_per_iter  = 300,
-)
-</code></pre>
-<p>MOReL's P-MDP construction applies the HALT penalty whenever ensemble uncertainty exceeds <code>halt_thresh</code>. With the hybrid ensemble, uncertainty estimates are better calibrated: in OOD regions where the residual network has no training data, the physics term keeps the prediction physically plausible rather than arbitrary. This reduces spurious HALT events caused by the pure black-box ensemble producing nonsensical predictions in physically reachable but data-sparse states.</p>
-<hr />
-<h2>Results</h2>
-<p>Running the full benchmark:</p>
-<pre><code class="language-python">results = run_industrial_benchmark(
-    device       = 'cpu',
-    n_train_ep   = 400,
-    n_bc_epochs  = 60,
-    n_cql_epochs = 80,
-    n_morel_iters= 15,
-    n_eval_ep    = 20,
-)
-</code></pre>
-<p>Typical output (exact numbers depend on random seed):</p>
-<pre><code>══════════════════════════════════════════════════════════════
-  CHAPTER 7 — INDUSTRIAL BENCHMARK RESULTS
-══════════════════════════════════════════════════════════════
-Metric                BC      CQL   CQL+Phys  HybridMOReL
-──────────────────────────────────────────────────────────────
-Reward (mean)       -18.4   -14.2    -13.8   ▶  -12.1
-DA (mean)            61.3%   71.8%   73.4%  ▶   79.2%
-DA temperature       64.1%   73.5%   75.1%  ▶   81.3%
-DA filler            58.4%   70.1%   71.6%  ▶   77.1%
-T RMSE               0.0921  0.0712  0.0698  ▶  0.0581
-f RMSE               0.1043  0.0834  0.0811  ▶  0.0693
-Level RMSE           0.0874  0.0748  0.0701  ▶  0.0612
-Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
-══════════════════════════════════════════════════════════════
-</code></pre>
-<h3>Reading the Results</h3>
-<p><strong>BC</strong> performs adequately in normal operation but fails during disturbances. Its DA is just above 60% — better than random, but below the 80% industrial threshold. Constraint violations occur because BC never saw the level variable near its bounds during training.</p>
-<p><strong>CQL</strong> improves across all metrics. Conservatism in the Q-function prevents the worst extrapolation failures. But violation rate remains at 2.8% — CQL has no mechanism to specifically avoid constraint boundaries.</p>
-<p><strong>CQL+Physics</strong> reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions. The violation severity also drops even more than the rate, meaning that when violations do occur they are shallower.</p>
-<p><strong>HybridMOReL</strong> achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.</p>
-<h3>The Complementary Structure</h3>
-<p>These results reveal a complementary structure worth understanding.</p>
-<p><strong>CQL+Physics</strong> is the violation minimizer: it explicitly penalizes constraint approaches and achieves the lowest violation rate. But it uses only real data — its synthetic experience is zero.</p>
-<p><strong>HybridMOReL</strong> is the performance maximizer: model-based rollouts push the policy to higher reward and DA, but without explicit constraint penalties the violation rate is slightly elevated.</p>
-<p>In a real deployment, the natural combination is <strong>HybridMOReL + physics reward shaping</strong> — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to <code>train_hybrid_morel_agent</code>: pass the <code>PhysicsRewardWrapper</code> into the rollout generator. Chapter 6 showed exactly how to do this.</p>
-<hr />
-<h2>Engineering Decisions Revisited</h2>
-<p>Working through this case study surfaces several decisions that do not appear in benchmark papers.</p>
-<h3>The Transport Delay Problem</h3>
-<p>The filler equation has a two-step delay: the agent's flow input at time $t$ affects the filler fraction at time $t+2$, not $t+1$. The physics model ignores this delay — it predicts an immediate first-order response.</p>
-<p>This means the hybrid ensemble's residual must learn the delay effect from data. With enough transitions, it can. The tell-tale sign of a delay mismatch is a systematic residual that is positive when flow_input recently increased and negative when it recently decreased. If <code>diagnose_physics_coverage</code> shows low coverage for the filler dimension (below 60%), the likely cause is an unmodeled delay.</p>
-<p>The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model account for them. The engineering knowledge required is only the approximate delay length — the exact value can be learned from the residual.</p>
-<h3>Constraint Calibration</h3>
-<p><code>make_coating_constraints</code> uses <code>calibrate_lambda</code> for the bounds constraint and sets $\lambda = 2.0$ manually for the first-order consistency constraints. The manual values are reasonable starting points but should be verified:</p>
-<pre><code class="language-python"># Check constraint violation rates on the training dataset
-for g, lam in zip(constraints, lambdas):
-    violations = g(s_train, a_train, s2_train)
-    print(f&quot;  λ={lam:.2f} | violations: {(violations &gt; 0).float().mean():.1%} &quot;
-          f&quot;| mean_magnitude: {violations.mean():.5f}&quot;)
-</code></pre>
-<p>If a constraint is violated on more than 20% of training transitions, either the tolerance is too tight or the physics model is inaccurate for that variable. In both cases, increasing the tolerance or loosening the manual $\lambda$ is better than tightening the constraint — a constraint that fires too often becomes a second reward signal rather than a physics correction.</p>
-<h3>Normalizing the 5D State</h3>
-<p>Five variables with different physical scales and variances require per-dimension normalization. The provided <code>normalize_dataset</code> normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — centering the reward would remove the sign information that distinguishes good states from bad.</p>
+<h2>Limitations</h2>
+<p><strong>Model errors compound.</strong> Over $h$ steps, one-step errors accumulate. The uncertainty penalty (MOPO) or hard boundary (MOReL) mitigates this, but very long horizons remain risky.</p>
+<p><strong>High-dimensional observations.</strong> Learning $T(s' | s, a)$ from pixels or high-dimensional sensors requires much more data than from compact state representations. For image-based domains, learn a compressed latent dynamics model first.</p>
+<p><strong>Compute cost scales with ensemble size.</strong> Training and inference require $N \times$ the compute of a single model. For large state spaces or ensembles, this is significant.</p>
+<p><strong>Reward model.</strong> In our implementation the reward function is known analytically. In practice, rewards may also need to be learned from data — adding another source of model error and another network to train and calibrate.</p>
+<p><strong>Ensemble diversity is fragile.</strong> If all models converge to the same solution (common with small datasets or high model capacity), uncertainty estimates collapse to near zero — making both MOPO's penalty and MOReL's boundary useless. Bootstrap sampling helps but is not always sufficient.</p>
 <hr />
 <h2>Summary</h2>
-<p>This chapter translated the tools from Chapters 1–6 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
-<p>The comparison across four algorithms reveals a clean hierarchy:</p>
 <table>
 <thead>
 <tr>
-<th>Algorithm</th>
-<th>Relies on</th>
-<th>Strength</th>
-<th>Weakness</th>
+<th>Property</th>
+<th>MOPO</th>
+<th>MOReL</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>BC</td>
-<td>Data imitation</td>
-<td>Simple, interpretable</td>
-<td>Compounding error; constraint-blind</td>
+<td>Data required</td>
+<td>$(s, a, r, s')$ transitions</td>
+<td>$(s, a, r, s')$ transitions</td>
 </tr>
 <tr>
-<td>CQL</td>
-<td>Conservative Q-values</td>
-<td>Better OOD generalization</td>
-<td>No physical constraint mechanism</td>
+<td>Core mechanism</td>
+<td>Ensemble uncertainty as soft reward penalty</td>
+<td>Hard known/unknown partition via uncertainty threshold</td>
 </tr>
 <tr>
-<td>CQL+Physics</td>
-<td>CQL + penalty</td>
-<td>Lowest violation rate</td>
-<td>Uses only real data</td>
+<td>Pessimism</td>
+<td>Continuous: $\tilde{r} = r - \lambda u$</td>
+<td>Discrete: absorbing failure state beyond $\epsilon$</td>
 </tr>
 <tr>
-<td>HybridMOReL</td>
-<td>Model-based + hybrid</td>
-<td>Best reward and DA</td>
-<td>Higher violation rate without explicit penalty</td>
+<td>Theoretical guarantee</td>
+<td>Lower bound on $J(\pi)$ via penalized model</td>
+<td>Distribution-free PAC bound</td>
+</tr>
+<tr>
+<td>Key hyperparameters</td>
+<td>$\lambda, h, N$</td>
+<td>$\epsilon, \kappa, h, N$</td>
+</tr>
+<tr>
+<td>Best for</td>
+<td>Maximizing performance on smooth dynamics</td>
+<td>Hard safety requirements, need formal guarantees</td>
+</tr>
+<tr>
+<td>Limitation</td>
+<td>Soft penalty can be insufficient for very unreliable models</td>
+<td>$\epsilon$ calibration critical; hard boundary can be overly conservative</td>
 </tr>
 </tbody>
 </table>
-<p>The practical recommendation for industrial deployment: <strong>start with CQL+Physics</strong> (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, <strong>add the hybrid ensemble</strong> as a source of diverse synthetic experience.</p>
-<p>Chapter 8 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.</p>
+<p>Both MOPO and MOReL represent a qualitative shift from model-free offline RL: instead of constraining the policy to stay near the data, we expand the data to cover more of the state-action space. The ensemble ensures this expansion is safe — the agent only trusts the model where it is reliable.</p>
+<p>The natural next question: can we do better than learning dynamics from scratch? If we know the physics of the system — conservation laws, differential equations, material properties — we can build that knowledge directly into the model and dramatically reduce the data needed. That is the subject of Chapter 8: Physics-Informed Offline RL.</p>
 <hr />
 <h2>References</h2>
 <ul>
-<li>All references from Chapters 1–6 apply to the algorithms used here.</li>
-<li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(PID baseline, first-order process models)</em></li>
-<li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(industrial process control, transport delay)</em></li>
-<li>Rawlings, J.B., Mayne, D.Q., &amp; Diehl, M. (2017). <em>Model Predictive Control.</em> Nob Hill. <em>(MPC for comparison context)</em></li>
-</ul>
+<li>Yu, T., Thomas, G., Yu, L., Ermon, S., Zou, J., Levine, S., Finn, C., &amp; Ma, T. (2020). <em>MOPO: Model-Based Offline Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/2005.13239">arXiv:2005.13239</a>.</li>
+<li>Kidambi, R., Rajeswaran, A., Netrapalli, P., &amp; Kakade, S. (2020). <em>MOReL: Model-Based Offline Reinforcement Learning.</em> NeurIPS. <a href="https://arxiv.org/abs/2005.05951">arXiv:2005.05951</a>.</li>
+<li>Janner, M., Fu, J., Zhang, M., &amp; Levine, S. (2019). <em>When to Trust Your Model: Model-Based Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/1906.08253">arXiv:1906.08253</a>. <em>(MBPO — online model-based RL foundation for MOPO)</em></li>
+<li>Chua, K., Calandra, R., McAllister, R., &amp; Levine, S. (2018). <em>Deep Reinforcement Learning in a Handful of Trials using Probabilistic Dynamics Models.</em> NeurIPS. <a href="https://arxiv.org/abs/1805.12114">arXiv:1805.12114</a>. <em>(PETS — ensemble uncertainty; foundation for both MOPO and MOReL)</em></li>
+<li>Lakshminarayanan, B., Pritzel, A., &amp; Blundell, C. (2017). <em>Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles.</em> NeurIPS. <a href="https://arxiv.org/abs/1612.01474">arXiv:1612.01474</a>. <em>(why ensembles work as uncertainty estimators)</em></li>
+<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
+<li>Fu, J. et al. (2020). <em>D4RL: Datasets for Deep Data-Driven Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2004.07219">arXiv:2004.07219</a>. <em>(standard benchmark; MOPO and MOReL both evaluated on D4RL)</em></li>
+</ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/en/chapter6.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Physics-Informed Offline RL</span></a>
-<a href="/offline-rl-book/en/chapter8.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Explainability in Offline RL</span></a>
+<a href="/offline-rl-book/en/chapter6.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Decision Transformers</span></a>
+    <a href="/offline-rl-book/en/chapter8.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Physics-Informed Offline RL</span></a>
 </nav>
-</main>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">
     Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
