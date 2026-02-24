@@ -115,17 +115,17 @@ class Actor(nn.Module):
 def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
     """
     TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.
-    Q is normalized by (q - q.mean()) / (q.std() + eps) over the batch
-    so the Q-term and BC-term have comparable scale.
+    Q is normalized by mean absolute value over the batch (Fujimoto & Gu):
+    q_norm = q / (|B|^{-1} sum |Q(s,a)|), so the Q-term and BC-term scale similarly.
     """
     pi = actor(states)
     q = Q1(states, pi)
-    q_norm = (q - q.mean()) / (q.std() + 1e-6)
+    q_norm = q / (q.abs().mean() + 1e-6)
     bc_loss = ((pi - actions) ** 2).mean()
     return -q_norm.mean() * lambda_ + bc_loss
 ```
 
-The key is that both terms contribute meaningfully to the gradient; the implementation in `td3bc.py` uses batch normalization of Q (mean/std) and fixed $\lambda$.
+The key is that both terms contribute meaningfully to the gradient. The implementation in `td3bc.py` follows the paper: Q is scaled by the mean absolute value over the batch (not Z-normalization), so $\lambda$ is directly comparable to the original TD3+BC setup.
 
 ### AWAC-Style Policy Loss (Advantage-Weighted)
 

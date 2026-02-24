@@ -21,6 +21,7 @@ Usage:
     python cql.py
 """
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -255,12 +256,15 @@ def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
     #   ≈  logsumexp_i[ Q(s, a_i) - log π(a_i|s) ]  + const
     #
     # Subtracting log π(a|s) turns a plain Monte Carlo average of Q into
-    # the soft-maximum (logsumexp) that CQL requires.  Without this correction
-    # we would compute E_π[Q], not log Σ_a exp Q(s,a).
-    q_pi   = (Q(s_rep, a_pi) - lp_pi.detach()).reshape(B, n_samples)
+    # the soft-maximum (logsumexp) that CQL requires.
+    q_pi = (Q(s_rep, a_pi) - lp_pi.detach()).reshape(B, n_samples)
 
-    # logsumexp over all OOD action samples — "push down" term
-    logsumexp   = torch.logsumexp(torch.cat([q_rand, q_pi], dim=1), dim=1)  # (B,)
+    # Average the two proposal distributions separately, then combine (avoid mixing
+    # uniform and policy samples in one logsumexp, which distorts importance weights):
+    #   log E[exp(Q)] ≈ log( (1/2) E_rand[exp(Q)] + (1/2) E_pi[exp(Q)] )
+    term_rand = torch.logsumexp(q_rand, dim=1) - math.log(n_samples)
+    term_pi   = torch.logsumexp(q_pi, dim=1) - math.log(n_samples)
+    logsumexp = torch.logsumexp(torch.stack([term_rand, term_pi], dim=1), dim=1) - math.log(2)
     cql_penalty = (logsumexp - q_data).mean()
 
     loss = td_loss + alpha_cql * cql_penalty

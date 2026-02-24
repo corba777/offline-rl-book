@@ -38,7 +38,7 @@ permalink: "/offline-rl-book/ru/chapter6/"
 
 $$\pi^* = \arg\max_\pi \; \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \lambda \, Q(s, \pi(s)) - \bigl(\pi(s) - a\bigr)^2 \right]$$
 
-Первый член — использовать критика; второй — имитировать данные. Гиперпараметр $\lambda$ задаёт баланс. На практике Q нормализуют по батчу, чтобы оба члена были одного масштаба.
+Первый член — использовать критика; второй — имитировать данные. Гиперпараметр $\lambda$ задаёт баланс. В статье Fujimoto & Gu Q нормализуют по среднему абсолютному значению по батчу: $q / \bigl( |B|^{-1} \sum |Q(s,a)| \bigr)$, чтобы оба члена были одного масштаба.
 
 ### Формализация
 
@@ -84,17 +84,16 @@ class Actor(nn.Module):
 def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
     """
     TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.
-    Q is normalized by (q - q.mean()) / (q.std() + eps) over the batch
-    so the Q-term and BC-term have comparable scale.
+    Q нормализуется по среднему абсолютному значению по батчу (Fujimoto & Gu).
     """
     pi = actor(states)
     q = Q1(states, pi)
-    q_norm = (q - q.mean()) / (q.std() + 1e-6)
+    q_norm = q / (q.abs().mean() + 1e-6)
     bc_loss = ((pi - actions) ** 2).mean()
     return -q_norm.mean() * lambda_ + bc_loss
 ```
 
-Оба члена (Q и BC) вносят вклад в градиент; в `td3bc.py` используется нормализация Q по батчу и фиксированный $\lambda$.
+Оба члена (Q и BC) вносят вклад в градиент; в `td3bc.py` используется нормализация по среднему абсолютному значению Q (как в статье), а не Z-нормализация, чтобы $\lambda$ соответствовал оригинальной настройке.
 
 ### AWAC-style loss политики (advantage-weighted)
 

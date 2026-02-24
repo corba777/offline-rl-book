@@ -5,8 +5,8 @@
 # Ch4: iql.py
 # Ch5: mopo.py, morel.py
 # Ch6: physics_informed.py
-# Ch7: chapter7.py (uses cql, morel, physics_informed)
-# Ch8: chapter8.py (uses cql, morel, chapter7; adds shap, scipy)
+# Ch10: chapter10.py (uses cql, morel, physics_informed)
+# Ch11: chapter11.py (uses cql, morel, chapter10; adds shap, scipy)
 
 numpy>=1.21,<3
 torch>=1.12

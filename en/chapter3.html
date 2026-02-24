@@ -82,13 +82,13 @@
 <p><strong>Pros:</strong> Unbiased if $\pi_\beta$ has full support (every action with positive probability under $\pi$ is also taken with positive probability under $\pi_\beta$).<br />
 <strong>Cons:</strong> Variance explodes when $\pi$ and $\pi_\beta$ differ a lot — the weight product can be huge. In practice, <strong>per-step</strong> or <strong>per-decision</strong> IS and <strong>weight clipping</strong> are used to reduce variance at the cost of bias.</p>
 <h3>2. Direct Method (DM)</h3>
-<p>Learn a model of the reward and dynamics (or just the Q-function) from $\mathcal{D}$, then estimate $J(\pi)$ by <strong>simulating</strong> $\pi$ in the model or by averaging the learned $Q(s,a)$ under $\pi$:</p>
-<p><div class="math-display">$$\hat{J}_{DM} = \mathbb{E}_{s \sim \mathcal{D}}\left[ \hat{Q}(s, \pi(s)) \right] \quad \text{or} \quad \frac{1}{n}\sum_i \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$$</div></p>
-<p>where $\hat{Q}$ is learned from $\mathcal{D}$. <strong>Fitted Q Evaluation (FQE)</strong> is the standard way to obtain $\hat{Q}$ for a given policy $\pi$; we detail it below.</p>
+<p>Learn a model of the reward and dynamics (or just the Q-function) from $\mathcal{D}$, then estimate $J(\pi)$ by <strong>simulating</strong> $\pi$ in the model or by averaging the learned $Q(s,a)$ under $\pi$. Because $J(\pi)$ is the expected return <strong>from the initial state distribution</strong>, the correct DM estimator is the average over <strong>initial</strong> states $s_0^{(i)}$ (one per trajectory in $\mathcal{D}$, or from a held-out set):</p>
+<p><div class="math-display">$$\hat{J}_{DM} = \frac{1}{n}\sum_{i=1}^n \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$$</div></p>
+<p>Averaging $\hat{Q}(s, \pi(s))$ over <em>all</em> states $s$ in $\mathcal{D}$ would give the average value over the <em>visited</em> state distribution, not the expected episode return; it is sometimes used as a cheap proxy when initial states are not explicitly tracked, but it is not equal to $J(\pi)$ unless the state distribution in $\mathcal{D}$ matches the initial distribution. <strong>Fitted Q Evaluation (FQE)</strong> is the standard way to obtain $\hat{Q}$ for a given policy $\pi$; we detail it below.</p>
 <p><strong>Pros:</strong> Low variance; uses the whole dataset.<br />
 <strong>Cons:</strong> Biased when the model or $\hat{Q}$ is wrong — and in offline RL it often is (extrapolation error). DM/FQE can be overly optimistic if $\hat{Q}$ overestimates for $\pi$'s actions.</p>
 <h4>Fitted Q Evaluation (FQE) in detail</h4>
-<p><strong>FQE</strong> (Le et al., 2019; later formalized for OPE) fits a Q-function that approximates the <em>value of the target policy $\pi$</em> using only off-policy data from $\mathcal{D}$. Unlike Fitted Q Iteration (FQI), which alternates between policy improvement and evaluation, FQE <strong>evaluates a fixed policy</strong>: the Bellman target uses $\pi$ at the next state, not $\max_a$ or the behavior policy.</p>
+<p><strong>FQE</strong> (Le et al., 2019, <em>Batch Policy Learning under Constraints</em>; formalized for OPE there) fits a Q-function that approximates the <em>value of the target policy $\pi$</em> using only off-policy data from $\mathcal{D}$. Unlike Fitted Q Iteration (FQI), which alternates between policy improvement and evaluation, FQE <strong>evaluates a fixed policy</strong>: the Bellman target uses $\pi$ at the next state, not $\max_a$ or the behavior policy.</p>
 <p><strong>Bellman target for $\pi$:</strong> The true $Q^\pi$ satisfies $Q^\pi(s,a) = r + \gamma \mathbb{E}_{s'}\bigl[ Q^\pi(s', \pi(s')) \bigr]$. So we regress $\hat{Q}$ to the target $y = r + \gamma \hat{Q}(s', \pi(s'))$ on transitions $(s, a, r, s') \in \mathcal{D}$. In practice $\hat{Q}$ on the right-hand side is the current iterate (or a target network), and we minimize TD error over the dataset:</p>
 <p><div class="math-display">$$\mathcal{L}_{FQE} = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \hat{Q}_{tgt}(s', \pi(s')) - \hat{Q}(s, a) \right)^2 \right]$$</div></p>
 <p>We can do a single regression (one backward pass over $\mathcal{D}$ with a fixed target $\hat{Q}_{tgt}$) or iterate: update $\hat{Q}_{tgt} \leftarrow \hat{Q}$ every $K$ steps. For evaluation we only need $\hat{Q}(s, \pi(s))$ at states (and optionally at dataset $(s,a)$ for DR), so we often use the <strong>same</strong> $\hat{Q}$ for both the bootstrap and the regression (one-step TD) or a lagged target to stabilize training.</p>
@@ -102,7 +102,7 @@
 <span class="n">loss</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">td_target</span><span class="p">)</span>
 <span class="c1"># ... backward, optimizer step, then soft update Q_tgt ← Q</span>
 
-<span class="c1"># FQE estimate: (1/n) Σ Q(s, π(s)) over states (e.g. initial or dataset)</span>
+<span class="c1"># FQE estimate: (1/n) Σ Q(s, π(s)) over *initial* states for J(π); or over dataset states as proxy</span>
 <span class="k">def</span> <span class="nf">estimate_J_FQE</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">policy_fn</span><span class="p">,</span> <span class="n">states</span><span class="p">):</span>
     <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
         <span class="n">a</span> <span class="o">=</span> <span class="n">policy_fn</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
@@ -117,7 +117,7 @@
 <h3>3. Doubly Robust (DR)</h3>
 <p>Combines IS and DM so that the estimator is <strong>unbiased</strong> if either (a) the importance weights are correct, or (b) the value model $\hat{Q}$ is correct:</p>
 <p><div class="math-display">$$\hat{J}_{DR} = \frac{1}{n}\sum_{i=1}^n \left[ \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)})) + \sum_{t\ge 0} \gamma^t \rho_{0:t}^{(i)} \left( r_t^{(i)} + \gamma \hat{Q}(s_{t+1}^{(i)}, \pi(s_{t+1}^{(i)})) - \hat{Q}(s_t^{(i)}, a_t^{(i)}) \right) \right]$$</div></p>
-<p>where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^*$, the trailing terms have expectation zero; if $\pi_\beta = \pi$, the weights are 1 and the estimator reduces to DM. In practice DR often has lower variance than IS and lower bias than DM alone.</p>
+<p>where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^<em>$, the trailing terms have expectation zero; if $\pi_\beta = \pi$, the weights are 1 and the estimator reduces to DM. In practice DR often has lower variance than IS and lower bias than DM alone. </em><em>Caveat:</em><em> on long horizons the cumulative weight $\rho_{0:t}$ can still explode or vanish as $t$ grows, so classical DR still suffers from high variance on long trajectories; variants such as </em><em>Marginalized IS</em>* (state-marginal importance weights) are used to mitigate this.</p>
 <hr />
 <h2>Practical Recommendations</h2>
 <table>
@@ -191,7 +191,8 @@
 <hr />
 <h2>References</h2>
 <ul>
-<li>Le, H. M., Jiang, N., Agarwal, A., Dudík, M., Yue, Y., &amp; Daumé III, H. (2019). <em>Horizon: Reinforcement Learning for Production.</em> RL4RealLife Workshop @ ICML. <em>(FQE for OPE)</em></li>
+<li>Le, H. M., Voloshin, C., &amp; Yue, Y. (2019). <em>Batch Policy Learning under Constraints.</em> ICML (PMLR 97). <a href="https://arxiv.org/abs/1903.08738">arXiv:1903.08738</a>. <em>(FQE formalized for OPE)</em></li>
+<li>Gauci, J., et al. (2018). <em>Horizon: Facebook's Open Source Applied Reinforcement Learning Platform.</em> <a href="https://arxiv.org/abs/1811.00260">arXiv:1811.00260</a>. <em>(Production RL platform; distinct from FQE.)</em></li>
 <li>Precup, D., Sutton, R. S., &amp; Singh, S. (2000). <em>Eligibility Traces for Off-Policy Policy Evaluation.</em> ICML.</li>
 <li>Thomas, P., Theocharous, G., &amp; Ghavamzadeh, M. (2015). <em>High-Confidence Off-Policy Evaluation.</em> AAAI.</li>
 <li>Jiang, N., &amp; Li, L. (2016). <em>Doubly Robust Off-policy Value Evaluation for Reinforcement Learning.</em> ICML.</li>

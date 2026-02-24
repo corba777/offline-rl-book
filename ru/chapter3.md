@@ -36,10 +36,10 @@ OPE — парная по смыслу к офлайн RL задача: офла
 Return траектории под $\pi$ переписывается как матожидание под $\pi_\beta$ с весами $\prod_t \frac{\pi(a_t|s_t)}{\pi_\beta(a_t|s_t)}$. Оценка: среднее взвешенных return’ов по траекториям из $\mathcal{D}$. **Плюсы:** несмещённость при полной поддержке. **Минусы:** дисперсия резко растёт, когда $\pi$ и $\pi_\beta$ сильно различаются; на практике используют per-decision IS и ограничение весов.
 
 **2. Direct Method (DM)**  
-Обучают модель награды/динамики или Q-функцию по $\mathcal{D}$, затем оценивают $J(\pi)$ как $\mathbb{E}[\hat{Q}(s, \pi(s))]$ по данным. Стандартный способ получить $\hat{Q}$ для заданной политики $\pi$ — **Fitted Q Evaluation (FQE)**; подробнее ниже. **Плюсы:** малая дисперсия. **Минусы:** смещение при ошибке модели (в офлайн RL модель часто смещена).
+Обучают модель награды/динамики или Q-функцию по $\mathcal{D}$, затем оценивают $J(\pi)$. Поскольку $J(\pi)$ — ожидаемый return **от начального распределения состояний**, корректная оценка DM — среднее по **начальным** состояниям $s_0^{(i)}$ (по одному на траекторию в $\mathcal{D}$ или по отдельной выборке): $\hat{J}_{DM} = \frac{1}{n}\sum_{i=1}^n \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$. Усреднение $\hat{Q}(s, \pi(s))$ по *всем* $s$ из $\mathcal{D}$ дало бы среднюю ценность по *посещённому* распределению состояний, а не ожидаемый return эпизода; иногда это используют как дешёвый суррогат, когда начальные состояния не выделены, но к $J(\pi)$ это не сводится. Стандартный способ получить $\hat{Q}$ — **Fitted Q Evaluation (FQE)**; подробнее ниже. **Плюсы:** малая дисперсия. **Минусы:** смещение при ошибке модели.
 
 **Fitted Q Evaluation (FQE) подробнее.**  
-FQE подгоняет Q-функцию, приближающую *ценность целевой политики $\pi$*, только по офлайн данным из $\mathcal{D}$. В отличие от Fitted Q Iteration (FQI), FQE **оценивает фиксированную политику**: в Bellman-цели на следующем шаге используется $\pi(s')$, а не $\max_a$ или поведенческая политика. Истинная $Q^\pi$ удовлетворяет $Q^\pi(s,a) = r + \gamma \mathbb{E}_{s'}[Q^\pi(s', \pi(s'))]$, поэтому регрессия идёт на цель $y = r + \gamma \hat{Q}(s', \pi(s'))$ по переходам $(s,a,r,s') \in \mathcal{D}$. Минимизируют TD-ошибку: $\mathcal{L}_{FQE} = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}[(r + \gamma \hat{Q}_{tgt}(s', \pi(s')) - \hat{Q}(s,a))^2]$. Можно делать одну регрессию или итерации с обновлением целевой сети. Минимальный шаг обучения и оценка $J$ в коде:
+FQE (Le et al., 2019, *Batch Policy Learning under Constraints*; там же формализована для OPE) подгоняет Q-функцию, приближающую *ценность целевой политики $\pi$*, только по офлайн данным из $\mathcal{D}$. В отличие от Fitted Q Iteration (FQI), FQE **оценивает фиксированную политику**: в Bellman-цели на следующем шаге используется $\pi(s')$, а не $\max_a$ или поведенческая политика. Истинная $Q^\pi$ удовлетворяет $Q^\pi(s,a) = r + \gamma \mathbb{E}_{s'}[Q^\pi(s', \pi(s'))]$, поэтому регрессия идёт на цель $y = r + \gamma \hat{Q}(s', \pi(s'))$ по переходам $(s,a,r,s') \in \mathcal{D}$. Минимизируют TD-ошибку: $\mathcal{L}_{FQE} = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}[(r + \gamma \hat{Q}_{tgt}(s', \pi(s')) - \hat{Q}(s,a))^2]$. Можно делать одну регрессию или итерации с обновлением целевой сети. Минимальный шаг обучения и оценка $J$ в коде:
 
 ```python
 # FQE update: TD-цель использует π в следующем состоянии (не поведенческое действие)
@@ -51,7 +51,7 @@ q = Q(states, actions)
 loss = F.mse_loss(q, td_target)
 # ... backward, step оптимизатора, затем soft update Q_tgt ← Q
 
-# FQE-оценка: (1/n) Σ Q(s, π(s)) по состояниям (напр. начальным или из датасета)
+# FQE-оценка: (1/n) Σ Q(s, π(s)) по *начальным* состояниям для J(π); по всем состояниям датасета — суррогат
 def estimate_J_FQE(Q, policy_fn, states):
     with torch.no_grad():
         a = policy_fn(states)
@@ -63,7 +63,7 @@ def estimate_J_FQE(Q, policy_fn, states):
 > 📄 **Код:** [`fqe.py`](https://github.com/corba777/offline-rl-book/blob/main/code/fqe.py) — FQE на том же игрушечном окружении: обучение BC, подгонка $Q^\pi$, оценка $\hat{J}_{FQE}$ и сравнение с rollout return.
 
 **3. Doubly Robust (DR)**  
-Комбинирует IS и DM так, что оценка несмещена, если верны либо веса, либо модель. На практике часто даёт меньшую дисперсию, чем IS, и меньшее смещение, чем один DM.
+Комбинирует IS и DM так, что оценка несмещена, если верны либо веса, либо модель. На практике часто даёт меньшую дисперсию, чем IS, и меньшее смещение, чем один DM. **Ограничение:** на длинных горизонтах кумулятивный вес $\rho_{0:t}$ по-прежнему может экспоненциально расти или стремиться к нулю при росте $t$, поэтому классический DR страдает от большой дисперсии на длинных траекториях; для смягчения используют варианты вроде **Marginalized IS** (веса по маргинальному распределению состояний).
 
 ---
 
@@ -84,7 +84,8 @@ def estimate_J_FQE(Q, policy_fn, states):
 
 ## Литература
 
-- Le, H. M., Jiang, N., Agarwal, A., Dudík, M., Yue, Y., & Daumé III, H. (2019). *Horizon: Reinforcement Learning for Production.* RL4RealLife Workshop @ ICML. *(FQE для OPE)*
+- Le, H. M., Voloshin, C., & Yue, Y. (2019). *Batch Policy Learning under Constraints.* ICML (PMLR 97). [arXiv:1903.08738](https://arxiv.org/abs/1903.08738). *(формализация FQE для OPE)*
+- Gauci, J., et al. (2018). *Horizon: Facebook's Open Source Applied Reinforcement Learning Platform.* [arXiv:1811.00260](https://arxiv.org/abs/1811.00260). *(платформа production RL; не FQE.)*
 - Precup, D., Sutton, R. S., & Singh, S. (2000). *Eligibility Traces for Off-Policy Policy Evaluation.* ICML.
 - Jiang, N., & Li, L. (2016). *Doubly Robust Off-policy Value Evaluation for Reinforcement Learning.* ICML.
 - Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).

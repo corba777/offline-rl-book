@@ -71,7 +71,7 @@
 <p><strong>The Q-function's input is a concatenation of state and action.</strong> Unlike a classifier whose input is a single feature vector, the Q-function takes $(s, a)$ as input. SHAP values computed over this concatenated space tell you whether the high Q-value comes from the state (the situation was favorable) or the action (the specific action was appropriate for this situation).</p>
 <p><strong>The behavior policy's distribution is uneven.</strong> SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset — dense near the operating setpoint and sparse near disturbances. SHAP values answer: <em>"how does this instance differ from the typical operating point, and how does that difference affect the output?"</em></p>
 <blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8.py"><code>chapter8.py</code></a></p>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter11.py"><code>chapter11.py</code></a>. Figures: <code>chapter11_toy_figures.py</code>; causal toy: <code>chapter11_causal_toy.py</code>.</p>
 </blockquote>
 <hr />
 <h2>SHAP Background</h2>
@@ -100,7 +100,7 @@
 <p><strong>Toy dynamics: which input drives the predicted next state?</strong> Finally, a toy dynamics model with two next-state dimensions: $\hat{s}_1' = 0.7 s_1 + 0.2 a$ and $\hat{s}_2' = 0.6 s_2 + 0.15 a$. So the first output is driven by current $s_1$ and action $a$; the second by $s_2$ and $a$. We explain each output separately (as in Level 3). The two-panel bar chart shows mean $|\phi_i|$ for the three inputs $(s_1, s_2, a)$ when predicting $\hat{s}_1'$ and $\hat{s}_2'$ — SHAP recovers that $s_1$ and $a$ matter for next_s1, and $s_2$ and $a$ for next_s2. The waterfall for one $(s, a)$ instance shows how each input's SHAP adds up from the baseline prediction to $\hat{s}_1'$.</p>
 <p><img alt="Toy dynamics: which inputs drive next_s1 and next_s2?" src="../figures/ch8/toy_dynamics_bar.png" /></p>
 <p><img alt="Toy dynamics: waterfall for one (s,a) → next_s1" src="../figures/ch8/toy_dynamics_waterfall.png" /></p>
-<p>All of these figures are produced by running <code>python code/chapter8_toy_figures.py</code> (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.</p>
+<p>All of these figures are produced by running <code>python code/chapter11_toy_figures.py</code> (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.</p>
 <hr />
 <h2>Three Levels of Explanation</h2>
 <h3>Level 1: Q-function SHAP — Why Does the Agent Value This Action?</h3>
@@ -175,6 +175,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 </code></pre></div>
 
 <p>The background defines $\phi_0$ — the average model output. Using the offline dataset means SHAP values answer: <em>"how does this transition differ from a typical observed transition?"</em></p>
+<p><strong>Performance:</strong> KernelExplainer calls each wrapper thousands of times. The implementation in <code>chapter11.py</code> pre-tensors the background on the device at explainer init to reduce transfer overhead. For very large runs, consider reducing <code>n_background</code> or <code>n_samples</code>. <strong>DynamicsSingleOutputWrapper</strong> aggregates the ensemble (mean prediction) before SHAP; SHAP is computed on the mean next-state, not per-model.</p>
 <div class="codehilite"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">explainer</span><span class="o">.</span><span class="n">explain_all</span><span class="p">(</span>
     <span class="n">n_explain</span>    <span class="o">=</span> <span class="mi">150</span><span class="p">,</span>   <span class="c1"># instances to explain</span>
     <span class="n">n_background</span> <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>    <span class="c1"># background dataset size</span>
@@ -270,7 +271,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 <li><strong>Surveys and taxonomy.</strong> Causal RL is often categorized into: causal representation learning, counterfactual policy optimization, <em>offline</em> causal RL, causal transfer, and causal explainability. The last connects directly to this chapter: explanations that reflect cause–effect structure are easier to trust and to debug.</li>
 </ul>
 <p><strong>Resources.</strong> The survey by Deng et al. (2023) gives a unified view of causal RL and includes a section on offline/batch settings. The FOCUS paper (Zhang et al.) is a concrete example of causal-structured world models for offline model-based RL. For the link between off-policy evaluation and causal inference (treatment effect estimation), see the batch RL / causal inference literature (e.g. the connection between importance sampling and inverse propensity scoring). References are listed below.</p>
-<p><strong>Toy code example.</strong> A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ — correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an <em>intervention</em> we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: <code>python code/chapter8_causal_toy.py</code>. Core idea:</p>
+<p><strong>Toy code example.</strong> A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ — correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an <em>intervention</em> we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: <code>python code/chapter11_causal_toy.py</code>. Core idea:</p>
 <div class="codehilite"><pre><span></span><code><span class="c1"># True dynamics (unknown to learner): next_s1 = 0.8*s1 + 0.2*a</span>
 <span class="c1"># Nuisance z = s1 + noise — correlated with s1, not a cause of next_s1</span>
 <span class="c1"># Correlation model: fit next_s1 from (s2, z, a)</span>
@@ -281,7 +282,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 </code></pre></div>
 
 <blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8_causal_toy.py"><code>chapter8_causal_toy.py</code></a></p>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter11_causal_toy.py"><code>chapter11_causal_toy.py</code></a></p>
 </blockquote>
 <hr />
 <h2>Summary</h2>

@@ -20,7 +20,7 @@ permalink: "/offline-rl-book/en/chapter10/"
 
 ## From Benchmarks to Industry
 
-The preceding six chapters built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on `ThermalProcessEnv` — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.
+The preceding nine chapters (Chapters 1–9) built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on `ThermalProcessEnv` — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.
 
 Real industrial processes differ from that environment in every dimension that matters.
 
@@ -28,13 +28,13 @@ Real industrial processes differ from that environment in every dimension that m
 
 **Non-uniform data coverage.** Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.
 
-**Lag and delay.** Material fed into a coating line takes 30–90 minutes to appear at the quality measurement point. Within the dynamic model, this manifests as a transport delay: the agent's action at time $t$ affects the output at time $t + k$. A pure first-order model ignoring the delay will have systematic prediction errors whenever the feed rate changes.
+**Lag and delay.** In the model, the filler equation uses $u_{f,t-2}$: the flow action at time $t$ affects the filler fraction at time $t+2$ (a two-step transport lag for $\Delta t = 1$). A pure first-order model that ignores this delay will have systematic prediction errors whenever the feed rate changes.
 
 **Hard physical constraints.** Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.
 
-This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–8. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.
+This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–9. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.
 
-> 📄 Full code: [`chapter7.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter7.py)
+> 📄 Full code: [`chapter10.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter10.py)
 
 ---
 
@@ -69,9 +69,11 @@ $$f_{t+1} = \left(1 - \frac{\Delta t}{\tau_f}\right)f_t + \frac{\Delta t}{\tau_f
 
 $$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \epsilon_v$$
 
-$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_f}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_T}_{\text{outflow}}\right) + \epsilon_L$$
+$$d_{t+1} = 0.55 + 0.25\,f_{t+1} - 0.10\,T_{t+1} + \epsilon_d \quad \text{(density, algebraic from $T$ and $f$)}$$
 
-Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$.
+$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_{f}}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_{T,t}}_{\text{outflow}}\right) + \epsilon_L$$
+
+Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$. In code, control inputs are $a[0]$ (heat, mapped to $u_{T,t}$) and $a[1]$ (flow, mapped to $u_f$).
 
 Three things are deliberately hidden from the agent's physics model:
 1. The cross-coupling term $0.03 f_t u_T$ in the temperature equation
@@ -84,7 +86,7 @@ These represent the gap between first-principles engineering knowledge and reali
 
 $$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$
 
-with setpoints $T^* = 0.60$, $f^* = 0.50$, $L^* = 0.50$.
+with setpoints $T^*=0.60$, $f^*=0.50$, $L^*=0.50$.
 
 **Hard constraints** (violation = irreversible equipment damage or shutdown):
 
@@ -186,15 +188,15 @@ class IndustrialEvaluator:
         for ep in range(self.n_episodes):
             obs = self.env.reset(seed=8000 + ep)
             while not done:
-                prev_T, prev_f = obs[0], obs[1]
+                prev_T, prev_f = obs[env.STATE_T_IDX], obs[env.STATE_F_IDX]
                 s_t  = torch.FloatTensor(
                     (obs - self.s_mean) / self.s_std).unsqueeze(0)
                 act  = agent.policy.act(s_t, deterministic=True)
                 obs, r, done, info = self.env.step(act)
 
                 # Directional accuracy
-                da_T = 1.0 if (obs[0]-prev_T)*(env.T_TARGET-prev_T) >= 0 else 0.0
-                da_f = 1.0 if (obs[1]-prev_f)*(env.F_TARGET-prev_f) >= 0 else 0.0
+                da_T = 1.0 if (obs[env.STATE_T_IDX]-prev_T)*(env.T_TARGET-prev_T) >= 0 else 0.0
+                da_f = 1.0 if (obs[env.STATE_F_IDX]-prev_f)*(env.F_TARGET-prev_f) >= 0 else 0.0
 
                 # Constraint tracking
                 viol = info['constraint_violation']   # sum of boundary overruns
@@ -222,7 +224,7 @@ def coating_physics_fn(state: torch.Tensor,
 
     # Mass balance — good approximation of true level dynamics
     inflow  = flow_in * 0.4
-    outflow = L * 0.35 + 0.05 * heat_in
+    outflow = L * 0.35 - 0.05 * heat_in   # more heat → less outflow (per true dynamics)
     L_new   = (L + DT * (inflow - outflow)).clamp(0.0, 1.0)
 
     return torch.stack([T_new, f_new, v_new, d_new, L_new], dim=1)
@@ -275,7 +277,7 @@ CQL's remaining weakness: it has no mechanism to avoid physically inconsistent a
 
 ## Algorithm 3: CQL + Physics Reward Shaping
 
-`PhysicsInformedCQL` wraps `CQLAgent` with `PhysicsRewardWrapper` (Chapter 9). The modification to the training loop is exactly one line: replace the batch reward `r` with `r - penalty` before calling `CQLAgent.update`.
+**PhysicsInformedCQL** is the agent class that wraps `CQLAgent`; the constraint penalty is applied via **PhysicsRewardWrapper** (Chapter 9), the functional module that computes $g(s,a,s')$ and the penalty. The modification to the training loop is exactly one line: replace the batch reward `r` with `r - penalty` before calling `CQLAgent.update`.
 
 ```python
 constraints, lambdas = make_coating_constraints(dataset, device)
@@ -361,7 +363,7 @@ Typical output (exact numbers depend on random seed):
 
 ```
 ══════════════════════════════════════════════════════════════
-  CHAPTER 7 — INDUSTRIAL BENCHMARK RESULTS
+  CHAPTER 10 — INDUSTRIAL BENCHMARK RESULTS
 ══════════════════════════════════════════════════════════════
 Metric                BC      CQL   CQL+Phys  HybridMOReL
 ──────────────────────────────────────────────────────────────

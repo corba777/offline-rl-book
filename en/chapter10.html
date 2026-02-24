@@ -64,15 +64,15 @@
 </blockquote>
 <hr />
 <h2>From Benchmarks to Industry</h2>
-<p>The preceding six chapters built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on <code>ThermalProcessEnv</code> — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.</p>
+<p>The preceding nine chapters (Chapters 1–9) built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on <code>ThermalProcessEnv</code> — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.</p>
 <p>Real industrial processes differ from that environment in every dimension that matters.</p>
 <p><strong>More variables, more coupling.</strong> A realistic coating process has dozens of sensor readings. Even a simplified model has temperature, filler fraction, viscosity, bulk density, and a surge tank level — five variables with physical dependencies between all of them. The level is an integrating state that drifts without active control; viscosity is a nonlinear function of temperature and filler that the agent cannot observe independently of its inputs.</p>
 <p><strong>Non-uniform data coverage.</strong> Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.</p>
-<p><strong>Lag and delay.</strong> Material fed into a coating line takes 30–90 minutes to appear at the quality measurement point. Within the dynamic model, this manifests as a transport delay: the agent's action at time $t$ affects the output at time $t + k$. A pure first-order model ignoring the delay will have systematic prediction errors whenever the feed rate changes.</p>
+<p><strong>Lag and delay.</strong> In the model, the filler equation uses $u_{f,t-2}$: the flow action at time $t$ affects the filler fraction at time $t+2$ (a two-step transport lag for $\Delta t = 1$). A pure first-order model that ignores this delay will have systematic prediction errors whenever the feed rate changes.</p>
 <p><strong>Hard physical constraints.</strong> Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.</p>
-<p>This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–8. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.</p>
+<p>This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–9. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.</p>
 <blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter7.py"><code>chapter7.py</code></a></p>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter10.py"><code>chapter10.py</code></a></p>
 </blockquote>
 <hr />
 <h2>The Coating Process</h2>
@@ -141,8 +141,9 @@
 <p><div class="math-display">$$T_{t+1} = \left(1 - \frac{\Delta t}{\tau_T}\right)T_t + \frac{\Delta t}{\tau_T} K_T u_T + \underbrace{0.03 \cdot f_t \cdot u_T}_{\text{cross-coupling}} + \epsilon_T$$</div></p>
 <p><div class="math-display">$$f_{t+1} = \left(1 - \frac{\Delta t}{\tau_f}\right)f_t + \frac{\Delta t}{\tau_f} K_f \cdot \underbrace{u_{f,t-2}}_{\text{delay}} + \epsilon_f$$</div></p>
 <p><div class="math-display">$$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \epsilon_v$$</div></p>
-<p><div class="math-display">$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_f}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_T}_{\text{outflow}}\right) + \epsilon_L$$</div></p>
-<p>Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$.</p>
+<p><div class="math-display">$$d_{t+1} = 0.55 + 0.25\,f_{t+1} - 0.10\,T_{t+1} + \epsilon_d \quad \text{(density, algebraic from $T$ and $f$)}$$</div></p>
+<p><div class="math-display">$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_{f}}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_{T,t}}_{\text{outflow}}\right) + \epsilon_L$$</div></p>
+<p>Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$. In code, control inputs are $a[0]$ (heat, mapped to $u_{T,t}$) and $a[1]$ (flow, mapped to $u_f$).</p>
 <p>Three things are deliberately hidden from the agent's physics model:
 1. The cross-coupling term $0.03 f_t u_T$ in the temperature equation
 2. The two-step transport delay in the filler equation
@@ -150,7 +151,7 @@
 <p>These represent the gap between first-principles engineering knowledge and reality.</p>
 <p><strong>Reward</strong> function targets temperature, filler fraction, and level stability:</p>
 <p><div class="math-display">$$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$</div></p>
-<p>with setpoints $T^<em> = 0.60$, $f^</em> = 0.50$, $L^* = 0.50$.</p>
+<p>with setpoints $T^<em>=0.60$, $f^</em>=0.50$, $L^*=0.50$.</p>
 <p><strong>Hard constraints</strong> (violation = irreversible equipment damage or shutdown):</p>
 <table>
 <thead>
@@ -253,15 +254,15 @@
         <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_episodes</span><span class="p">):</span>
             <span class="n">obs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">reset</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="mi">8000</span> <span class="o">+</span> <span class="n">ep</span><span class="p">)</span>
             <span class="k">while</span> <span class="ow">not</span> <span class="n">done</span><span class="p">:</span>
-                <span class="n">prev_T</span><span class="p">,</span> <span class="n">prev_f</span> <span class="o">=</span> <span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">prev_T</span><span class="p">,</span> <span class="n">prev_f</span> <span class="o">=</span> <span class="n">obs</span><span class="p">[</span><span class="n">env</span><span class="o">.</span><span class="n">STATE_T_IDX</span><span class="p">],</span> <span class="n">obs</span><span class="p">[</span><span class="n">env</span><span class="o">.</span><span class="n">STATE_F_IDX</span><span class="p">]</span>
                 <span class="n">s_t</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span>
                     <span class="p">(</span><span class="n">obs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_mean</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_std</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
                 <span class="n">act</span>  <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">act</span><span class="p">(</span><span class="n">s_t</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
                 <span class="n">obs</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">done</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">act</span><span class="p">)</span>
 
                 <span class="c1"># Directional accuracy</span>
-                <span class="n">da_T</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">T_TARGET</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
-                <span class="n">da_f</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">F_TARGET</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+                <span class="n">da_T</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="n">env</span><span class="o">.</span><span class="n">STATE_T_IDX</span><span class="p">]</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">T_TARGET</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+                <span class="n">da_f</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="n">env</span><span class="o">.</span><span class="n">STATE_F_IDX</span><span class="p">]</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">F_TARGET</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
 
                 <span class="c1"># Constraint tracking</span>
                 <span class="n">viol</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;constraint_violation&#39;</span><span class="p">]</span>   <span class="c1"># sum of boundary overruns</span>
@@ -285,7 +286,7 @@
 
     <span class="c1"># Mass balance — good approximation of true level dynamics</span>
     <span class="n">inflow</span>  <span class="o">=</span> <span class="n">flow_in</span> <span class="o">*</span> <span class="mf">0.4</span>
-    <span class="n">outflow</span> <span class="o">=</span> <span class="n">L</span> <span class="o">*</span> <span class="mf">0.35</span> <span class="o">+</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">heat_in</span>
+    <span class="n">outflow</span> <span class="o">=</span> <span class="n">L</span> <span class="o">*</span> <span class="mf">0.35</span> <span class="o">-</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">heat_in</span>   <span class="c1"># more heat → less outflow (per true dynamics)</span>
     <span class="n">L_new</span>   <span class="o">=</span> <span class="p">(</span><span class="n">L</span> <span class="o">+</span> <span class="n">DT</span> <span class="o">*</span> <span class="p">(</span><span class="n">inflow</span> <span class="o">-</span> <span class="n">outflow</span><span class="p">))</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">T_new</span><span class="p">,</span> <span class="n">f_new</span><span class="p">,</span> <span class="n">v_new</span><span class="p">,</span> <span class="n">d_new</span><span class="p">,</span> <span class="n">L_new</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
@@ -323,7 +324,7 @@
 <p>CQL's remaining weakness: it has no mechanism to avoid physically inconsistent actions. A setpoint command that CQL's Q-function rates highly may still violate a mass balance or push the level toward a constraint boundary.</p>
 <hr />
 <h2>Algorithm 3: CQL + Physics Reward Shaping</h2>
-<p><code>PhysicsInformedCQL</code> wraps <code>CQLAgent</code> with <code>PhysicsRewardWrapper</code> (Chapter 9). The modification to the training loop is exactly one line: replace the batch reward <code>r</code> with <code>r - penalty</code> before calling <code>CQLAgent.update</code>.</p>
+<p><strong>PhysicsInformedCQL</strong> is the agent class that wraps <code>CQLAgent</code>; the constraint penalty is applied via <strong>PhysicsRewardWrapper</strong> (Chapter 9), the functional module that computes $g(s,a,s')$ and the penalty. The modification to the training loop is exactly one line: replace the batch reward <code>r</code> with <code>r - penalty</code> before calling <code>CQLAgent.update</code>.</p>
 <div class="codehilite"><pre><span></span><code><span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span> <span class="o">=</span> <span class="n">make_coating_constraints</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
 
 <span class="k">class</span> <span class="nc">PhysicsInformedCQL</span><span class="p">:</span>
@@ -389,7 +390,7 @@
 
 <p>Typical output (exact numbers depend on random seed):</p>
 <div class="codehilite"><pre><span></span><code>══════════════════════════════════════════════════════════════
-  CHAPTER 7 — INDUSTRIAL BENCHMARK RESULTS
+  CHAPTER 10 — INDUSTRIAL BENCHMARK RESULTS
 ══════════════════════════════════════════════════════════════
 Metric                BC      CQL   CQL+Phys  HybridMOReL
 ──────────────────────────────────────────────────────────────

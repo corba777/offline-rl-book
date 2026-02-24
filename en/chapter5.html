@@ -85,7 +85,7 @@
 <h3>Expectile Regression</h3>
 <p>The $\tau$-expectile of a distribution is the value $m$ that minimizes the asymmetric squared loss:</p>
 <p><div class="math-display">$$m^* = \arg\min_m \, \mathbb{E}\left[ L_\tau(X - m) \right]$$</div></p>
-<p>where the <strong>expectile loss</strong> (also called asymmetric L2) is:</p>
+<p>where the <strong>expectile loss</strong> (asymmetric L2 loss) is:</p>
 <p><div class="math-display">$$L_\tau(u) = |\tau - \mathbf{1}[u < 0]| \cdot u^2 = \begin{cases} \tau \cdot u^2 & \text{if } u \geq 0 \\ (1-\tau) \cdot u^2 & \text{if } u < 0 \end{cases}$$</div></p>
 <p>At $\tau = 0.5$: standard MSE, estimate converges to the mean.
 At $\tau \to 1.0$: estimate converges to the maximum.

@@ -1,5 +1,5 @@
 """
-chapter8_causal_toy.py
+chapter11_causal_toy.py
 ======================
 Minimal toy example for "Causal AI in Offline RL" (Chapter 8).
 
@@ -23,7 +23,7 @@ Two models:
   - "Causal" model: predicts next_s1 from (s1, a) only.
 
 Usage (from repo root):
-  python code/chapter8_causal_toy.py
+  python code/chapter11_causal_toy.py
 
 Dependencies: numpy only.
 """

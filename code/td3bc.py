@@ -169,14 +169,13 @@ class Actor(nn.Module):
 def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
     """
     TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.
-    Q is normalized by (q - q.mean()) / (q.std() + eps) over the batch
-    so the Q-term and BC-term have comparable scale.
+    Per Fujimoto & Gu (2021), Q is normalized by mean absolute value over the batch:
+    q_norm = q / (|B|^{-1} sum |Q(s,a)|), so the Q-term and BC-term have comparable scale.
     """
     pi = actor(states)
     q = Q1(states, pi)
-    q_norm = (q - q.mean()) / (q.std() + 1e-6)
+    q_norm = q / (q.abs().mean() + 1e-6)
     bc_loss = ((pi - actions) ** 2).mean()
-    # Maximize Q => minimize -Q; paper often uses alpha / mean(|Q|) for scaling
     return -q_norm.mean() * lambda_ + bc_loss
 
 

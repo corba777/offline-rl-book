@@ -18,7 +18,7 @@ permalink: "/offline-rl-book/en/chapter12/"
 
 ## What This Book Built
 
-Seven chapters ago we started with a question: can a sequential decision-making agent learn entirely from a fixed log of past behavior, without ever interacting with the environment? The answer is yes — with caveats that turn out to be at least as interesting as the algorithms themselves.
+In Chapter 1 we started with a question: can a sequential decision-making agent learn entirely from a fixed log of past behavior, without ever interacting with the environment? The answer is yes — with caveats that turn out to be at least as interesting as the algorithms themselves.
 
 The caveats are not engineering details. They are structural features of the offline learning problem: the extrapolation gap between what the data covers and what the policy needs to evaluate, the distribution shift between the behavior policy and any better policy, and the fundamental impossibility of testing a policy in the very regions where it is most likely to fail. Every algorithm in this book is a different answer to the same underlying challenge.
 

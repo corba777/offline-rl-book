@@ -1,12 +1,12 @@
 """
-chapter8_toy_figures.py
+chapter11_toy_figures.py
 =======================
 Standalone toy examples for Chapter 8 explainability.
 Generates figures that can be embedded in the book to illustrate SHAP
 without running the full coating-process pipeline.
 
 Usage (from repo root):
-  python code/chapter8_toy_figures.py
+  python code/chapter11_toy_figures.py
 
 Outputs:
   Toy Q-function:
@@ -16,7 +16,7 @@ Outputs:
   Toy dynamics:
     toy_dynamics_bar.png, toy_dynamics_waterfall.png
 
-Dependencies: numpy, matplotlib, shap (same as chapter8.py).
+Dependencies: numpy, matplotlib, shap (same as chapter11.py).
 """
 
 import os
@@ -26,7 +26,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import shap
 
-# Output directory (relative to repo root when run as python code/chapter8_toy_figures.py)
+# Output directory (relative to repo root when run as python code/chapter11_toy_figures.py)
 FIG_DIR = os.path.join(os.path.dirname(__file__), '..', 'figures', 'ch8')
 os.makedirs(FIG_DIR, exist_ok=True)
 

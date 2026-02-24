@@ -200,7 +200,10 @@ def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
     a_pi, lp_pi = policy.sample(s_rep)
     q_rand = Q(s_rep, a_rand).reshape(B, n_samples)
     q_pi   = (Q(s_rep, a_pi) - lp_pi.detach()).reshape(B, n_samples)
-    logsumexp   = torch.logsumexp(torch.cat([q_rand, q_pi], dim=1), dim=1)
+    # Average each proposal separately, then combine (do not mix in one logsumexp)
+    term_rand = torch.logsumexp(q_rand, dim=1) - math.log(n_samples)
+    term_pi   = torch.logsumexp(q_pi, dim=1) - math.log(n_samples)
+    logsumexp = torch.logsumexp(torch.stack([term_rand, term_pi], dim=1), dim=1) - math.log(2)
     cql_penalty = (logsumexp - q_data).mean()
 
     loss = td_loss + alpha_cql * cql_penalty
@@ -427,7 +430,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 
 **Conservative by design.** CQL will not outperform the behavior policy by a large margin in regions with sparse data. It is designed to be safe, not to extrapolate aggressively. For tasks requiring significant extrapolation beyond the dataset, model-based methods (Chapter 8) are more appropriate.
 
-**Continuous action spaces need sampling.** The logsumexp over actions requires sampling — typically 10 uniform + 10 policy samples per state. This adds computational overhead compared to BC or TD3+BC.
+**Continuous action spaces need sampling.** The logsumexp over actions requires sampling — typically 10 uniform + 10 policy samples per state. The code averages the two proposal distributions *separately* (log E_rand[exp Q] and log E_π[exp Q] with importance weights for π), then combines them as log((1/2)(E_rand + E_π)), rather than one logsumexp over all 20 samples, so importance weights are not distorted. This adds computational overhead compared to BC or TD3+BC.
 
 ---
 

@@ -43,8 +43,8 @@ A practical book on offline reinforcement learning.
     ├── mopo.py
     ├── morel.py
     ├── physics_informed.py
-    ├── chapter7.py          # Industrial case study (coating process)
-    └── chapter8.py          # SHAP explainability
+    ├── chapter10.py         # Industrial case study (coating process)
+    └── chapter11.py         # SHAP explainability
 ```
 
 ## Writing New Chapters

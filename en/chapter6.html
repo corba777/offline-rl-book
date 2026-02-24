@@ -125,17 +125,17 @@
 <span class="k">def</span> <span class="nf">td3bc_actor_loss</span><span class="p">(</span><span class="n">actor</span><span class="p">,</span> <span class="n">Q1</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">lambda_</span><span class="o">=</span><span class="mf">0.25</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.</span>
-<span class="sd">    Q is normalized by (q - q.mean()) / (q.std() + eps) over the batch</span>
-<span class="sd">    so the Q-term and BC-term have comparable scale.</span>
+<span class="sd">    Q is normalized by mean absolute value over the batch (Fujimoto &amp; Gu):</span>
+<span class="sd">    q_norm = q / (|B|^{-1} sum |Q(s,a)|), so the Q-term and BC-term scale similarly.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">pi</span> <span class="o">=</span> <span class="n">actor</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
     <span class="n">q</span> <span class="o">=</span> <span class="n">Q1</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">pi</span><span class="p">)</span>
-    <span class="n">q_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">q</span> <span class="o">-</span> <span class="n">q</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span> <span class="o">/</span> <span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">std</span><span class="p">()</span> <span class="o">+</span> <span class="mf">1e-6</span><span class="p">)</span>
+    <span class="n">q_norm</span> <span class="o">=</span> <span class="n">q</span> <span class="o">/</span> <span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">+</span> <span class="mf">1e-6</span><span class="p">)</span>
     <span class="n">bc_loss</span> <span class="o">=</span> <span class="p">((</span><span class="n">pi</span> <span class="o">-</span> <span class="n">actions</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
     <span class="k">return</span> <span class="o">-</span><span class="n">q_norm</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">*</span> <span class="n">lambda_</span> <span class="o">+</span> <span class="n">bc_loss</span>
 </code></pre></div>
 
-<p>The key is that both terms contribute meaningfully to the gradient; the implementation in <code>td3bc.py</code> uses batch normalization of Q (mean/std) and fixed $\lambda$.</p>
+<p>The key is that both terms contribute meaningfully to the gradient. The implementation in <code>td3bc.py</code> follows the paper: Q is scaled by the mean absolute value over the batch (not Z-normalization), so $\lambda$ is directly comparable to the original TD3+BC setup.</p>
 <h3>AWAC-Style Policy Loss (Advantage-Weighted)</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">awac_actor_loss</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">Q</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>

@@ -56,7 +56,7 @@ The $\tau$-expectile of a distribution is the value $m$ that minimizes the asymm
 
 $$m^* = \arg\min_m \, \mathbb{E}\left[ L_\tau(X - m) \right]$$
 
-where the **expectile loss** (also called asymmetric L2) is:
+where the **expectile loss** (asymmetric L2 loss) is:
 
 $$L_\tau(u) = |\tau - \mathbf{1}[u < 0]| \cdot u^2 = \begin{cases} \tau \cdot u^2 & \text{if } u \geq 0 \\ (1-\tau) \cdot u^2 & \text{if } u < 0 \end{cases}$$
 

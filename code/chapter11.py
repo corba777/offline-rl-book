@@ -1,8 +1,8 @@
 """
-chapter8.py
+chapter11.py
 ===========
 Explainability in Offline RL — SHAP-based analysis of trained agents.
-Chapter 8 of "Offline RL: From Theory to Industrial Practice"
+Chapter 11 of "Offline RL: From Theory to Industrial Practice"
 
 This chapter answers a question that every industrial deployment eventually
 faces: *why* did the agent choose this action at this moment?
@@ -34,7 +34,7 @@ Imports (not reimplemented — same as previous chapters):
   Ch3: CQLAgent, QNetwork, GaussianPolicy, BCAgent  from cql.py
   Ch5: DynamicsEnsemble                             from morel.py
   Ch7: CoatingProcessEnv, collect_industrial_dataset,
-       normalize_dataset, make_dataloader            from chapter7.py
+       normalize_dataset, make_dataloader            from chapter10.py
 """
 
 import sys
@@ -68,7 +68,7 @@ except ImportError:
     print("  [ch8] morel.py not found")
 
 try:
-    from chapter7 import (
+    from chapter10 import (
         CoatingProcessEnv,
         collect_industrial_dataset,
         normalize_dataset,
@@ -77,7 +77,7 @@ try:
     _CH7_AVAILABLE = True
 except ImportError:
     _CH7_AVAILABLE = False
-    print("  [ch8] chapter7.py not found")
+    print("  [ch8] chapter10.py not found")
 
 
 # ── State and action feature names for the coating process ──────────────────
@@ -209,6 +209,9 @@ class DynamicsSingleOutputWrapper:
     state_idx = 0 → temperature prediction
     state_idx = 1 → filler_fraction prediction
     state_idx = 4 → level prediction
+
+    Aggregates the ensemble by using its mean prediction (predict_with_uncertainty
+    returns mean, uncertainty); SHAP is computed on this mean, not per-model.
     """
 
     def __init__(self, ensemble: 'DynamicsEnsemble',
@@ -288,6 +291,10 @@ class OfflineRLExplainer:
         self.bg_actions = dataset['actions'][idx]
         self.bg_sa      = np.concatenate([self.bg_states,
                                           self.bg_actions], axis=1)
+        # Pre-tensor on device to avoid repeated transfer in SHAP (KernelExplainer
+        # calls the wrapper thousands of times; passing same background often)
+        self._bg_sa_t     = torch.FloatTensor(self.bg_sa).to(device)
+        self._bg_states_t = torch.FloatTensor(self.bg_states).to(device)
 
         print(f"  Background: {len(idx)} samples  "
               f"(states: {self.bg_states.shape}, "
@@ -831,13 +838,13 @@ def train_cql_for_shap(device: str = 'cpu',
     """
     Train a CQL agent and dynamics ensemble on the coating process dataset.
     Returns (agent, ensemble, norm_dataset, s_mean, s_std).
-    This is a convenience wrapper; for production use chapter7.run_industrial_benchmark.
+    This is a convenience wrapper; for production use chapter10.run_industrial_benchmark.
     """
     if quick_test:
         n_episodes = 40; n_epochs = 5
 
     if not (_CQL_AVAILABLE and _MOREL_AVAILABLE and _CH7_AVAILABLE):
-        raise ImportError("cql.py, morel.py, and chapter7.py required")
+        raise ImportError("cql.py, morel.py, and chapter10.py required")
 
     S = CoatingProcessEnv.STATE_DIM
     A = CoatingProcessEnv.ACTION_DIM

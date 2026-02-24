@@ -43,13 +43,11 @@
 
 **2. README устарел**
 
-- В «Repository Structure» перечислены только `behavioral_cloning.py`, `extrapolation_error.py`, `cql.py`, `iql.py`, `mopo.py`, `morel.py`, `physics_informed.py`, `chapter7.py`, `chapter8.py`.
-- Не указаны: `td3bc.py`, `decision_transformer.py`, `chapter8_causal_toy.py`, `chapter8_toy_figures.py` (и при необходимости другие скрипты из `code/`). Имеет смысл обновить список файлов в README.
+- В «Repository Structure» перечислены `chapter10.py`, `chapter11.py`; при необходимости добавить `td3bc.py`, `decision_transformer.py`, `chapter11_causal_toy.py`, `chapter11_toy_figures.py` и др.
 
 **3. Мелкие несогласованности**
 
-- В **Ch9** код кейс-стади лежит в `chapter7.py` (исторически), в README это отражено — но в тексте можно один раз явно написать «см. `code/chapter7.py`», чтобы не было путаницы с «главой 7».
-- **Ch10** ссылается на `chapter8.py` для explainability — имя файла не совпадает с номером главы 10; если оставить как есть, стоит в тексте явно указать путь к файлу.
+- Код кейс-стади Ch10: `code/chapter10.py`; explainability Ch11: `code/chapter11.py`, `chapter11_toy_figures.py`, `chapter11_causal_toy.py` (унифицировано под номера глав).
 
 ---
 
@@ -66,7 +64,7 @@
 
 **Код и воспроизводимость**
 - В README можно добавить минимальный «Quick start»: какие зависимости (`torch`, `numpy`, и т.д.), одна команда для одной главы (например, `python code/cql.py`) и ожидаемый вывод (например, таблица с reward).
-- Для `chapter7.py` и других тяжёлых скриптов — указать приблизительное время прогона или флаг `--quick` для короткого теста.
+- Для `chapter10.py` и других тяжёлых скриптов — указать приблизительное время прогона или флаг `--quick` для короткого теста.
 
 **Русский текст**
 - Термины: «return-to-go», «advantage», «OOD» часто остаются в английском — это уместно для технической аудитории; при желании можно один раз в начале RU-части дать глоссарий (например, в ru.html или в первой главе).

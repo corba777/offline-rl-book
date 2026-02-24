@@ -1,5 +1,5 @@
 """
-chapter7.py
+chapter10.py
 ===========
 Industrial Applications of Offline RL — complete case study.
 Chapter 7 of "Offline RL: From Theory to Industrial Practice"
@@ -123,6 +123,8 @@ class CoatingProcessEnv:
 
     STATE_DIM  = 5
     ACTION_DIM = 2
+    STATE_T_IDX = 0   # temperature
+    STATE_F_IDX = 1   # filler_fraction
 
     T_TARGET     = 0.60
     F_TARGET     = 0.50
@@ -190,9 +192,9 @@ class CoatingProcessEnv:
         ))
         v_new = self._viscosity(T_new, f_new)
         d_new = self._density(T_new, f_new)
-        # Integrating level — mass balance
+        # Integrating level — mass balance (outflow = 0.35*L - 0.05*heat: more heat → less outflow)
         inflow  = flow_in * 0.4
-        outflow = L * 0.35 + 0.05 * heat_in
+        outflow = L * 0.35 - 0.05 * heat_in
         L_new   = float(np.clip(
             L + self.DT * (inflow - outflow)
             + self.rng.normal(0, self.noise_std * 0.5),
@@ -282,9 +284,9 @@ def collect_industrial_dataset(
             for _ in range(episode_len):
                 # Proportional controller + exploration
                 u_heat = float(np.clip(
-                    1.8 * (env.T_TARGET - obs[0]) + rng.normal(0, noise_ep), -1, 1))
+                    1.8 * (env.T_TARGET - obs[env.STATE_T_IDX]) + rng.normal(0, noise_ep), -1, 1))
                 u_flow = float(np.clip(
-                    1.8 * (env.F_TARGET - obs[1]) + rng.normal(0, noise_ep), -1, 1))
+                    1.8 * (env.F_TARGET - obs[env.STATE_F_IDX]) + rng.normal(0, noise_ep), -1, 1))
                 action = np.array([u_heat, u_flow], dtype=np.float32)
 
                 s2, r, done, info = env.step(action)
@@ -387,7 +389,7 @@ class IndustrialEvaluator:
             viol_total = 0.0
 
             while not done:
-                prev_T, prev_f = obs[0], obs[1]
+                prev_T, prev_f = obs[self.env.STATE_T_IDX], obs[self.env.STATE_F_IDX]
                 s_t = torch.FloatTensor(
                     (obs - self.s_mean) / self.s_std
                 ).unsqueeze(0).to(self.device)
@@ -484,9 +486,9 @@ def coating_physics_fn(state: torch.Tensor,
     # Linear density
     d_new = (0.55 + 0.25 * f_new - 0.10 * T_new).clamp(0.0, 1.0)
 
-    # Mass balance for level (approximate outflow)
+    # Mass balance for level (outflow = 0.35*L - 0.05*heat per true dynamics)
     inflow  = flow_in * 0.4
-    outflow = L * 0.35 + 0.05 * heat_in
+    outflow = L * 0.35 - 0.05 * heat_in
     L_new   = (L + DT * (inflow - outflow)).clamp(0.0, 1.0)
 
     return torch.stack([T_new, f_new, v_new, d_new, L_new], dim=1)
@@ -804,7 +806,7 @@ def plot_episode_trajectory(
         s_t = torch.FloatTensor((obs - s_mean) / s_std).unsqueeze(0).to(device)
         act = agent.policy.act(s_t, deterministic=True)
         obs, r, done, info = env.step(act)
-        T_h.append(obs[0]); f_h.append(obs[1])
+        T_h.append(obs[env.STATE_T_IDX]); f_h.append(obs[env.STATE_F_IDX])
         L_h.append(obs[4]); viol_h.append(info['constraint_violation'])
 
     t   = np.arange(len(T_h))
@@ -858,7 +860,7 @@ def print_results_table(results: Dict[str, Dict[str, float]]) -> None:
 
     hdr = f"{'Metric':{mw}}" + "".join(f"{n:>{col_w}}" for n in names)
     print("\n" + "=" * len(hdr))
-    print("  CHAPTER 7 — INDUSTRIAL BENCHMARK RESULTS")
+    print("  CHAPTER 10 — INDUSTRIAL BENCHMARK RESULTS")
     print("=" * len(hdr))
     print(hdr)
     print("-" * len(hdr))

@@ -55,18 +55,18 @@ $$\hat{J}_{IS} = \frac{1}{n}\sum_{i=1}^n \left( \prod_{t=0}^{T_i-1} \frac{\pi(a_
 
 ### 2. Direct Method (DM)
 
-Learn a model of the reward and dynamics (or just the Q-function) from $\mathcal{D}$, then estimate $J(\pi)$ by **simulating** $\pi$ in the model or by averaging the learned $Q(s,a)$ under $\pi$:
+Learn a model of the reward and dynamics (or just the Q-function) from $\mathcal{D}$, then estimate $J(\pi)$ by **simulating** $\pi$ in the model or by averaging the learned $Q(s,a)$ under $\pi$. Because $J(\pi)$ is the expected return **from the initial state distribution**, the correct DM estimator is the average over **initial** states $s_0^{(i)}$ (one per trajectory in $\mathcal{D}$, or from a held-out set):
 
-$$\hat{J}_{DM} = \mathbb{E}_{s \sim \mathcal{D}}\left[ \hat{Q}(s, \pi(s)) \right] \quad \text{or} \quad \frac{1}{n}\sum_i \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$$
+$$\hat{J}_{DM} = \frac{1}{n}\sum_{i=1}^n \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$$
 
-where $\hat{Q}$ is learned from $\mathcal{D}$. **Fitted Q Evaluation (FQE)** is the standard way to obtain $\hat{Q}$ for a given policy $\pi$; we detail it below.
+Averaging $\hat{Q}(s, \pi(s))$ over *all* states $s$ in $\mathcal{D}$ would give the average value over the *visited* state distribution, not the expected episode return; it is sometimes used as a cheap proxy when initial states are not explicitly tracked, but it is not equal to $J(\pi)$ unless the state distribution in $\mathcal{D}$ matches the initial distribution. **Fitted Q Evaluation (FQE)** is the standard way to obtain $\hat{Q}$ for a given policy $\pi$; we detail it below.
 
 **Pros:** Low variance; uses the whole dataset.  
 **Cons:** Biased when the model or $\hat{Q}$ is wrong — and in offline RL it often is (extrapolation error). DM/FQE can be overly optimistic if $\hat{Q}$ overestimates for $\pi$'s actions.
 
 #### Fitted Q Evaluation (FQE) in detail
 
-**FQE** (Le et al., 2019; later formalized for OPE) fits a Q-function that approximates the *value of the target policy $\pi$* using only off-policy data from $\mathcal{D}$. Unlike Fitted Q Iteration (FQI), which alternates between policy improvement and evaluation, FQE **evaluates a fixed policy**: the Bellman target uses $\pi$ at the next state, not $\max_a$ or the behavior policy.
+**FQE** (Le et al., 2019, *Batch Policy Learning under Constraints*; formalized for OPE there) fits a Q-function that approximates the *value of the target policy $\pi$* using only off-policy data from $\mathcal{D}$. Unlike Fitted Q Iteration (FQI), which alternates between policy improvement and evaluation, FQE **evaluates a fixed policy**: the Bellman target uses $\pi$ at the next state, not $\max_a$ or the behavior policy.
 
 **Bellman target for $\pi$:** The true $Q^\pi$ satisfies $Q^\pi(s,a) = r + \gamma \mathbb{E}_{s'}\bigl[ Q^\pi(s', \pi(s')) \bigr]$. So we regress $\hat{Q}$ to the target $y = r + \gamma \hat{Q}(s', \pi(s'))$ on transitions $(s, a, r, s') \in \mathcal{D}$. In practice $\hat{Q}$ on the right-hand side is the current iterate (or a target network), and we minimize TD error over the dataset:
 
@@ -86,7 +86,7 @@ q = Q(states, actions)
 loss = F.mse_loss(q, td_target)
 # ... backward, optimizer step, then soft update Q_tgt ← Q
 
-# FQE estimate: (1/n) Σ Q(s, π(s)) over states (e.g. initial or dataset)
+# FQE estimate: (1/n) Σ Q(s, π(s)) over *initial* states for J(π); or over dataset states as proxy
 def estimate_J_FQE(Q, policy_fn, states):
     with torch.no_grad():
         a = policy_fn(states)
@@ -105,7 +105,7 @@ Combines IS and DM so that the estimator is **unbiased** if either (a) the impor
 
 $$\hat{J}_{DR} = \frac{1}{n}\sum_{i=1}^n \left[ \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)})) + \sum_{t\ge 0} \gamma^t \rho_{0:t}^{(i)} \left( r_t^{(i)} + \gamma \hat{Q}(s_{t+1}^{(i)}, \pi(s_{t+1}^{(i)})) - \hat{Q}(s_t^{(i)}, a_t^{(i)}) \right) \right]$$
 
-where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^*$, the trailing terms have expectation zero; if $\pi_\beta = \pi$, the weights are 1 and the estimator reduces to DM. In practice DR often has lower variance than IS and lower bias than DM alone.
+where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^*$, the trailing terms have expectation zero; if $\pi_\beta = \pi$, the weights are 1 and the estimator reduces to DM. In practice DR often has lower variance than IS and lower bias than DM alone. **Caveat:** on long horizons the cumulative weight $\rho_{0:t}$ can still explode or vanish as $t$ grows, so classical DR still suffers from high variance on long trajectories; variants such as **Marginalized IS** (state-marginal importance weights) are used to mitigate this.
 
 ---
 
@@ -146,7 +146,8 @@ Off-Policy Evaluation answers: *from offline data only, how good is this policy?
 
 ## References
 
-- Le, H. M., Jiang, N., Agarwal, A., Dudík, M., Yue, Y., & Daumé III, H. (2019). *Horizon: Reinforcement Learning for Production.* RL4RealLife Workshop @ ICML. *(FQE for OPE)*
+- Le, H. M., Voloshin, C., & Yue, Y. (2019). *Batch Policy Learning under Constraints.* ICML (PMLR 97). [arXiv:1903.08738](https://arxiv.org/abs/1903.08738). *(FQE formalized for OPE)*
+- Gauci, J., et al. (2018). *Horizon: Facebook's Open Source Applied Reinforcement Learning Platform.* [arXiv:1811.00260](https://arxiv.org/abs/1811.00260). *(Production RL platform; distinct from FQE.)*
 - Precup, D., Sutton, R. S., & Singh, S. (2000). *Eligibility Traces for Off-Policy Policy Evaluation.* ICML.
 - Thomas, P., Theocharous, G., & Ghavamzadeh, M. (2015). *High-Confidence Off-Policy Evaluation.* AAAI.
 - Jiang, N., & Li, L. (2016). *Doubly Robust Off-policy Value Evaluation for Reinforcement Learning.* ICML.

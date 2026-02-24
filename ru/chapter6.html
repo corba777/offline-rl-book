@@ -73,7 +73,7 @@
 <h3>Идея</h3>
 <p>Целевая функция актора:</p>
 <p><div class="math-display">$$\pi^* = \arg\max_\pi \; \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \lambda \, Q(s, \pi(s)) - \bigl(\pi(s) - a\bigr)^2 \right]$$</div></p>
-<p>Первый член — использовать критика; второй — имитировать данные. Гиперпараметр $\lambda$ задаёт баланс. На практике Q нормализуют по батчу, чтобы оба члена были одного масштаба.</p>
+<p>Первый член — использовать критика; второй — имитировать данные. Гиперпараметр $\lambda$ задаёт баланс. В статье Fujimoto &amp; Gu Q нормализуют по среднему абсолютному значению по батчу: $q / \bigl( |B|^{-1} \sum |Q(s,a)| \bigr)$, чтобы оба члена были одного масштаба.</p>
 <h3>Формализация</h3>
 <p><strong>Критик (Q):</strong> как в TD3 — два Q-сети, target-сети, TD loss. <strong>Актор:</strong> детерминированная политика $\pi_\phi(s)$; loss выше. Теоретической гарантии (в отличие от CQL) нет — эмпирический, простой в реализации метод.</p>
 <hr />
@@ -107,17 +107,16 @@
 <span class="k">def</span> <span class="nf">td3bc_actor_loss</span><span class="p">(</span><span class="n">actor</span><span class="p">,</span> <span class="n">Q1</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">lambda_</span><span class="o">=</span><span class="mf">0.25</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.</span>
-<span class="sd">    Q is normalized by (q - q.mean()) / (q.std() + eps) over the batch</span>
-<span class="sd">    so the Q-term and BC-term have comparable scale.</span>
+<span class="sd">    Q нормализуется по среднему абсолютному значению по батчу (Fujimoto &amp; Gu).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">pi</span> <span class="o">=</span> <span class="n">actor</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
     <span class="n">q</span> <span class="o">=</span> <span class="n">Q1</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">pi</span><span class="p">)</span>
-    <span class="n">q_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">q</span> <span class="o">-</span> <span class="n">q</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span> <span class="o">/</span> <span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">std</span><span class="p">()</span> <span class="o">+</span> <span class="mf">1e-6</span><span class="p">)</span>
+    <span class="n">q_norm</span> <span class="o">=</span> <span class="n">q</span> <span class="o">/</span> <span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">+</span> <span class="mf">1e-6</span><span class="p">)</span>
     <span class="n">bc_loss</span> <span class="o">=</span> <span class="p">((</span><span class="n">pi</span> <span class="o">-</span> <span class="n">actions</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
     <span class="k">return</span> <span class="o">-</span><span class="n">q_norm</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">*</span> <span class="n">lambda_</span> <span class="o">+</span> <span class="n">bc_loss</span>
 </code></pre></div>
 
-<p>Оба члена (Q и BC) вносят вклад в градиент; в <code>td3bc.py</code> используется нормализация Q по батчу и фиксированный $\lambda$.</p>
+<p>Оба члена (Q и BC) вносят вклад в градиент; в <code>td3bc.py</code> используется нормализация по среднему абсолютному значению Q (как в статье), а не Z-нормализация, чтобы $\lambda$ соответствовал оригинальной настройке.</p>
 <h3>AWAC-style loss политики (advantage-weighted)</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">awac_actor_loss</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">Q</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>

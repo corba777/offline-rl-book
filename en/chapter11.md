@@ -32,7 +32,7 @@ Explainability in Offline RL is harder than in standard supervised learning for 
 
 **The behavior policy's distribution is uneven.** SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset — dense near the operating setpoint and sparse near disturbances. SHAP values answer: *"how does this instance differ from the typical operating point, and how does that difference affect the output?"*
 
-> 📄 Full code: [`chapter8.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter8.py)
+> 📄 Full code: [`chapter11.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter11.py). Figures: `chapter11_toy_figures.py`; causal toy: `chapter11_causal_toy.py`.
 
 ---
 
@@ -85,7 +85,7 @@ A minimal example fixes intuition. Consider a toy Q-function with three inputs: 
 
 ![Toy dynamics: waterfall for one (s,a) → next_s1](../figures/ch8/toy_dynamics_waterfall.png)
 
-All of these figures are produced by running `python code/chapter8_toy_figures.py` (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.
+All of these figures are produced by running `python code/chapter11_toy_figures.py` (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.
 
 ---
 
@@ -181,6 +181,8 @@ class OfflineRLExplainer:
 ```
 
 The background defines $\phi_0$ — the average model output. Using the offline dataset means SHAP values answer: *"how does this transition differ from a typical observed transition?"*
+
+**Performance:** KernelExplainer calls each wrapper thousands of times. The implementation in `chapter11.py` pre-tensors the background on the device at explainer init to reduce transfer overhead. For very large runs, consider reducing `n_background` or `n_samples`. **DynamicsSingleOutputWrapper** aggregates the ensemble (mean prediction) before SHAP; SHAP is computed on the mean next-state, not per-model.
 
 ```python
 results = explainer.explain_all(
@@ -319,7 +321,7 @@ SHAP is a well-established tool for *attribution* — which inputs the model use
 
 **Resources.** The survey by Deng et al. (2023) gives a unified view of causal RL and includes a section on offline/batch settings. The FOCUS paper (Zhang et al.) is a concrete example of causal-structured world models for offline model-based RL. For the link between off-policy evaluation and causal inference (treatment effect estimation), see the batch RL / causal inference literature (e.g. the connection between importance sampling and inverse propensity scoring). References are listed below.
 
-**Toy code example.** A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next\_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ — correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an *intervention* we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: `python code/chapter8_causal_toy.py`. Core idea:
+**Toy code example.** A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next\_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ — correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an *intervention* we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: `python code/chapter11_causal_toy.py`. Core idea:
 
 ```python
 # True dynamics (unknown to learner): next_s1 = 0.8*s1 + 0.2*a
@@ -331,7 +333,7 @@ SHAP is a well-established tool for *attribution* — which inputs the model use
 #   Causal model (sees s1=0.2, a=0.5)    → predicts 0.26 (correct)
 ```
 
-> 📄 Full code: [`chapter8_causal_toy.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter8_causal_toy.py)
+> 📄 Full code: [`chapter11_causal_toy.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter11_causal_toy.py)
 
 ---
 
