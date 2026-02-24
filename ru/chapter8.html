@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Глава 8: Physics-Informed Offline RL</title>
+  <title>Глава 8: Модельно-основанный Offline RL (MOPO, MOReL)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -58,430 +58,388 @@
   </div>
 </header>
 <main>
-<h1>Глава 8: Physics-Informed Offline RL</h1>
+<h1>Глава 8: Модельно-основанный Offline RL (MOPO, MOReL)</h1>
 <blockquote>
-<p><em>«Black-box модель, идеально описывающая данные внутри обучающего распределения, совершенно бесполезна, если за его пределами она предсказывает нарушение закона сохранения энергии.»</em></p>
+<p><em>«Если нельзя провести новые эксперименты — постройте симулятор из имеющихся данных и экспериментируйте внутри него. Но помните: симулятор лжёт там, где вы никогда не бывали.»</em></p>
 </blockquote>
 <hr />
-<h2>Зачем нужна физика?</h2>
-<p>В главах 3–7 мы рассматривали мир как black-box: на вход подаются состояние и действие, на выход приходит следующее состояние, а нейронные сети сами разбираются с остальным. Для задач-эталонов вроде MuJoCo это работает — данных достаточно, и никаких жёстких физических законов модель соблюдать не обязана.</p>
-<p>Промышленные процессы устроены иначе — по трём причинам.</p>
-<p><strong>Данных мало и они узкие.</strong> Производственная линия намеренно работает в небольшой части своего теоретически допустимого операционного диапазона. Полугодовые логи нормальной работы могут почти не содержать примеров вблизи физических ограничений. Любая модель, делающая выводы об этих граничных зонах, занимается экстраполяцией без корректирующего сигнала.</p>
-<p><strong>Физические законы частично известны.</strong> Инженеры знают многое: закон сохранения массы и энергии, термодинамические соотношения, транспортные задержки, динамику первого порядка с измеренными постоянными времени. Эти знания несовершенны — реальные системы имеют неизмеренные возмущения, стареющее оборудование, вариацию состава, — но они далеко не нулевые.</p>
-<p><strong>Нарушение ограничений обходится дорого.</strong> Политика, нарушающая баланс масс, может задать невозможное уставное значение. Динамическая модель, предсказывающая снижение температуры при подводе тепла, породит управляющую политику, которая активно навредит процессу. В отличие от среды-симулятора, где плохое действие просто даёт низкую награду, нарушение физического ограничения может быть необратимым.</p>
-<p>Physics-informed Offline RL использует известную структуру в трёх местах:</p>
-<ol>
-<li><strong>Формирование награды</strong> — физические ограничения кодируются как штрафы в сигнале награды</li>
-<li><strong>Гибридная динамическая модель</strong> — вместо black-box ансамбля используется модель, в точности соблюдающая известную физику и обучающая остаток (residual) по данным</li>
-<li><strong>Оптимизация политики с ограничениями</strong> — жёсткие ограничения встраиваются в целевую функцию политики через двойственность Лагранжа</li>
-</ol>
-<p>Каждый подход — это слой поверх алгоритмов из глав 3–5, а не их замена.</p>
+<h2>За пределами модельно-свободных методов</h2>
+<p>Главы 2–6 атаковали offline RL с одной стороны: модифицировать функцию ценности так, чтобы она была пессимистична относительно действий, отсутствующих в датасете. CQL занижает Q-значения для OOD-действий. IQL полностью избегает запросов к OOD-действиям.</p>
+<p>Оба метода разделяют фундаментальное ограничение: <strong>они могут использовать только переходы, собранные поведенческой политикой</strong>. Если критически важные области пространства состояние-действие просто отсутствуют в датасете, модельно-свободные методы не имеют откуда учиться.</p>
+<p>Модельно-основанный offline RL предлагает иной подход: <strong>обучить динамику системы</strong>, а затем генерировать синтетические переходы «в уме». Вместо того чтобы ограничиваться существующими данными, строится мысленная модель и <em>воображается</em>, что произойдёт при новых действиях.</p>
+<p>Это мощно — но опасно. Модель ошибается там, где данных мало, и политика, эксплуатирующая ошибки модели, провалится так же катастрофически, как и та, что эксплуатирует ошибки Q-функции. Два алгоритма этой главы решают проблему по-разному:</p>
+<ul>
+<li><strong>MOPO</strong> (Yu et al., NeurIPS 2020) — штрафовать синтетические награды за неопределённость модели. Политика может свободно исследовать, но неопределённые регионы становятся непривлекательными.</li>
+<li><strong>MOReL</strong> (Kidambi et al., NeurIPS 2020) — построить явную границу. Внутри хорошо смоделированных регионов агент оптимизирует нормально; снаружи — получает фиксированный большой штраф.</li>
+</ul>
+<p>Одна цель, разная геометрия пессимизма.</p>
 <hr />
-<h2>Часть I: Физика как формирование награды</h2>
+<h2>Часть I: MOPO</h2>
 <h3>Идея</h3>
-<p>Самый простой способ привнести физику в Offline RL: добавлять штраф к награде каждый раз, когда агент нарушает известное ограничение. Это не требует никаких изменений в самом RL-алгоритме — только модифицированная функция награды.</p>
-<p>Для ограничения $g(s, a, s') \leq 0$ (большее значение = более серьёзное нарушение) определим <strong>штрафную награду</strong>:</p>
-<p><div class="math-display">$$\tilde{r}(s, a, s') = r(s, a) - \lambda \cdot \max\!\bigl(0,\; g(s, a, s')\bigr)$$</div></p>
-<p>$\max(0, \cdot)$ активирует штраф только при нарушении ограничения. Внутри допустимой области награда не меняется. $\lambda &gt; 0$ регулирует, насколько дорогостоящими будут нарушения.</p>
-<p>Это превращает исходную <strong>ограниченную MDP (CMDP)</strong> — максимизировать награду при соблюдении ограничений — в стандартную неограниченную MDP с модифицированной наградой, которую любой Offline RL-алгоритм может решить напрямую.</p>
-<h3>Зазор оптимальности</h3>
-<p>Между решением задачи со штрафом и решением исходной ограниченной задачи всегда существует зазор. Насколько он велик?</p>
-<p><strong>Теорема 6.1 (Зазор оптимальности).</strong> Пусть $\hat\pi_\lambda$ — оптимальная политика в штрафной MDP. Предположим, что ограничение удовлетворяет $|g|<em max="max">\infty \leq C</em>$, CMDP допустима, и $\hat\pi_\lambda$ является допустимой. Тогда:</p>
-<p><div class="math-display">$$J(\pi^*) - J(\hat\pi_\lambda) \leq \frac{2\,C_{max}}{(1-\gamma)\,\lambda}$$</div></p>
-<p><em>Доказательство в Приложении 6.A.</em></p>
-<p><strong>Интерпретация.</strong> Зазор уменьшается при $\lambda \to \infty$ — но большое $\lambda$ делает награду подавляемой штрафным членом, смещая политику к максимальному соблюдению ограничений в ущерб исходной награде. Граница — это <em>верхняя оценка</em> потерь от использования штрафа вместо жёсткого ограничения.</p>
-<p>Практическая калибровка: установите $\lambda$ так, чтобы типичное нарушение ограничения стоило примерно 20–30% от средней награды за эпизод.</p>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">calibrate_lambda</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">constraint_fn</span><span class="p">,</span> <span class="n">base_reward_fn</span><span class="p">,</span>
-                     <span class="n">target_gap_fraction</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Устанавливает λ так, чтобы зазор из Теоремы 6.1 ≤</span>
-<span class="sd">    target_gap_fraction * средний дисконтированный доход.</span>
-<span class="sd">    Из теоремы: зазор ≤ 2*C_max / ((1-γ)*λ)</span>
-<span class="sd">    =&gt; λ = 2*C_max / ((1-γ) * target_gap)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">n</span>  <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">2000</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">]))</span>
-    <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;next_states&#39;</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-
-    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-        <span class="n">C_max</span>    <span class="o">=</span> <span class="n">constraint_fn</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
-        <span class="n">mean_ret</span> <span class="o">=</span> <span class="n">base_reward_fn</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">gamma</span><span class="p">)</span>
-
-    <span class="n">target_gap</span> <span class="o">=</span> <span class="n">target_gap_fraction</span> <span class="o">*</span> <span class="n">mean_ret</span>
-    <span class="n">lam</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">C_max</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">target_gap</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  C_max=</span><span class="si">{</span><span class="n">C_max</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> | mean_return≈</span><span class="si">{</span><span class="n">mean_ret</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &quot;</span>
-          <span class="sa">f</span><span class="s2">&quot;| λ=</span><span class="si">{</span><span class="n">lam</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">  (зазор ≤ </span><span class="si">{</span><span class="n">target_gap_fraction</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2"> дохода)&quot;</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">lam</span>
-</code></pre></div>
-
-<h3>Типы физических ограничений</h3>
-<p><strong>Законы сохранения.</strong> Для смесительного бака с притоком $q_{in}$, оттоком $q_{out}$, объёмом $V$:</p>
-<p><div class="math-display">$$g_{mass}(s_t, s_{t+1}) = \bigl|V_{t+1} - V_t - \Delta t\,(q_{in,t} - q_{out,t})\bigr| - \delta$$</div></p>
-<p>где $\delta$ поглощает шум измерений и неизмеренные возмущения.</p>
-<p><strong>Монотонные зависимости.</strong> Если физическая переменная $x$ заведомо убывает со временем при нормальной работе:</p>
-<p><div class="math-display">$$g_{mono}(s_t, s_{t+1}) = \max(0,\; x_{t+1} - x_t - \delta_{noise})$$</div></p>
-<p><strong>Операционные границы.</strong> Жёсткие ограничения оборудования $x_i \in [x_i^{min}, x_i^{max}]$:</p>
-<p><div class="math-display">$$g_{bounds}(s) = \sum_i \max(0,\; s_i - s_i^{max}) + \max(0,\; s_i^{min} - s_i)$$</div></p>
+<p><strong>Model-Based Offline Policy Optimization (MOPO)</strong> работает в три фазы:</p>
+<ol>
+<li>
+<p><strong>Обучить модель динамики</strong> $\hat{T}(s' | s, a)$ из офлайн-датасета с помощью <strong>ансамбля</strong> нейронных сетей. Каждая модель ансамбля делает немного разные предсказания. Где они согласны — модель уверена. Где расходятся — неопределённость высокая.</p>
+</li>
+<li>
+<p><strong>Генерировать синтетические ролл-ауты</strong>, ветвясь от реальных состояний. Стартуем из реального состояния $s \in \mathcal{D}$, выбираем действие, предсказываем $s'$ моделью, повторяем $h$ шагов. На каждом шаге <strong>штрафуем награду</strong> на неопределённость модели:</p>
+</li>
+</ol>
+<p><div class="math-display">$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$</div></p>
+<ol>
+<li><strong>Обучить стандартный RL-алгоритм</strong> (SAC) на объединённых реальных + синтетических данных. Штраф гарантирует, что агент избегает ненадёжных регионов.</li>
+</ol>
+<p>Результат: эффективный датасет в 10–100 раз больше исходного со встроенной безопасностью через штраф за неопределённость.</p>
+<h3>Формализация</h3>
+<h4>Ансамбль динамики</h4>
+<p>Обучаем ансамбль из $N$ вероятностных моделей ${\hat{T}<em i="1">i}</em>^N$, каждая возвращает гауссиан над следующими состояниями:</p>
+<p><div class="math-display">$$\hat{T}_i(s' | s, a) = \mathcal{N}\left(s + \mu_{\theta_i}(s, a), \; \sigma^2_{\theta_i}(s, a)\right)$$</div></p>
+<p>Ключевые решения:</p>
+<ul>
+<li><strong>Остаточное предсказание</strong>: предсказываем $\Delta s = s' - s$, а не $s'$ напрямую. Это даёт сети базовую линию «ничего не изменилось» — сети нужно обучиться только поправке.</li>
+<li><strong>NLL-обучение</strong>: минимизация отрицательного логарифма правдоподобия $-\log \hat{T}_i(s' | s, a)$ обучает одновременно среднее (точность) и дисперсию (откалиброванная неопределённость).</li>
+<li><strong>Bootstrap-сэмплирование</strong>: каждая модель обучается на случайных 80% данных, обеспечивая разнообразие ансамбля.</li>
+</ul>
+<h4>Оценка неопределённости</h4>
+<p>Для данной пары $(s, a)$ каждая модель предсказывает среднее $\hat{s}'_i$. <strong>Эпистемическая неопределённость</strong> — «насколько модели расходятся?»:</p>
+<p><div class="math-display">$$u(s, a) = \left\| \text{Std}_{i=1}^N \left[ \hat{s}'_i \right] \right\|_2$$</div></p>
+<p>Это стандартное отклонение предсказаний по ансамблю, свёрнутое в скаляр через L2-норму.</p>
+<p><strong>Почему расхождение ансамбля работает</strong>: если все модели видели похожие данные рядом с $(s, a)$, они сходятся к похожим предсказаниям — малое $u$. Если данных мало, bootstrap приводит к тому, что каждая модель выучивает разные паразитные паттерны — большое $u$. Это ключевой механизм: неопределённость высокая именно там, где данных нет.</p>
+<h4>Цель MOPO</h4>
+<p>MOPO строит <strong>пессимистическое MDP</strong> $\tilde{\mathcal{M}}$ со штрафными наградами и оптимизирует политику в нём:</p>
+<p><div class="math-display">$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$</div></p>
+<p><div class="math-display">$$\pi^* = \arg\max_\pi \; \mathbb{E}_{\tilde{\mathcal{M}}} \left[ \sum_t \gamma^t \tilde{r}(s_t, a_t) \right]$$</div></p>
+<p>Теоретическая гарантия из Yu et al. (2020):</p>
+<p><div class="math-display">$$J(\pi) \geq \hat{J}_{\tilde{\mathcal{M}}}(\pi) - C \cdot \mathbb{E}_{s \sim d^\pi} \left[ \max_a u(s, a) \right]$$</div></p>
+<p>где $J(\pi)$ — истинная отдача, $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ — отдача в пессимистической модели. Граница говорит: оптимизация в штрафной модели даёт нижнюю оценку реальной производительности, с зазором пропорциональным остаточной ошибке модели.</p>
+<h4>Ветвящиеся ролл-ауты</h4>
+<p>Вместо того чтобы разворачивать полные эпизоды с нуля, MOPO использует <strong>ветвящиеся ролл-ауты</strong>:</p>
+<ol>
+<li>Сэмплируем начальное состояние $s_0$ из реального датасета $\mathcal{D}$.</li>
+<li>Разворачиваем на $h$ шагов с моделью и текущей политикой.</li>
+<li>Каждый синтетический переход $(s_t, a_t, \tilde{r}<em t_1="t+1">t, s</em>)$ добавляется в синтетический буфер.</li>
+</ol>
+<p>Старт из реальных состояний гарантирует, что ролл-аут начинается в хорошо смоделированном регионе. Короткий горизонт $h$ ограничивает накопление ошибок. Штрафная награда препятствует посещению плохо смоделированных регионов внутри ролл-аута.</p>
 <h3>Реализация</h3>
 <blockquote>
-<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/physics_informed.py"><code>physics_informed.py</code></a></p>
+<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/mopo.py"><code>mopo.py</code></a></p>
 </blockquote>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">PhysicsRewardWrapper</span><span class="p">:</span>
+<h4>Вероятностная модель динамики</h4>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">ProbabilisticDynamicsNet</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Оборачивает любую функцию награды штрафными членами на основе физики.</span>
-<span class="sd">    Каждое ограничение g(state, action, next_state) -&gt; Tensor (batch,)</span>
-<span class="sd">    возвращает величину нарушения ≥ 0. Ноль = ограничение выполнено.</span>
+<span class="sd">    (s, a) -&gt; (mean, log_var) для s&#39;.</span>
+<span class="sd">    Предсказывает остатки: s&#39;_pred ~ N(s + mean(s,a), exp(log_var(s,a)))</span>
+<span class="sd">    Обучается через NLL, а не MSE — сеть сама учится своей неопределённости.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base_reward</span><span class="p">,</span> <span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span><span class="p">):</span>
-        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">constraints</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">lambdas</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">base_reward</span> <span class="o">=</span> <span class="n">base_reward</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">constraints</span> <span class="o">=</span> <span class="n">constraints</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span>     <span class="o">=</span> <span class="n">lambdas</span>
-
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">):</span>
-        <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_reward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span><span class="p">):</span>
-            <span class="n">r</span> <span class="o">=</span> <span class="n">r</span> <span class="o">-</span> <span class="n">lam</span> <span class="o">*</span> <span class="n">g</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">r</span>
-</code></pre></div>
-
-<p><strong>Пример — ограничение согласованности с динамикой первого порядка:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">first_order_constraint</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">,</span>
-                            <span class="n">tau</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">K</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Штраф за предсказания, несовместимые с динамикой первого порядка:</span>
-<span class="sd">        x_{t+1} ≈ x_t + dt/tau * (K*u_t - x_t)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">x</span>      <span class="o">=</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
-    <span class="n">u</span>      <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
-    <span class="n">x_phys</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">u</span> <span class="o">-</span> <span class="n">x</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">next_state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">x_phys</span><span class="p">)</span> <span class="o">-</span> <span class="n">tol</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
-</code></pre></div>
-
-<hr />
-<h2>Часть II: Гибридные динамические модели</h2>
-<h3>Ограничение чисто black-box ансамблей</h3>
-<p>Ансамбль из главы 5 — чистая нейронная сеть. Неопределённость ансамбля защищает от эксплуатации OOD-областей, но у модели нет структурных причин соблюдать физику за пределами обучающего распределения. Её OOD-предсказания определяются тем, как обобщают веса сети, — а это может быть физически некорректным произвольным образом.</p>
-<p><strong>Предложение 6.2.</strong> Пусть $f_{phys}$ — известная физическая модель с ошибкой $\epsilon_{phys}$, а $\hat f_{res}$ — обученный остаток. Ошибка гибридной модели удовлетворяет:</p>
-<p><div class="math-display">$$\mathbb{E}_\rho\!\left[\|f_{hybrid} - f^*\|^2\right]^{1/2} \leq \epsilon_{res} + \epsilon_{phys}$$</div></p>
-<p>где $\epsilon_{res}$ — ошибка обобщения остатка, которая меньше ошибки чистой black-box модели $\epsilon_{BB}$ на тех же данных, поскольку остаток имеет меньшую амплитуду и меньшую эффективную константу Липшица. В OOD-областях, где $\hat f_{res} \approx 0$, гибридная модель возвращается к $f_{phys}$ — физически осмысленному прогнозу по умолчанию.</p>
-<p><em>Формальный вывод в Приложении 6.B.</em></p>
-<h3>Гибридное разложение</h3>
-<p>Гибридная модель разбивает предсказание на известную и неизвестную части:</p>
-<p><div class="math-display">$$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{известная физика}} + \underbrace{f_{NN}(s, a;\;\theta)}_{\text{обученный остаток}}$$</div></p>
-<p>Физическая функция $f_{phys}$ аналитична — нулевые параметры, вклад в предсказание бесплатный. Нейросетевой остаток $f_{NN}$ обучает то, что физика упускает: неучтённые возмущения, нелинейные поправки, зависящие от состава эффекты.</p>
-<p>Вероятностная версия (drop-in замена для MOPO/MOReL):</p>
-<p><div class="math-display">$$s' \sim \mathcal{N}\!\bigl(f_{phys}(s,a) + \mu_\theta(s,a),\; \text{diag}(\sigma^2_\theta(s,a))\bigr)$$</div></p>
-<p>Обучение минимизирует NLL наблюдаемого $s'$ — формально идентично NLL-потере ансамбля из главы 5, но сеть неявно обучается предсказывать $s' - f_{phys}(s,a)$. Физическая модель, объясняющая 80% дисперсии, оставляет остаток с 20%: нейронной сети нужно примерно в пять раз меньше ёмкости и данных для сходимости.</p>
-<h3>Реализация</h3>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">HybridDynamicsNet</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Вероятностная гибридная динамика: физический прогноз + обученный остаток.</span>
-<span class="sd">    physics_fn: callable (state, action) -&gt; next_state_physics</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">physics_fn</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">128</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">256</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">physics_fn</span> <span class="o">=</span> <span class="n">physics_fn</span>
-
-        <span class="n">inp</span> <span class="o">=</span> <span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">inp</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
         <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">log_var_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span>  <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">10.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span>  <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="mf">0.5</span>  <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
+</code></pre></div>
 
-        <span class="c1"># Более жёсткие границы, чем у чистой black-box модели:</span>
-        <span class="c1"># остатки имеют меньшую амплитуду</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">8.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">1.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
-
-    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Возвращает (mean_next_state, log_var). Mean = физика + остаток.&quot;&quot;&quot;</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">phys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
-
-        <span class="n">h</span>       <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">],</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
-        <span class="n">res</span>     <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
-        <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_var_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
-        <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">-</span> <span class="n">F</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">-</span> <span class="n">log_var</span><span class="p">)</span>
-        <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span> <span class="o">+</span> <span class="n">F</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="n">log_var</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">phys</span> <span class="o">+</span> <span class="n">res</span><span class="p">,</span> <span class="n">log_var</span>
-
-    <span class="k">def</span> <span class="nf">nll_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">):</span>
+<p>Активация <code>SiLU</code> (swish) превосходит ReLU для моделей динамики — более гладкие градиенты помогают аппроксимировать плавные физические переходы.</p>
+<h4>NLL-обучение</h4>
+<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">nll_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">):</span>
         <span class="n">mean</span><span class="p">,</span> <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
-        <span class="n">var</span>  <span class="o">=</span> <span class="n">log_var</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
-        <span class="n">loss</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">log_var</span> <span class="o">+</span> <span class="p">(</span><span class="n">next_state</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">var</span><span class="p">)</span>
-        <span class="n">loss</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-        <span class="n">loss</span> <span class="o">=</span> <span class="n">loss</span> <span class="o">+</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
-
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">phys_mse</span> <span class="o">=</span> <span class="p">(</span><span class="n">next_state</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">))</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-
-        <span class="k">return</span> <span class="n">loss</span><span class="p">,</span> <span class="p">{</span>
-            <span class="s1">&#39;nll&#39;</span><span class="p">:</span>          <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-            <span class="s1">&#39;residual_mse&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">next_state</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-            <span class="s1">&#39;physics_mse&#39;</span><span class="p">:</span>  <span class="n">phys_mse</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-        <span class="p">}</span>
-
-
-<span class="k">def</span> <span class="nf">make_first_order_physics</span><span class="p">(</span><span class="n">tau</span><span class="p">,</span> <span class="n">K</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Физическая функция для процесса первого порядка: dx/dt = (K*u - x)/tau.</span>
-<span class="sd">    Дискретизация Эйлера: x_{t+1} = x_t + dt/tau * (K*u_t - x_t).</span>
-<span class="sd">    tau, K могут быть скалярами или 1D-тензорами длины state_dim.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="nf">physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
-        <span class="n">u</span> <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="p">:</span><span class="n">state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
-        <span class="k">return</span> <span class="n">state</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">u</span> <span class="o">-</span> <span class="n">state</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">physics_fn</span>
+        <span class="n">residual</span> <span class="o">=</span> <span class="n">next_state</span> <span class="o">-</span> <span class="n">state</span>
+        <span class="n">var</span>      <span class="o">=</span> <span class="n">log_var</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
+        <span class="c1"># NLL = 0.5 * [ log_var + (residual - mean)² / var ]</span>
+        <span class="n">nll</span>      <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">log_var</span> <span class="o">+</span> <span class="p">(</span><span class="n">residual</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">var</span><span class="p">)</span>
+        <span class="n">loss</span>     <span class="o">=</span> <span class="n">nll</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="n">bound_reg</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">loss</span> <span class="o">+</span> <span class="n">bound_reg</span>
 </code></pre></div>
 
-<h3>Гибридный ансамбль</h3>
-<p>Гибридный ансамбль — drop-in замена <code>DynamicsEnsemble</code> из главы 5: замените <code>ProbabilisticDynamicsNet</code> на <code>HybridDynamicsNet</code>. Оценка неопределённости, бутстрап-обучение и логика развёртки MOPO/MOReL остаются без изменений.</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">HybridEnsemble</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Ансамбль гибридных динамических моделей.</span>
-<span class="sd">    Неопределённость = разброс предсказаний остатка между членами ансамбля.</span>
-<span class="sd">    В OOD-областях физический член остаётся активным — среднее ансамбля</span>
-<span class="sd">    физически обосновано даже при неопределённом остатке.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<p>Обучение через NLL, а не MSE критично. MSE обучает только среднее, оставляя дисперсию неконтролируемой. NLL совместно обучает среднее (минимизация ошибки предсказания) и дисперсию (калибровка уверенности) — делая обученное $\sigma^2$ значимым как прокси неопределённости.</p>
+<h4>Синтетические ролл-ауты со штрафом за неопределённость</h4>
+<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">generate_synthetic_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">real_states</span><span class="p">):</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="n">real_states</span><span class="p">[</span><span class="n">random_idx</span><span class="p">]</span>
 
-    <span class="k">def</span> <span class="nf">diagnose_physics_coverage</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dataset</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Выводит, какую долю дисперсии физическая модель объясняет</span>
-<span class="sd">        по каждому измерению состояния.</span>
-<span class="sd">        &gt; 85%: отлично — достаточно небольшой нейросети остатка.</span>
-<span class="sd">        &lt; 50%: ⚠ пересмотрите physics_fn.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">n</span>  <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">]))</span>
-        <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-        <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-        <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;next_states&#39;</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rollout_horizon</span><span class="p">):</span>
+            <span class="n">action</span><span class="p">,</span> <span class="n">_</span>   <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+            <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
+                <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
+            <span class="n">reward</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
 
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">phys</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">physics_fn</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
-            <span class="n">res_var</span> <span class="o">=</span> <span class="p">(</span><span class="n">s2</span> <span class="o">-</span> <span class="n">phys</span><span class="p">)</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-            <span class="n">tot_var</span> <span class="o">=</span> <span class="n">s2</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-
-        <span class="n">coverage</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">res_var</span> <span class="o">/</span> <span class="p">(</span><span class="n">tot_var</span> <span class="o">+</span> <span class="mf">1e-8</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Покрытие физической модели (доля объяснённой дисперсии):&quot;</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">cov</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">coverage</span><span class="p">):</span>
-            <span class="n">bar</span> <span class="o">=</span> <span class="s1">&#39;█&#39;</span> <span class="o">*</span> <span class="nb">int</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="n">cov</span><span class="p">)</span><span class="o">*</span><span class="mi">20</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;░&#39;</span> <span class="o">*</span> <span class="nb">int</span><span class="p">((</span><span class="mi">1</span><span class="o">-</span><span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="n">cov</span><span class="p">))</span><span class="o">*</span><span class="mi">20</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  измерение </span><span class="si">{</span><span class="n">j</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">cov</span><span class="si">:</span><span class="s2">6.1%</span><span class="si">}</span><span class="s2">  </span><span class="si">{</span><span class="n">bar</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="n">mc</span> <span class="o">=</span> <span class="n">coverage</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  В среднем : </span><span class="si">{</span><span class="n">mc</span><span class="si">:</span><span class="s2">6.1%</span><span class="si">}</span><span class="s2">  &quot;</span>
-              <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;✓ сильное покрытие&quot;</span> <span class="k">if</span> <span class="n">mc</span> <span class="o">&gt;</span> <span class="mf">0.85</span>
-                 <span class="k">else</span> <span class="s2">&quot;⚠  рассмотрите доработку physics_fn&quot;</span> <span class="k">if</span> <span class="n">mc</span> <span class="o">&lt;</span> <span class="mf">0.5</span>
-                 <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">))</span>
-        <span class="k">return</span> <span class="n">coverage</span>
+            <span class="c1"># Ключевая строка: штрафуем награду на эпистемическую неопределённость</span>
+            <span class="n">penalized_reward</span> <span class="o">=</span> <span class="n">reward</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span> <span class="o">*</span> <span class="n">uncertainty</span>
+            <span class="n">state</span> <span class="o">=</span> <span class="n">next_state</span>
 </code></pre></div>
 
+<p>Одно вычитание <code>reward - self.lam * uncertainty</code> — это то, что превращает наивный MBRL (опасный) в MOPO (безопасный).</p>
 <hr />
-<h2>Часть III: Оптимизация политики с ограничениями</h2>
-<h3>Когда мягких штрафов недостаточно</h3>
-<p>Штрафы в награде (Часть I) — <strong>мягкие ограничения</strong>: политика предпочитает избегать нарушений, но может их допустить, если выгода от награды достаточно велика. Для большинства промышленных приложений мягкие ограничения в сочетании с границей KNOWN/UNKNOWN из MOReL (глава 5) обеспечивают достаточную безопасность.</p>
-<p>Жёсткие ограничения нужны когда:
-- Нарушение ограничения физически необратимо
-- Регуляторное соответствие требует доказуемой гарантии, а не просто «обычно выполняется»
-- Граница ограничения точно известна и никогда не должна пересекаться</p>
-<h3>CMDP и двойственность Лагранжа</h3>
-<p>Задача — <strong>ограниченная MDP (CMDP)</strong>: максимизировать $J(\pi)$ при $k$ ограничениях $J_{C_i}(\pi) \leq d_i$. Релаксация Лагранжа:</p>
-<p><div class="math-display">$$L(\pi, \lambda) = J(\pi) - \sum_{i=1}^k \lambda_i \bigl(J_{C_i}(\pi) - d_i\bigr)$$</div></p>
-<p><strong>Теорема 6.3 (Сильная двойственность, Altman 1999).</strong> Для любой конечномерной CMDP с ограниченными наградами и штрафами:</p>
-<p><div class="math-display">$$\max_{\pi \in \Pi_C} J(\pi) = \min_{\lambda \geq 0}\; \max_\pi\; L(\pi, \lambda)$$</div></p>
-<p>Оптимальные множители удовлетворяют условиям дополняющей нежёсткости: $\lambda_i^<em>(J_{C_i}(\pi^</em>) - d_i) = 0$. Ограничение, выполняемое с запасом в оптимуме, имеет $\lambda_i^* = 0$.</p>
-<p><em>Доказательство через LP-двойственность на occupancy measures — в Приложении 6.C.</em></p>
-<p><strong>Что это означает на практике.</strong> Решение неограниченной задачи минимакса по $(\pi, \lambda)$ даёт точный ограниченный оптимум. Множитель $\lambda_i$ действует как цена: растёт при нарушении ограничения и падает когда политика имеет запас по ограничению.</p>
-<h3>Алгоритм седловой точки для Offline RL</h3>
-<p>В офлайн-случае $J(\pi)$ и $J_{C_i}(\pi)$ оцениваются через обученные Q-функции. Обучение чередует шаги:</p>
-<p><div class="math-display">$$\theta \leftarrow \theta + \eta_\pi \nabla_\theta \hat{L} \qquad (\text{подъём по политике})$$</div></p>
-<p><div class="math-display">$$\lambda_i \leftarrow \max\!\bigl(0,\; \lambda_i + \eta_\lambda \cdot (\hat{J}_{C_i} - d_i)\bigr) \qquad (\text{подъём двойственного при нарушении})$$</div></p>
-<p>$\lambda_i$ <em>растёт</em> когда стоимость превышает бюджет — нарушение становится дороже.</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">LagrangianPolicyOptimizer</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Ограниченный Offline RL через обновления прямал-двойственной седловой точки.</span>
-<span class="sd">    Оборачивает любую политику CQL/IQL учётом ограничений через Лагранжа.</span>
-<span class="sd">    λ параметризован в log-пространстве для гарантии λ ≥ 0.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">policy</span><span class="p">,</span> <span class="n">Q_reward</span><span class="p">,</span> <span class="n">Q_cost</span><span class="p">,</span>
-                 <span class="n">cost_threshold</span><span class="p">,</span> <span class="n">lambda_lr</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span>
-                 <span class="n">lambda_init</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">policy</span>   <span class="o">=</span> <span class="n">policy</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">Q_reward</span> <span class="o">=</span> <span class="n">Q_reward</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">Q_cost</span>   <span class="o">=</span> <span class="n">Q_cost</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">d</span>        <span class="o">=</span> <span class="n">cost_threshold</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">log_lam</span>  <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">lambda_init</span><span class="p">))))</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">lam_opt</span>  <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">log_lam</span><span class="p">],</span> <span class="n">lr</span><span class="o">=</span><span class="n">lambda_lr</span><span class="p">)</span>
-
-    <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">lam</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_lam</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
-
-    <span class="k">def</span> <span class="nf">policy_step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">pi_opt</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Прямой шаг: максимизация J_Q - λ*(J_C - d).&quot;&quot;&quot;</span>
-        <span class="n">actions</span><span class="p">,</span> <span class="n">log_probs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
-        <span class="n">q_r</span>        <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q_reward</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
-        <span class="n">q_c</span>        <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q_cost</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
-        <span class="n">lagrangian</span> <span class="o">=</span> <span class="n">q_r</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span> <span class="o">*</span> <span class="p">(</span><span class="n">q_c</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">d</span><span class="p">)</span>
-        <span class="n">pi_loss</span>    <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="n">lagrangian</span> <span class="o">-</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="n">log_probs</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-        <span class="n">pi_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">();</span> <span class="n">pi_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">();</span> <span class="n">pi_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
-        <span class="k">return</span> <span class="p">{</span><span class="s1">&#39;lagrangian&#39;</span><span class="p">:</span> <span class="n">lagrangian</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="s1">&#39;lambda&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span><span class="o">.</span><span class="n">item</span><span class="p">()}</span>
-
-    <span class="k">def</span> <span class="nf">dual_step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Двойственный шаг: подъём при нарушении — увеличиваем λ.&quot;&quot;&quot;</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">q_c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q_cost</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
-        <span class="n">cost_violation</span> <span class="o">=</span> <span class="n">q_c</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">d</span>
-        <span class="n">dual_loss</span> <span class="o">=</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">lam</span> <span class="o">*</span> <span class="n">cost_violation</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">lam_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">();</span> <span class="n">dual_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">();</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
-        <span class="k">return</span> <span class="p">{</span><span class="s1">&#39;cost_violation&#39;</span><span class="p">:</span> <span class="n">cost_violation</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="s1">&#39;lambda&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span><span class="o">.</span><span class="n">item</span><span class="p">()}</span>
+<h2>Часть II: MOReL</h2>
+<h3>Иная геометрия пессимизма</h3>
+<p>MOPO использует <strong>непрерывный</strong> штраф: чем дальше от данных, тем больше вычитается из награды. Политика всё равно может заходить в неопределённые регионы — они просто кажутся менее привлекательными.</p>
+<p>MOReL использует <strong>дискретный</strong> подход: разделяет пространство состояние-действие на «известные» и «неизвестные» регионы и применяет <strong>жёсткий штраф</strong> $\kappa$ в неизвестном регионе. Это создаёт резкую границу, а не градиент.</p>
+<p><strong>Model-Based Offline Reinforcement Learning (MOReL)</strong> — Kidambi et al., NeurIPS 2020 — строит <strong>Пессимистическое MDP (P-MDP)</strong> непосредственно из офлайн-данных с встроенным поглощающим состоянием отказа для OOD-переходов.</p>
+<h3>Построение P-MDP</h3>
+<p>Пусть $\mathcal{D}$ — офлайн-датасет. MOReL определяет порог $\epsilon$ на неопределённость предсказания и разделяет пространство:</p>
+<p><div class="math-display">$$\text{KNOWN}   = \{(s,a) : u(s,a) \leq \epsilon\}$$</div></p>
+<p><div class="math-display">$$\text{UNKNOWN} = \{(s,a) : u(s,a) > \epsilon\}$$</div></p>
+<p><strong>Пессимистическое MDP</strong> $\tilde{\mathcal{M}} = (\mathcal{S} \cup {s_\perp}, \mathcal{A}, \tilde{T}, \tilde{r}, \gamma)$:</p>
+<p><div class="math-display">$$\tilde{T}(s' | s, a) = \begin{cases} \hat{T}(s' | s, a) & \text{если } (s,a) \in \text{KNOWN} \\ \delta(s_\perp) & \text{если } (s,a) \in \text{UNKNOWN} \end{cases}$$</div></p>
+<p><div class="math-display">$$\tilde{r}(s, a) = \begin{cases} \hat{r}(s, a) & \text{если } s \neq s_\perp \\ -\kappa & \text{если } s = s_\perp \end{cases}$$</div></p>
+<p>где $s_\perp$ — поглощающее состояние отказа, а $\kappa &gt; 0$ — большой штраф. Попав в неизвестный регион, агент переходит в $s_\perp$ и получает $-\kappa$ на каждом последующем шаге — сильнейший стимул избегать неизвестного.</p>
+<h3>Теоретическая гарантия</h3>
+<p><strong>Теорема (Kidambi et al., 2020).</strong> Пусть $\hat{\pi}$ — оптимальная политика в P-MDP $\tilde{\mathcal{M}}$. Тогда:</p>
+<p><div class="math-display">$$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^{\hat{\pi}}}[\text{UNKNOWN}]$$</div></p>
+<p>Граница говорит: зазор между оптимальной политикой и тем, что находит MOReL, ограничен вероятностью попадания политики MOReL в неизвестный регион, взвешенной на штраф. Это более сильная гарантия, чем у MOPO: она <strong>не зависит от распределения</strong> и не требует предположений о распределении ошибок динамики.</p>
+<h3>Реализация</h3>
+<blockquote>
+<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/morel.py"><code>morel.py</code></a></p>
+</blockquote>
+<p>MOReL использует ту же архитектуру ансамбля что и MOPO (<code>ProbabilisticDynamicsNet</code>, <code>DynamicsEnsemble</code>). Специфичные для MOReL дополнения:</p>
+<p><strong>Шаг 1 — Калибровка epsilon по данным in-distribution:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># После обучения ансамбля — установить epsilon на 80-м перцентиле</span>
+<span class="c1"># неопределённости на реальных переходах из датасета.</span>
+<span class="n">epsilon</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">calibrate_epsilon</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">percentile</span><span class="o">=</span><span class="mf">80.0</span><span class="p">)</span>
 </code></pre></div>
 
-<hr />
-<h2>Часть IV: Когда физика помогает больше всего</h2>
-<p><strong>Покрытие данными</strong> — главный фактор. Чем реже датасет покрывает операционный диапазон, тем больше пользы от физики. Если данные покрывают 20% возможных рабочих состояний, физика — единственный осмысленный приор для остальных 80%.</p>
-<p><strong>Точность физики</strong> определяет подход:</p>
+<p><strong>Шаг 2 — Ролл-ауты в P-MDP с жёстким HALT:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Внутри MOReLAgent.generate_synthetic_data():</span>
+<span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rollout_horizon</span><span class="p">):</span>
+    <span class="n">action</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">])</span>
+    <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
+        <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">)</span>
+
+    <span class="c1"># Жёсткая граница: если OOD — завершить с штрафом</span>
+    <span class="n">ood</span> <span class="o">=</span> <span class="n">uncertainty</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span>
+
+    <span class="n">reward</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+        <span class="n">ood</span><span class="p">,</span>
+        <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">kappa</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">ood</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">),</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">done</span> <span class="o">=</span> <span class="n">ood</span><span class="o">.</span><span class="n">float</span><span class="p">()</span>
+
+    <span class="c1"># Поглощающее состояние: остановленные ролл-ауты остаются на месте</span>
+    <span class="n">next_state_out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+        <span class="n">ood</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">next_state</span><span class="p">)</span>
+
+    <span class="c1"># Деактивировать остановленные ролл-ауты</span>
+    <span class="n">active</span><span class="p">[</span><span class="n">active</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">as_tuple</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="n">ood</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">False</span>
+</code></pre></div>
+
+<p>Ключевое отличие от MOPO: вместо вычитания непрерывного штрафа OOD-переходы немедленно завершаются с <code>done=True</code> и наградой $-\kappa$. Q-функция видит нулевое будущее вознаграждение после таких переходов.</p>
+<h3>Выбор $\epsilon$</h3>
 <table>
 <thead>
 <tr>
-<th>Тип ограничения</th>
-<th>Надёжность</th>
-<th>Рекомендуемый метод</th>
+<th>$\epsilon$</th>
+<th>Эффект</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Сохранение массы/энергии</td>
-<td>Точное</td>
-<td>Жёсткое (Лагранжа) или мягкий штраф</td>
+<td>Очень малый</td>
+<td>Крошечный известный регион — агент ограничен рядом с поведенческой политикой (≈ BC)</td>
 </tr>
 <tr>
-<td>Операционные лимиты оборудования</td>
-<td>Точное</td>
-<td>Мягкий штраф или проекция</td>
+<td>Умеренный (по умолчанию)</td>
+<td>Включает хорошо смоделированные экстраполяции</td>
 </tr>
 <tr>
-<td>Эмпирические корреляции (вязкость, конверсия)</td>
-<td>Приближённое</td>
-<td>Мягкий штраф, слабое λ</td>
-</tr>
-<tr>
-<td>Постоянные времени первого порядка</td>
-<td>Умеренное</td>
-<td>Приор гибридной модели</td>
-</tr>
-<tr>
-<td>Неизвестные возмущения</td>
-<td>Н/Д</td>
-<td>Только нейросеть остатка</td>
+<td>Очень большой</td>
+<td>Всё пространство «известно» — возврат к неограниченному MBRL</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Практическая матрица решений:</strong></p>
-<div class="codehilite"><pre><span></span><code>                         Доступность физических знаний
-                    Нет             Частичная         Высокая
-               ┌──────────────────┬─────────────────┬──────────────────┐
-  Покрытие     Редкое   │  Pure BC        │ Штраф в          │ Гибридная мод.   │
-                         │  (Глава 1)      │ награде+MOReL    │ + MOReL          │
-  данных       Плотное  │  CQL / IQL      │ CQL + штраф      │ Гибрид + CQL     │
-                         │  (Гл. 3–4)      │                  │                  │
-               └──────────────────┴─────────────────┴──────────────────┘
+<p><strong>Практика</strong>: устанавливайте $\epsilon$ на уровне 70–80-го перцентиля неопределённости на данных in-distribution.</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Калибровка epsilon по данным in-distribution</span>
+<span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+    <span class="n">s_cal</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][:</span><span class="mi">2000</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">a_cal</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][:</span><span class="mi">2000</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">u_cal</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span><span class="n">s_cal</span><span class="p">,</span> <span class="n">a_cal</span><span class="p">)</span>
+<span class="n">epsilon</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">quantile</span><span class="p">(</span><span class="n">u_cal</span><span class="p">,</span> <span class="mf">0.80</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Откалиброванный epsilon = </span><span class="si">{</span><span class="n">epsilon</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 
-<p>D4RL-эталоны находятся внизу слева (плотные данные, нет физики). Промышленный Offline RL обычно — вверху справа.</p>
 <hr />
-<h2>Объединение трёх подходов</h2>
-<p>Три части этой главы хорошо сочетаются. Реалистичный pipeline physics-informed Offline RL может использовать:</p>
-<ol>
-<li><strong>Гибридный ансамбль</strong> (Часть II) вместо black-box ансамбля в MOPO/MOReL</li>
-<li><strong>Физическое формирование награды</strong> (Часть I) внутри синтетических развёрток</li>
-<li><strong>Оптимизатор Лагранжа</strong> (Часть III) для жёстких лимитов безопасности при обучении политики</li>
-</ol>
-<p>Каждый уровень нацелен на свой вид отказа: гибридная модель устраняет физически некорректную экстраполяцию динамики; формирование награды штрафует траектории, дрейфующие к физической недопустимости; Лагранжиан обеспечивает учёт ограничений, которые должны выполняться безусловно при развёртке.</p>
-<hr />
-<h2>Итог</h2>
+<h2>MOPO vs MOReL vs модельно-свободные</h2>
 <table>
 <thead>
 <tr>
-<th>Подход</th>
-<th>Что изменяет</th>
-<th>Совместим с</th>
-<th>Когда применять</th>
+<th></th>
+<th>CQL</th>
+<th>IQL</th>
+<th>MOPO</th>
+<th>MOReL</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Штраф в награде</td>
-<td>Функция награды</td>
-<td>Любой (CQL, IQL, MOPO, MOReL)</td>
-<td>Физические границы известны</td>
+<td>Использует модель</td>
+<td>Нет</td>
+<td>Нет</td>
+<td>Да</td>
+<td>Да</td>
 </tr>
 <tr>
-<td>Гибридная динамика</td>
-<td>Динамическая модель</td>
-<td>MOPO, MOReL</td>
-<td>Частичная физика; редкие данные</td>
+<td>Обработка OOD</td>
+<td>Занижает Q</td>
+<td>Никогда не запрашивает OOD</td>
+<td>Непрерывный штраф $-\lambda u$</td>
+<td>Жёсткая граница + $-\kappa$</td>
 </tr>
 <tr>
-<td>Ограничение Лагранжа</td>
-<td>Целевая функция политики</td>
-<td>Любой</td>
-<td>Жёсткие ограничения; необратимые нарушения</td>
+<td>Аугментация данных</td>
+<td>Нет</td>
+<td>Нет</td>
+<td>Да</td>
+<td>Да</td>
+</tr>
+<tr>
+<td>Геометрия пессимизма</td>
+<td>Мягкая (штраф Q)</td>
+<td>Структурная (V-сеть)</td>
+<td>Мягкая (штраф награды)</td>
+<td>Жёсткая (поглощающее состояние)</td>
+</tr>
+<tr>
+<td>Теоретическая гарантия</td>
+<td>Нижняя оценка Q</td>
+<td>Через V</td>
+<td>Нижняя оценка $J(\pi)$</td>
+<td>PAC-оценка без предположений на распределение</td>
+</tr>
+<tr>
+<td>Гиперпараметры</td>
+<td>$\alpha$</td>
+<td>$\tau, \beta$</td>
+<td>$\lambda, h, N$</td>
+<td>$\epsilon, \kappa, h, N$</td>
+</tr>
+<tr>
+<td>Лучше всего для</td>
+<td>Плотные датасеты</td>
+<td>Стабильное обучение</td>
+<td>Разреженные, гладкая динамика</td>
+<td>Жёсткие требования безопасности</td>
 </tr>
 </tbody>
 </table>
-<p>Physics-informed методы — это модульный слой, а не замена алгоритмов Offline RL. Штраф в награде встраивается в CQL без изменения алгоритма. Гибридный ансамбль заменяет только сеть динамики в MOPO — логика развёртки и SAC остаются неизменными. Лагранжиан оборачивает любой оптимизатор политики как модуль учёта ограничений через Лагранжа.</p>
-<p>Глава 9 разбирает промышленный кейс, показывая, как эти части складываются вместе на практике.</p>
 <hr />
-<h2>Ссылки</h2>
+<h2>Гайд по гиперпараметрам</h2>
+<h3>MOPO: $\lambda$ (вес штрафа за неопределённость)</h3>
+<table>
+<thead>
+<tr>
+<th>$\lambda$</th>
+<th>Поведение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$\lambda = 0$</td>
+<td>Нет штрафа — полное доверие модели (опасно)</td>
+</tr>
+<tr>
+<td>$\lambda = 0.5$</td>
+<td>Лёгкий штраф — для высококачественных моделей</td>
+</tr>
+<tr>
+<td>$\lambda = 1.0$</td>
+<td>По умолчанию — разумный пессимизм</td>
+</tr>
+<tr>
+<td>$\lambda = 3.0$+</td>
+<td>Сильный штраф — для зашумлённых данных</td>
+</tr>
+<tr>
+<td>$\lambda \to \infty$</td>
+<td>Возврат к модельно-свободному на реальных данных</td>
+</tr>
+</tbody>
+</table>
+<h3>Оба: $h$ (горизонт ролл-аута)</h3>
 <ul>
-<li>Altman, E. (1999). <em>Constrained Markov Decision Processes.</em> CRC Press.</li>
-<li>Banerjee, C., Nguyen, T., Fookes, C., &amp; Raissi, M. (2023). <em>A Survey on Physics Informed Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2309.01909">arXiv:2309.01909</a>.</li>
-<li>Paternain, S., Calvo-Fullana, M., Chamon, L., &amp; Ribeiro, A. (2022). <em>Safe Policies for Factored MDPs.</em> JMLR. <a href="https://arxiv.org/abs/2106.09155">arXiv:2106.09155</a>.</li>
-<li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1811.10561">arXiv:1811.10561</a>.</li>
-<li>Lusch, B., Kutz, J.N., &amp; Brunton, S.L. (2018). <em>Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.</em> Nature Communications.</li>
-<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
+<li><code>h=1</code>: однощаговые предсказания. Безопаснее всего, но ограниченная аугментация.</li>
+<li><code>h=5</code>: по умолчанию. Хороший баланс аугментации vs накопление ошибок.</li>
+<li><code>h=10+</code>: только при очень высокой точности модели.</li>
+</ul>
+<p><strong>Правило большого пальца</strong>: если модель имеет ошибку $\epsilon_1$ за шаг, за $h$ шагов накапливается примерно $h \cdot \epsilon_1$. Устанавливайте $h$ так, чтобы $h \cdot \epsilon_1 &lt; 0.1$.</p>
+<h3>Оба: $N$ (размер ансамбля)</h3>
+<ul>
+<li><code>N=3</code>: минимум для значимой неопределённости (не рекомендуется в продакшене).</li>
+<li><code>N=5</code>: по умолчанию.</li>
+<li><code>N=7–10</code>: лучше оценки, пропорциональные вычислительные затраты.</li>
 </ul>
 <hr />
-<h2>Приложение 6.A — Доказательство Теоремы 6.1 (Зазор оптимальности)</h2>
-<p><strong>Обозначения.</strong> Пусть CMDP допустима с оптимальной политикой $\pi^*$. Пусть $\hat\pi_\lambda$ оптимальна в штрафной MDP с $\tilde r = r - \lambda\max(0,g)$. Обозначим нарушение ограничения $V_+(\pi) = \mathbb{E}_\pi[\sum_t \gamma^t \max(0, g(s_t,a_t))]/(1-\gamma) \geq 0$.</p>
-<p><strong>Доказательство.</strong> Так как $\hat\pi_\lambda$ оптимальна в штрафной MDP:</p>
-<p><div class="math-display">$$J(\hat\pi_\lambda) - \lambda(1-\gamma) V_+(\hat\pi_\lambda) \geq J(\pi^*) - \lambda(1-\gamma) V_+(\pi^*)$$</div></p>
-<p>Так как $\pi^<em> \in \Pi_C$, имеем $g \leq 0$ вдоль её траекторий, поэтому $V_+(\pi^</em>) = 0$:</p>
-<p><div class="math-display">$$J(\hat\pi_\lambda) - \lambda(1-\gamma) V_+(\hat\pi_\lambda) \geq J(\pi^*)$$</div></p>
-<p>Перегруппировывая:</p>
-<p><div class="math-display">$$J(\pi^*) - J(\hat\pi_\lambda) \leq -\lambda(1-\gamma) V_+(\hat\pi_\lambda) \leq 0$$</div></p>
-<p>При конечном $\lambda$ точная допустимость $\hat\pi_\lambda$ не выполняется; модель получает малое положительное нарушение. Используя $|g|<em max="max">\infty \leq C</em>$:</p>
-<p><div class="math-display">$$V_+(\hat\pi_\lambda) \leq \frac{C_{max}}{\lambda(1-\gamma)^2}$$</div></p>
-<p>Подставляя и используя двустороннюю оценку (см. Paternain et al., 2019, Prop. 1):</p>
-<p><div class="math-display">$$J(\pi^*) - J(\hat\pi_\lambda) \leq \frac{2\,C_{max}}{(1-\gamma)\,\lambda} \qquad \square$$</div></p>
+<h2>Практические советы</h2>
+<p><strong>Нормализуйте всё.</strong> Состояния, действия, награды — всё нормализуется до обучения модели динамики. Входные данные в $[-1, 1]$ или $[0, 1]$ критически важны для сходимости.</p>
+<p><strong>Остаточное предсказание обязательно.</strong> Всегда предсказывайте $\Delta s = s' - s$. Для медленно изменяющихся систем (большинство промышленных процессов) остаток на порядки меньше абсолютного состояния.</p>
+<p><strong>Мониторьте расхождение ансамбля.</strong> Отношение <code>u(OOD) / u(in-distribution)</code> должно быть &gt;&gt; 1. Если близко к 1 — ансамбль недостаточно разнообразен.</p>
+<p><strong>Периодически перегенерируйте синтетические данные.</strong> По мере улучшения политики она посещает другие регионы. Перегенерируйте каждые 5–10 эпох SAC.</p>
+<p><strong>Для промышленных приложений</strong>: если у вас есть физический симулятор (хотя бы приближённый), обучайте нейронный ансамбль на остатках между физической моделью и реальными данными. Этот гибридный подход часто требует значительно меньше офлайн-данных. Глава 8 развивает эту идею в полноценную методологию.</p>
 <hr />
-<h2>Приложение 6.B — Граница ошибки гибридной модели (Предложение 6.2)</h2>
-<p><strong>Обозначения.</strong> Пусть $f^<em>$ — истинная динамика. Физическая модель имеет ошибку $\epsilon_{phys}(s,a) = f_{phys}(s,a) - f^</em>(s,a)$, нейросеть остатка — ошибку $\epsilon_{res}(s,a) = \hat f_{NN}(s,a) - (f^*(s,a) - f_{phys}(s,a))$.</p>
-<p><strong>Доказательство.</strong> По определению:</p>
-<p><div class="math-display">$$f_{hybrid}(s,a) - f^*(s,a) = f_{phys}(s,a) + \hat f_{NN}(s,a) - f^*(s,a) = \epsilon_{res}(s,a)$$</div></p>
-<p>Беря нормы и математическое ожидание по тестовому распределению $\rho$:</p>
-<p><div class="math-display">$$\mathbb{E}_\rho[\|f_{hybrid} - f^*\|] = \mathbb{E}_\rho[\|\epsilon_{res}\|]$$</div></p>
-<p>Цель остатка $\delta^<em> = f^</em> - f_{phys}$ имеет <strong>меньшую эффективную вариацию</strong> везде, где $f_{phys}$ точна: $\text{Var}(\delta^<em>) &lt; \text{Var}(f^</em>)$ когда $f_{phys}$ положительно коррелирует с $f^<em>$. По стандартной теории аппроксимации функций (ограничения Радемахера), ошибка обобщения масштабируется со сложностью класса функций цели. Поскольку $\delta^</em>$ лежит в классе меньшей сложности, чем $f^*$, имеем $\epsilon_{res} &lt; \epsilon_{BB}$ при той же мощности модели и объёме обучающей выборки. В OOD-областях $\hat f_{NN} \to 0$, поэтому $f_{hybrid} \to f_{phys}$ — физически осмысленный fallback. $\square$</p>
+<h2>Ограничения</h2>
+<p><strong>Ошибки модели накапливаются.</strong> На $h$ шагах однощаговые ошибки суммируются. Штраф MOPO или жёсткая граница MOReL снижают риск, но очень длинные горизонты остаются проблематичными.</p>
+<p><strong>Высокоразмерные наблюдения.</strong> Обучение $T(s' | s, a)$ по пикселям требует значительно больше данных, чем по компактным представлениям состояния.</p>
+<p><strong>Вычислительные затраты масштабируются с размером ансамбля.</strong> Обучение и инференс требуют $N \times$ вычислений по сравнению с одной моделью.</p>
+<p><strong>Модель вознаграждения.</strong> В нашей реализации функция вознаграждения известна аналитически. На практике награды тоже могут потребовать обучения — ещё один источник ошибок.</p>
+<p><strong>Разнообразие ансамбля хрупко.</strong> Если все модели сходятся к одному решению, оценки неопределённости обрушиваются до нуля — штраф MOPO и граница MOReL становятся бесполезными.</p>
 <hr />
-<h2>Приложение 6.C — Доказательство Теоремы 6.3 (Сильная двойственность)</h2>
-<p><strong>Переформулировка через occupancy measures.</strong> Определим нормированную дисконтированную occupancy measure:</p>
-<p><div class="math-display">$$d^\pi(s,a) = (1-\gamma)\sum_{t=0}^\infty \gamma^t \Pr^\pi(s_t=s,\, a_t=a)$$</div></p>
-<p>Множество допустимых occupancy measures — политоп, задаваемый потоковыми ограничениями Беллмана:</p>
-<p><div class="math-display">$$\sum_a d(s,a) = (1-\gamma)\,\mu_0(s) + \gamma \sum_{s',a'} P(s|s',a')\,d(s',a') \quad \forall s$$</div></p>
-<p>CMDP становится задачей LP: $\max_{d \in \mathcal{D}}\; \langle d, r \rangle$ при $\langle d, C_i \rangle \leq d_i$.</p>
-<p><strong>Двойственная LP.</strong> Вводя множители $\lambda \geq 0$ для ограничений по стоимости и $V(s)$ для потоковых ограничений, двойственная задача принимает вид неравенств Беллмана для модифицированной награды $r - \sum_i \lambda_i C_i$:</p>
-<p><div class="math-display">$$V(s) \geq r(s,a) - \textstyle\sum_i \lambda_i C_i(s,a) + \gamma \sum_{s'} P(s'|s,a)\,V(s') \quad \forall s,a$$</div></p>
-<p><strong>Сильная двойственность.</strong> Прямая LP допустима (по условию) и ограничена (награды и штрафы ограничены). По теореме о сильной двойственности LP (лемма Фаркаша–Минковского) прямой и двойственный оптимумы совпадают. Двойственные переменные $\lambda_i \geq 0$ — это в точности множители Лагранжа для ограничений по стоимости.</p>
-<p><strong>Дополняющая нежёсткость.</strong> В оптимуме $\lambda_i^<em> (\langle d^</em>, C_i \rangle - d_i) = 0$ для всех $i$. Это означает: $\lambda_i^<em> &gt; 0$ только когда $i$-е ограничение активно ($J_{C_i}(\pi^</em>) = d_i$). Неактивные ограничения имеют $\lambda_i^* = 0$ и не влияют на оптимальную политику. $\square$</p></main>
+<h2>Итоги</h2>
+<table>
+<thead>
+<tr>
+<th>Свойство</th>
+<th>MOPO</th>
+<th>MOReL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Необходимые данные</td>
+<td>Переходы $(s, a, r, s')$</td>
+<td>Переходы $(s, a, r, s')$</td>
+</tr>
+<tr>
+<td>Ключевой механизм</td>
+<td>Неопределённость ансамбля как мягкий штраф награды</td>
+<td>Жёсткое разделение known/unknown через порог $\epsilon$</td>
+</tr>
+<tr>
+<td>Пессимизм</td>
+<td>Непрерывный: $\tilde{r} = r - \lambda u$</td>
+<td>Дискретный: поглощающее состояние за $\epsilon$</td>
+</tr>
+<tr>
+<td>Теоретическая гарантия</td>
+<td>Нижняя оценка $J(\pi)$</td>
+<td>PAC-оценка без предположений на распределение</td>
+</tr>
+<tr>
+<td>Лучше для</td>
+<td>Максимизация производительности, гладкая динамика</td>
+<td>Жёсткие требования безопасности, нужны формальные гарантии</td>
+</tr>
+</tbody>
+</table>
+<p>Оба алгоритма представляют качественный сдвиг от модельно-свободного offline RL: вместо ограничения политики рядом с данными мы расширяем данные на большую область пространства состояние-действие. Ансамбль обеспечивает безопасность этого расширения — агент доверяет модели только там, где она надёжна.</p>
+<p>Следующий вопрос: можно ли делать лучше, чем обучать динамику с нуля? Если мы знаем физику системы — законы сохранения, дифференциальные уравнения, свойства материала — мы можем встроить эти знания прямо в модель и резко сократить объём необходимых данных. Это тема Главы 6: Physics-Informed Offline RL.</p>
+<hr />
+<h2>Литература</h2>
+<ul>
+<li>Yu, T., Thomas, G., Yu, L., Ermon, S., Zou, J., Levine, S., Finn, C., &amp; Ma, T. (2020). <em>MOPO: Model-Based Offline Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/2005.13239">arXiv:2005.13239</a>.</li>
+<li>Kidambi, R., Rajeswaran, A., Netrapalli, P., &amp; Kakade, S. (2020). <em>MOReL: Model-Based Offline Reinforcement Learning.</em> NeurIPS. <a href="https://arxiv.org/abs/2005.05951">arXiv:2005.05951</a>.</li>
+<li>Janner, M., Fu, J., Zhang, M., &amp; Levine, S. (2019). <em>When to Trust Your Model: Model-Based Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/1906.08253">arXiv:1906.08253</a>.</li>
+<li>Chua, K., Calandra, R., McAllister, R., &amp; Levine, S. (2018). <em>Deep Reinforcement Learning in a Handful of Trials using Probabilistic Dynamics Models.</em> NeurIPS. <a href="https://arxiv.org/abs/1805.12114">arXiv:1805.12114</a>.</li>
+<li>Lakshminarayanan, B., Pritzel, A., &amp; Blundell, C. (2017). <em>Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles.</em> NeurIPS. <a href="https://arxiv.org/abs/1612.01474">arXiv:1612.01474</a>.</li>
+<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
+<li>Fu, J. et al. (2020). <em>D4RL: Datasets for Deep Data-Driven Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2004.07219">arXiv:2004.07219</a>.</li>
+</ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/ru/chapter7.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Модельный Offline RL (MOPO, MOReL)</span></a>
-    <a href="/offline-rl-book/ru/chapter9.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Промышленные применения</span></a>
+<a href="/offline-rl-book/ru/chapter7.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Decision Transformers</span></a>
+    <a href="/offline-rl-book/ru/chapter9.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Physics-Informed Offline RL</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

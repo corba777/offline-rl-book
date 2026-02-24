@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chapter 7: Model-Based Offline RL (MOPO, MOReL)</title>
+  <title>Chapter 7: Decision Transformers</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -58,453 +58,158 @@
   </div>
 </header>
 <main>
-<h1>Chapter 7: Model-Based Offline RL (MOPO, MOReL)</h1>
+<h1>Chapter 7: Decision Transformers</h1>
 <blockquote>
-<p><em>"If you can't run new experiments, build a simulator from the data you have — and experiment inside it. But remember: the simulator lies in the places you've never been."</em></p>
+<p><em>"What if we never computed a Bellman backup? Just ask: given this history and this desired return, what action would a good agent take?"</em></p>
 </blockquote>
 <hr />
-<h2>Beyond Model-Free</h2>
-<p>Chapters 2–6 attacked offline RL from the same angle: modify the value function to be pessimistic about actions not in the dataset. CQL pushes Q-values down for OOD actions. IQL avoids querying OOD actions entirely.</p>
-<p>Both methods share a fundamental limitation: <strong>they can only use the transitions the behavior policy collected</strong>. If critical regions of the state-action space are simply absent from the dataset, model-free methods have nothing to learn from.</p>
-<p>Model-based offline RL takes a different approach: <strong>learn the dynamics of the system</strong>, then generate synthetic transitions in your head. Instead of constraining yourself to existing data, you construct a mental model and <em>imagine</em> what would happen under new actions.</p>
-<p>This is powerful — but dangerous. The model is wrong wherever the data is sparse, and a policy that exploits model errors will fail as catastrophically as one that exploits Q-function errors. The two algorithms in this chapter solve this differently:</p>
-<ul>
-<li><strong>MOPO</strong> (Yu et al., NeurIPS 2020) — penalize synthetic rewards by model uncertainty. Let the policy range freely but make uncertain regions unattractive.</li>
-<li><strong>MOReL</strong> (Kidambi et al., NeurIPS 2020) — construct an explicit boundary. Inside well-modeled regions the agent optimizes normally; outside it receives a large fixed penalty.</li>
-</ul>
-<p>Same goal, different geometry of pessimism.</p>
+<h2>A Different Paradigm</h2>
+<p>Chapters 2–6 all shared the same backbone: a <strong>value function</strong> (Q or V) and a <strong>policy</strong>, trained with Bellman backups or policy gradients. The central challenge was extrapolation error — the value function is wrong for OOD actions — and we addressed it with pessimism (CQL, IQL) or policy constraints (TD3+BC, AWAC).</p>
+<p><strong>Decision Transformer (DT)</strong> — Chen et al., NeurIPS 2021 — takes a different view. It treats <strong>offline RL as sequence modeling</strong>: given a trajectory prefix (past states, actions, and a summary of future return), predict the next action. There is <strong>no Q-function</strong>, <strong>no Bellman backup</strong>, and <strong>no policy gradient</strong>. The "policy" is the conditional distribution of actions given context; training is <strong>supervised learning</strong> on sequences from the dataset.</p>
+<p>This sidesteps extrapolation error in a structural way: the model never evaluates $\max_{a'} Q(s', a')$ over OOD actions, because there is no Q. It only ever predicts actions conditioned on inputs that appear in the data (state and return-to-go sequences). The tradeoff is that long-horizon credit assignment is learned implicitly from the data, not from TD; and the choice of conditioning (e.g. return-to-go) matters a lot.</p>
 <hr />
-<h2>Part I: MOPO</h2>
-<h3>The Idea</h3>
-<p><strong>Model-Based Offline Policy Optimization (MOPO)</strong> works in three phases:</p>
+<h2>The Idea</h2>
+<p>In standard RL we learn $Q(s,a)$ or $\pi(a|s)$ and improve them with backups or gradients. In DT we learn a <strong>conditional sequence model</strong>:</p>
+<p><div class="math-display">$$\pi(a_t \mid s_{1:t}, a_{1:t-1}, R_{1:t})$$</div></p>
+<p>where $R_t$ is the <strong>return-to-go</strong> at time $t$: the sum of rewards from $t$ onward in the trajectory, $R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$. So the model is conditioned on:</p>
 <ol>
-<li>
-<p><strong>Learn a dynamics model</strong> $\hat{T}(s' | s, a)$ from the offline dataset using an <strong>ensemble</strong> of neural networks. Each model in the ensemble makes slightly different predictions. Where they agree, the model is confident. Where they disagree, the model is uncertain.</p>
-</li>
-<li>
-<p><strong>Generate synthetic rollouts</strong> by branching from real states. Start at a real state $s \in \mathcal{D}$, choose an action, predict $s'$ with the model, repeat for $h$ steps. After each step, <strong>penalize the reward</strong> by the model's uncertainty:</p>
-</li>
+<li><strong>Past states</strong> $s_1, \ldots, s_t$</li>
+<li><strong>Past actions</strong> $a_1, \ldots, a_{t-1}$</li>
+<li><strong>Return-to-go</strong> $R_1, \ldots, R_t$ (the desired or observed cumulative future reward from each step)</li>
 </ol>
-<p><div class="math-display">$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$</div></p>
+<p>At <strong>test time</strong>, we choose a <strong>target return</strong> $R^<em>$ (e.g. the 90th percentile of returns in the dataset) and feed the model the same trajectory prefix plus $R^</em>$ as the current return-to-go. The model then generates actions that, in training data, were associated with that high return. No value function, no $\max_a$ — just autoregressive action prediction.</p>
+<p><strong>Why this avoids extrapolation error:</strong> The model is never asked to evaluate an action it hasn't seen in a similar context. It only predicts the next action given (state history, action history, return-to-go). All of these are observed in the dataset. The "policy" is implicit: high return-to-go → actions that led to high return in the data.</p>
+<hr />
+<h2>Formalization</h2>
+<h3>Sequence Representation</h3>
+<p>Each trajectory in the dataset is a sequence of length $T$:</p>
+<p><div class="math-display">$$\tau = (s_1, a_1, r_1, R_1, s_2, a_2, r_2, R_2, \ldots, s_T, a_T, r_T, R_T)$$</div></p>
+<p>with $R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$. We can also use <strong>reward-to-go</strong> (undiscounted sum) or normalize $R_t$ (e.g. by the max return in the dataset) for stability.</p>
+<p>The model receives <strong>chunks</strong> of length $K$ (context length): for each timestep $t$, the input is</p>
+<p><div class="math-display">$$(R_{t-K+1}, s_{t-K+1}, a_{t-K+1}, \ldots, R_t, s_t, \_ )$$</div></p>
+<p>and the target is $a_t$. So we have three streams: return-to-go, state, action. Each token is embedded; the action at the last position is masked (we predict it).</p>
+<h3>Architecture</h3>
+<p>DT uses a <strong>GPT-style transformer</strong> with causal masking:</p>
 <ol>
-<li><strong>Train a standard RL algorithm</strong> (SAC) on the combined real + synthetic data. The penalty ensures the agent avoids regions where the model is unreliable.</li>
+<li><strong>Embeddings:</strong> Each $(R_t, s_t, a_t)$ is projected to a common dimension $d$. For $a_t$ we can use a linear layer (continuous) or an MLP; $s_t$ and $R_t$ are typically linear.</li>
+<li><strong>Positional encoding:</strong> Timestep indices (or learned positions) are added so the model knows the order.</li>
+<li><strong>Causal self-attention:</strong> The model attends only to past tokens (no future leak). So at position $t$, the model sees $R_{1:t}, s_{1:t}, a_{1:t-1}$ and predicts $a_t$.</li>
+<li><strong>Output head:</strong> The last hidden state (at the position of $a_t$) is passed through an MLP that outputs the action (e.g. mean of a Gaussian, or tanh for bounded action).</li>
 </ol>
-<p>The result: an effective dataset 10–100× larger than the original, with built-in safety from the uncertainty penalty.</p>
-<h3>Formalization</h3>
-<h4>The Dynamics Ensemble</h4>
-<p>We train an ensemble of $N$ probabilistic models ${\hat{T}<em i="1">i}</em>^N$, each outputting a Gaussian over next states:</p>
-<p><div class="math-display">$$\hat{T}_i(s' | s, a) = \mathcal{N}\left(s + \mu_{\theta_i}(s, a), \; \sigma^2_{\theta_i}(s, a)\right)$$</div></p>
-<p>Key design choices:</p>
-<ul>
-<li><strong>Residual prediction</strong>: predict $\Delta s = s' - s$ rather than $s'$ directly. This gives the network an identity baseline — predicting "nothing changes" costs zero, and the network only needs to learn the correction.</li>
-<li><strong>NLL training</strong>: minimizing negative log-likelihood $-\log \hat{T}_i(s' | s, a)$ trains both the mean (accuracy) and variance (calibrated uncertainty).</li>
-<li><strong>Bootstrap sampling</strong>: each model is trained on a random 80% of the data, forcing diversity across ensemble members.</li>
-</ul>
-<h4>Uncertainty Estimation</h4>
-<p>Given $(s, a)$, each model predicts a mean $\hat{s}'_i$. The <strong>epistemic uncertainty</strong> — "how much do the models disagree?" — is:</p>
-<p><div class="math-display">$$u(s, a) = \left\| \text{Std}_{i=1}^N \left[ \hat{s}'_i \right] \right\|_2$$</div></p>
-<p>This is the standard deviation of predictions across ensemble members, collapsed to a scalar via L2 norm.</p>
-<p><strong>Why ensemble disagreement works</strong>: if all models saw similar data near $(s, a)$, they converge to similar predictions — low $u$. If the data is sparse, bootstrap resampling makes each model learn different spurious patterns — high $u$. This is the key mechanism: uncertainty is high exactly where the data is absent.</p>
-<h4>The MOPO Objective</h4>
-<p>MOPO constructs a <strong>pessimistic MDP</strong> $\tilde{\mathcal{M}}$ with penalized rewards and then optimizes the policy in this MDP:</p>
-<p><div class="math-display">$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$</div></p>
-<p><div class="math-display">$$\pi^* = \arg\max_\pi \; \mathbb{E}_{\tilde{\mathcal{M}}} \left[ \sum_t \gamma^t \tilde{r}(s_t, a_t) \right]$$</div></p>
-<p>The theoretical guarantee from Yu et al. (2020):</p>
-<p><div class="math-display">$$J(\pi) \geq \hat{J}_{\tilde{\mathcal{M}}}(\pi) - C \cdot \mathbb{E}_{s \sim d^\pi} \left[ \max_a u(s, a) \right]$$</div></p>
-<p>where $J(\pi)$ is the true return and $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ is the return in the pessimistic model. The bound says: optimizing in the penalized model gives a lower bound on real performance, with a gap proportional to the remaining model error.</p>
-<h4>Branched Rollouts</h4>
-<p>Rather than rolling out entire episodes from scratch, MOPO uses <strong>branched rollouts</strong>:</p>
+<h3>Training Objective</h3>
+<p><strong>Supervised learning:</strong> Minimize the negative log-likelihood of the dataset actions under the model:</p>
+<p><div class="math-display">$$\mathcal{L} = -\mathbb{E}_{\tau \sim \mathcal{D}} \left[ \sum_{t=1}^{T} \log \pi_\theta(a_t \mid R_{1:t}, s_{1:t}, a_{1:t-1}) \right]$$</div></p>
+<p>For continuous actions, the model usually outputs a Gaussian mean (and optionally log-std); the loss is MSE on the mean (or full Gaussian NLL). No rewards in the loss — only states, actions, and return-to-go. The return-to-go is a <strong>label</strong> that tells the model "in this context, we want behavior that achieved this return." So the same state sequence can appear with different $R_t$ in different chunks (from different trajectories), and the model learns to map (context, desired return) → action.</p>
+<h3>At Test Time</h3>
 <ol>
-<li>Sample a starting state $s_0$ uniformly from the real dataset $\mathcal{D}$.</li>
-<li>Roll out for $h$ steps using the model and current policy.</li>
-<li>Each synthetic transition $(s_t, a_t, \tilde{r}<em t_1="t+1">t, s</em>)$ is added to a synthetic buffer.</li>
+<li>Initialize $R_1 = R^*$ (target return, e.g. high percentile of dataset returns).</li>
+<li>Observe $s_1$; feed $(R_1, s_1, _)$ to the model; get $a_1$.</li>
+<li>Execute $a_1$, get $s_2, r_1$. Set $R_2 = R_1 - r_1$ (or $R_2 = (R_1 - r_1) / \gamma$ depending on convention).</li>
+<li>Feed $(R_1, s_1, a_1, R_2, s_2, _)$; get $a_2$. Repeat.</li>
 </ol>
-<p>Starting from real states ensures the rollout begins in a well-modeled region. The short horizon $h$ limits error compounding. The penalized reward discourages visiting poorly modeled regions within the rollout.</p>
-<h3>Implementation</h3>
+<p>So we <strong>condition on the desired return</strong> and let the model autoregressively generate actions. The return-to-go is updated each step to reflect how much "return budget" is left.</p>
+<hr />
+<h2>Implementation Sketch</h2>
 <blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/mopo.py"><code>mopo.py</code></a></p>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/decision_transformer.py"><code>decision_transformer.py</code></a></p>
 </blockquote>
-<h4>Probabilistic Dynamics Model</h4>
-<p>Each member of the ensemble outputs mean and log-variance for next-state residuals:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">ProbabilisticDynamicsNet</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<h3>Token Embedding and Model</h3>
+<p>Chunks are built in <code>ChunkDataset</code>: for each (trajectory, timestep $t$) we form padded arrays of length <code>context_len</code> for return-to-go, states, and actions (actions up to $t-1$; we predict $a_t$). The model concatenates $(R, s, a)$ per timestep into a single token, embeds with one linear layer, adds positional embedding, and runs a causal transformer:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">DecisionTransformer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Single probabilistic dynamics model: (s, a) -&gt; (mean, log_var) of s&#39;.</span>
-
-<span class="sd">    Outputs a Gaussian over next-state *residuals*:</span>
-<span class="sd">        s&#39;_pred ~ N(s + mean(s,a), exp(log_var(s,a)))</span>
-
-<span class="sd">    Residual prediction is critical for stability — the identity baseline</span>
-<span class="sd">    makes it easier to learn small corrections.</span>
-
-<span class="sd">    Trained with NLL — not MSE — so the network learns its own uncertainty.</span>
+<span class="sd">    GPT-style model. Input: context_len tokens, each (R, s, a) concatenated and embedded.</span>
+<span class="sd">    Output: predicted action for the last timestep.</span>
+<span class="sd">    Causal mask: each position sees only past.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">256</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">n_heads</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">n_layers</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">context_len</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="n">inp_dim</span> <span class="o">=</span> <span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">inp_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">context_len</span> <span class="o">=</span> <span class="n">context_len</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">token_dim</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">embed</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pos_embed</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">context_len</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">))</span>
+        <span class="n">encoder_layer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">TransformerEncoderLayer</span><span class="p">(</span>
+            <span class="n">d_model</span><span class="o">=</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">nhead</span><span class="o">=</span><span class="n">n_heads</span><span class="p">,</span> <span class="n">dim_feedforward</span><span class="o">=</span><span class="n">hidden_dim</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span>
+            <span class="n">dropout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">activation</span><span class="o">=</span><span class="s1">&#39;relu&#39;</span><span class="p">,</span> <span class="n">batch_first</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">norm_first</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">log_var_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
-        <span class="c1"># Learnable bounds on log_var to prevent numerical issues</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">10.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="mf">0.5</span>  <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transformer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">TransformerEncoder</span><span class="p">(</span><span class="n">encoder_layer</span><span class="p">,</span> <span class="n">num_layers</span><span class="o">=</span><span class="n">n_layers</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">action_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">Tanh</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_causal_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;-inf&#39;</span><span class="p">),</span> <span class="n">diagonal</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">R_chunk</span><span class="p">,</span> <span class="n">S_chunk</span><span class="p">,</span> <span class="n">A_chunk</span><span class="p">):</span>
+        <span class="n">B</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">R_chunk</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">R_chunk</span><span class="p">,</span> <span class="n">S_chunk</span><span class="p">,</span> <span class="n">A_chunk</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos_embed</span><span class="p">[:,</span> <span class="p">:</span><span class="n">L</span><span class="p">]</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_causal_mask</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformer</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">action_head</span><span class="p">(</span><span class="n">x</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
 </code></pre></div>
 
-<p>The <code>SiLU</code> activation (swish) outperforms ReLU for dynamics models — smoother gradients help fit smooth physical transitions. The learnable log-variance bounds prevent the model from collapsing variance to zero (overconfidence) or infinity.</p>
-<h4>NLL Training</h4>
-<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">nll_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">):</span>
-        <span class="n">mean</span><span class="p">,</span> <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
-        <span class="n">residual</span> <span class="o">=</span> <span class="n">next_state</span> <span class="o">-</span> <span class="n">state</span>            <span class="c1"># true Δs</span>
-        <span class="n">var</span>      <span class="o">=</span> <span class="n">log_var</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
-        <span class="c1"># NLL = 0.5 * [ log_var + (residual - mean)² / var ]</span>
-        <span class="n">nll</span>      <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">log_var</span> <span class="o">+</span> <span class="p">(</span><span class="n">residual</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">var</span><span class="p">)</span>
-        <span class="n">loss</span>     <span class="o">=</span> <span class="n">nll</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-        <span class="c1"># Regularize variance bounds (from PETS, Chua et al. 2018)</span>
-        <span class="n">bound_reg</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
-        <span class="k">return</span> <span class="n">loss</span> <span class="o">+</span> <span class="n">bound_reg</span>
-</code></pre></div>
-
-<p>Training with NLL rather than MSE is essential. MSE trains only the mean, leaving the variance unconstrained. NLL jointly trains mean (minimize prediction error) and variance (calibrate confidence) — making the learned $\sigma^2$ meaningful as an uncertainty proxy.</p>
-<h4>Synthetic Rollouts with Uncertainty Penalty</h4>
-<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">generate_synthetic_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">real_states</span><span class="p">):</span>
-        <span class="n">state</span> <span class="o">=</span> <span class="n">real_states</span><span class="p">[</span><span class="n">random_idx</span><span class="p">]</span>  <span class="c1"># branch from real data</span>
-
-        <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rollout_horizon</span><span class="p">):</span>
-            <span class="n">action</span><span class="p">,</span> <span class="n">_</span>   <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-            <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
-                <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
-            <span class="n">reward</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
-
-            <span class="c1"># THE key line: penalize reward by epistemic uncertainty</span>
-            <span class="n">penalized_reward</span> <span class="o">=</span> <span class="n">reward</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span> <span class="o">*</span> <span class="n">uncertainty</span>
-
-            <span class="c1"># store (state, action, penalized_reward, next_state)</span>
-            <span class="n">state</span> <span class="o">=</span> <span class="n">next_state</span>  <span class="c1"># continue rollout</span>
-</code></pre></div>
-
-<p>The single subtraction <code>reward - self.lam * uncertainty</code> is what converts naive MBRL (dangerous) into MOPO (safe). Without it, the agent exploits model errors wherever the model erroneously predicts high reward. With it, uncertain predictions are automatically penalized — pushing the policy back toward data-supported regions.</p>
-<h4>Policy Training on Mixed Data</h4>
-<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">real_batch</span><span class="p">,</span> <span class="n">synthetic</span><span class="p">):</span>
-        <span class="c1"># Combine real + synthetic at specified ratio</span>
-        <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">s_real</span><span class="p">,</span>  <span class="n">s_synthetic</span><span class="p">],</span>  <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">a_real</span><span class="p">,</span>  <span class="n">a_synthetic</span><span class="p">],</span>  <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="n">r</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">r_real</span><span class="p">,</span>  <span class="n">r_synthetic</span><span class="p">],</span>  <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="c1"># Standard SAC TD update on combined data</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">a2</span><span class="p">,</span> <span class="n">lp2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">s2</span><span class="p">)</span>
-            <span class="n">q_next</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">Q1_tgt</span><span class="p">(</span><span class="n">s2</span><span class="p">,</span> <span class="n">a2</span><span class="p">),</span> <span class="n">Q2_tgt</span><span class="p">(</span><span class="n">s2</span><span class="p">,</span> <span class="n">a2</span><span class="p">))</span>
-            <span class="n">target</span>  <span class="o">=</span> <span class="n">r</span> <span class="o">+</span> <span class="n">gamma</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">d</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">q_next</span> <span class="o">-</span> <span class="n">alpha_ent</span> <span class="o">*</span> <span class="n">lp2</span><span class="p">)</span>
-        <span class="n">q_loss</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">Q1</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">),</span> <span class="n">target</span><span class="p">)</span> <span class="o">+</span> <span class="n">F</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">Q2</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">),</span> <span class="n">target</span><span class="p">)</span>
-</code></pre></div>
-
-<p>The <code>real_ratio</code> parameter (default 0.5) controls the mix. At <code>real_ratio=1.0</code> this reduces to pure model-free on real data. At <code>real_ratio=0.0</code> the agent trains entirely on synthetic data — rarely safe. Keeping 50–70% real data provides the best balance.</p>
-<hr />
-<h2>Part II: MOReL</h2>
-<h3>A Different Geometry of Pessimism</h3>
-<p>MOPO uses a <strong>continuous</strong> penalty: the further from the data, the larger the subtracted cost. The policy can still venture into uncertain regions — it just finds them less attractive.</p>
-<p>MOReL takes a <strong>discrete</strong> approach: partition the state-action space into "known" and "unknown" regions, and impose a <strong>hard penalty</strong> $\kappa$ in the unknown region. This creates a sharp boundary rather than a gradient.</p>
-<p><strong>Model-Based Offline Reinforcement Learning (MOReL)</strong> — Kidambi et al., NeurIPS 2020 — constructs a <strong>Pessimistic MDP (P-MDP)</strong> directly from the offline data, with a built-in absorbing failure state for OOD transitions.</p>
-<h3>The P-MDP Construction</h3>
-<p>Let $\mathcal{D}$ be the offline dataset. MOReL defines a threshold $\epsilon$ on prediction uncertainty and partitions state-action space:</p>
-<p><div class="math-display">$$\text{KNOWN}  = \{(s,a) : u(s,a) \leq \epsilon\}$$</div></p>
-<p><div class="math-display">$$\text{UNKNOWN} = \{(s,a) : u(s,a) > \epsilon\}$$</div></p>
-<p>The <strong>Pessimistic MDP</strong> $\tilde{\mathcal{M}} = (\mathcal{S} \cup {s_\perp}, \mathcal{A}, \tilde{T}, \tilde{r}, \gamma)$ is defined as:</p>
-<p><div class="math-display">$$\tilde{T}(s' | s, a) = \begin{cases} \hat{T}(s' | s, a) & \text{if } (s,a) \in \text{KNOWN} \\ \delta(s_\perp) & \text{if } (s,a) \in \text{UNKNOWN} \end{cases}$$</div></p>
-<p><div class="math-display">$$\tilde{r}(s, a) = \begin{cases} \hat{r}(s, a) & \text{if } s \neq s_\perp \\ -\kappa & \text{if } s = s_\perp \end{cases}$$</div></p>
-<p>where $s_\perp$ is an absorbing failure state and $\kappa &gt; 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive.</p>
-<h3>The Theoretical Guarantee</h3>
-<p><strong>Theorem (Kidambi et al., 2020).</strong> Let $\hat{\pi}$ be the optimal policy in the P-MDP $\tilde{\mathcal{M}}$. For any policy $\pi$, let $d^\pi$ denote its state-action occupancy measure. Then:</p>
-<p><div class="math-display">$$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^{\hat{\pi}}}[\text{UNKNOWN}]$$</div></p>
-<p>The bound says: the gap between the optimal policy and what MOReL finds is bounded by the probability of MOReL's policy entering the unknown region, weighted by the penalty. If the P-MDP is well-constructed (the known region covers $\hat{\pi}$'s trajectory), the gap is small.</p>
-<p>This is a stronger guarantee than MOPO's: it is <strong>distribution-free</strong> and does not require assumptions on the dynamics error distribution. The tradeoff is that the known/unknown boundary is hard and requires choosing $\epsilon$ carefully.</p>
-<h3>Implementation</h3>
-<blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/morel.py"><code>morel.py</code></a></p>
-</blockquote>
-<p>MOReL shares the ensemble architecture with MOPO (<code>ProbabilisticDynamicsNet</code>, <code>DynamicsEnsemble</code>) — see <code>mopo.py</code> for those details. The key MOReL-specific additions are:</p>
-<p><strong>Step 1 — Calibrate epsilon from in-distribution data:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># After training the ensemble, set epsilon at the 80th percentile</span>
-<span class="c1"># of uncertainty on *actual dataset transitions*.</span>
-<span class="c1"># This ensures 80% of real data is labelled KNOWN.</span>
-<span class="n">epsilon</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">calibrate_epsilon</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">percentile</span><span class="o">=</span><span class="mf">80.0</span><span class="p">)</span>
-</code></pre></div>
-
-<p><code>calibrate_epsilon()</code> queries the ensemble on <code>n_samples</code> real transitions and returns a quantile of the resulting uncertainty values. Setting <code>percentile=80</code> means the KNOWN region comfortably covers the dataset and extends into nearby well-modeled areas.</p>
-<p><strong>Step 2 — P-MDP rollouts with hard HALT:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Inside MOReLAgent.generate_synthetic_data():</span>
-<span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rollout_horizon</span><span class="p">):</span>
-    <span class="n">action</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">])</span>
-    <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
-        <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">)</span>
-
-    <span class="c1"># Hard boundary: if OOD, terminate with penalty</span>
-    <span class="n">ood</span> <span class="o">=</span> <span class="n">uncertainty</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span>          <span class="c1"># (batch,) bool</span>
-
-    <span class="n">reward</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
-        <span class="n">ood</span><span class="p">,</span>
-        <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">kappa</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">ood</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">),</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
-    <span class="p">)</span>
-    <span class="n">done</span> <span class="o">=</span> <span class="n">ood</span><span class="o">.</span><span class="n">float</span><span class="p">()</span>
-
-    <span class="c1"># Absorbing: halted rollouts stay at current state</span>
-    <span class="n">next_state_out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
-        <span class="n">ood</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">next_state</span><span class="p">)</span>
-
-    <span class="c1"># Mark halted rollouts as inactive — they stop here</span>
-    <span class="n">active</span><span class="p">[</span><span class="n">active</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">as_tuple</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="n">ood</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">False</span>
-
-        <span class="n">transitions</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">reward</span><span class="p">,</span> <span class="n">next_state</span><span class="p">,</span> <span class="n">done</span><span class="p">))</span>
-        <span class="c1"># Only continue non-terminated rollouts</span>
-        <span class="n">state</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">ood_mask</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">state</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
-
-    <span class="k">return</span> <span class="n">transitions</span>
-</code></pre></div>
-
-<p>The <code>ood_mask</code> is the key difference from MOPO. Instead of subtracting a continuous penalty, OOD transitions are terminated immediately with <code>done=True</code> and reward $-\kappa$. The Q-learning target then sees zero future value after OOD transitions, which strongly discourages entering the unknown region.</p>
-<h3>Choosing $\epsilon$</h3>
-<p>The threshold $\epsilon$ controls the known/unknown boundary and is the critical hyperparameter in MOReL:</p>
-<table>
-<thead>
-<tr>
-<th>$\epsilon$</th>
-<th>Effect</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Very small</td>
-<td>Tiny known region — agent confined near behavior policy (≈ BC)</td>
-</tr>
-<tr>
-<td>Moderate (default)</td>
-<td>Includes well-modeled extrapolations — good balance</td>
-</tr>
-<tr>
-<td>Very large</td>
-<td>Entire space is "known" — reverts to unconstrained MBRL</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Practical guidance</strong>: set $\epsilon$ to the 70th–80th percentile of in-distribution uncertainty (i.e., uncertainty on actual dataset transitions). This ensures the known region covers the dataset comfortably and extends into nearby well-modeled areas.</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Calibrate epsilon from in-distribution data</span>
-<span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-    <span class="n">s_cal</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][:</span><span class="mi">2000</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">a_cal</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][:</span><span class="mi">2000</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">_</span><span class="p">,</span> <span class="n">u_cal</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span><span class="n">s_cal</span><span class="p">,</span> <span class="n">a_cal</span><span class="p">)</span>
-<span class="n">epsilon</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">quantile</span><span class="p">(</span><span class="n">u_cal</span><span class="p">,</span> <span class="mf">0.80</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Calibrated epsilon = </span><span class="si">{</span><span class="n">epsilon</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</code></pre></div>
-
-<hr />
-<h2>MOPO vs MOReL vs Model-Free</h2>
-<table>
-<thead>
-<tr>
-<th></th>
-<th>CQL</th>
-<th>IQL</th>
-<th>MOPO</th>
-<th>MOReL</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Uses model</td>
-<td>No</td>
-<td>No</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>OOD handling</td>
-<td>Push Q down</td>
-<td>Never query OOD</td>
-<td>Continuous penalty $-\lambda u$</td>
-<td>Hard boundary + $-\kappa$</td>
-</tr>
-<tr>
-<td>Data augmentation</td>
-<td>No</td>
-<td>No</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>Pessimism geometry</td>
-<td>Soft (Q penalty)</td>
-<td>Structural (V design)</td>
-<td>Soft (reward penalty)</td>
-<td>Hard (absorbing state)</td>
-</tr>
-<tr>
-<td>Can extrapolate</td>
-<td>Limited</td>
-<td>No</td>
-<td>Yes (within confidence)</td>
-<td>Yes (within known region)</td>
-</tr>
-<tr>
-<td>Theoretical guarantee</td>
-<td>Lower bound on Q</td>
-<td>Implicit via V</td>
-<td>Lower bound on $J(\pi)$</td>
-<td>Distribution-free PAC bound</td>
-</tr>
-<tr>
-<td>Key hyperparameters</td>
-<td>$\alpha$</td>
-<td>$\tau, \beta$</td>
-<td>$\lambda, h, N$</td>
-<td>$\epsilon, \kappa, h, N$</td>
-</tr>
-<tr>
-<td>Compute cost</td>
-<td>Medium</td>
-<td>Low</td>
-<td>High</td>
-<td>High</td>
-</tr>
-<tr>
-<td>Best for</td>
-<td>Dense datasets</td>
-<td>Stable training</td>
-<td>Sparse, smooth dynamics</td>
-<td>Safety-critical, need hard guarantees</td>
-</tr>
-</tbody>
-</table>
-<p><strong>When to choose MOPO</strong>: the dynamics are smooth and learnable, dataset coverage is uneven but not catastrophically sparse, and you want to maximize performance within a reasonable compute budget.</p>
-<p><strong>When to choose MOReL</strong>: safety constraints are hard (the policy must not enter uncertain regions even transiently), or when you need the stronger distribution-free guarantee and can afford careful calibration of $\epsilon$.</p>
-<hr />
-<h2>Hyperparameter Guide</h2>
-<h3>MOPO: $\lambda$ (uncertainty penalty weight)</h3>
-<table>
-<thead>
-<tr>
-<th>$\lambda$</th>
-<th>Behavior</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>$\lambda = 0$</td>
-<td>No penalty — trust model completely (dangerous)</td>
-</tr>
-<tr>
-<td>$\lambda = 0.5$</td>
-<td>Light penalty — for high-quality models on simple systems</td>
-</tr>
-<tr>
-<td>$\lambda = 1.0$</td>
-<td>Default — reasonable pessimism</td>
-</tr>
-<tr>
-<td>$\lambda = 3.0$+</td>
-<td>Strong penalty — for noisy data or unreliable models</td>
-</tr>
-<tr>
-<td>$\lambda \to \infty$</td>
-<td>Reverts to model-free on real data only</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Diagnostic</strong>: plot <code>mean(uncertainty)</code> in synthetic rollouts over training. If it increases, the policy drifts into model-uncertain regions — increase $\lambda$.</p>
-<h3>Both: $h$ (rollout horizon)</h3>
+<p>Training loop: sample a batch from <code>ChunkDataset</code>; forward pass; loss = MSE(predicted_a, target_a).</p>
+<h3>Key Design Choices</h3>
 <ul>
-<li><code>h=1</code>: single-step predictions. Safest, but limited augmentation.</li>
-<li><code>h=5</code>: default. Good balance of augmentation vs error compounding.</li>
-<li><code>h=10+</code>: only if model one-step accuracy is very high.</li>
+<li><strong>Return normalization:</strong> Scale $R_t$ by the max return in the dataset so that inputs are in a bounded range (e.g. $[0, 1]$).</li>
+<li><strong>Context length:</strong> Longer context (e.g. 20–50) lets the model use more history; shorter is faster and may suffice for near-Markov tasks.</li>
+<li><strong>Target return $R^*$:</strong> At test time, use a high percentile (e.g. 90th) of returns in the dataset. If you set $R^*$ higher than any trajectory in the data, the model may extrapolate poorly.</li>
 </ul>
-<p><strong>Rule of thumb</strong>: if the model has $\epsilon_1$ one-step error, after $h$ steps you accumulate roughly $h \cdot \epsilon_1$ error. Set $h$ so that $h \cdot \epsilon_1 &lt; 0.1$ (10% accumulated error).</p>
-<h3>Both: $N$ (ensemble size)</h3>
-<ul>
-<li><code>N=3</code>: minimum for meaningful uncertainty (not recommended in production).</li>
-<li><code>N=5</code>: default — good uncertainty estimates.</li>
-<li><code>N=7–10</code>: better estimates, proportional compute cost.</li>
-</ul>
-<hr />
-<h2>Practical Tips</h2>
-<p><strong>Normalize everything.</strong> States, actions, rewards — all normalized before training the dynamics model. Dynamics networks approximate smooth functions; inputs in $[-1, 1]$ or $[0, 1]$ help enormously.</p>
-<p><strong>Residual prediction is non-negotiable.</strong> Always predict $\Delta s = s' - s$. For slowly changing systems (most industrial processes), the residual is orders of magnitude smaller than the absolute state, making it much easier to learn.</p>
-<p><strong>Monitor ensemble disagreement.</strong> The ratio <code>u(OOD) / u(in-distribution)</code> should be &gt;&gt; 1. If it is close to 1, the ensemble is not diverse enough — try different bootstrap ratios, random seeds, or add spectral normalization.</p>
-<p><strong>Regenerate synthetic data periodically.</strong> As the policy improves, it visits different regions of state space. Rollouts generated by the previous policy become stale. Regenerate every 5–10 SAC epochs.</p>
-<p><strong>Use the model for gradient signal, not accurate prediction.</strong> A 10% one-step prediction error is acceptable if the model correctly distinguishes good from bad actions. Global accuracy is not the goal.</p>
-<p><strong>For industrial applications</strong>: if you have a physics-based simulator (even approximate), train the neural ensemble on residuals between the physics model and real data rather than from scratch. This hybrid approach often requires dramatically less offline data. Chapter 8 develops this idea into a full methodology.</p>
 <hr />
 <h2>Limitations</h2>
-<p><strong>Model errors compound.</strong> Over $h$ steps, one-step errors accumulate. The uncertainty penalty (MOPO) or hard boundary (MOReL) mitigates this, but very long horizons remain risky.</p>
-<p><strong>High-dimensional observations.</strong> Learning $T(s' | s, a)$ from pixels or high-dimensional sensors requires much more data than from compact state representations. For image-based domains, learn a compressed latent dynamics model first.</p>
-<p><strong>Compute cost scales with ensemble size.</strong> Training and inference require $N \times$ the compute of a single model. For large state spaces or ensembles, this is significant.</p>
-<p><strong>Reward model.</strong> In our implementation the reward function is known analytically. In practice, rewards may also need to be learned from data — adding another source of model error and another network to train and calibrate.</p>
-<p><strong>Ensemble diversity is fragile.</strong> If all models converge to the same solution (common with small datasets or high model capacity), uncertainty estimates collapse to near zero — making both MOPO's penalty and MOReL's boundary useless. Bootstrap sampling helps but is not always sufficient.</p>
+<p><strong>No explicit credit assignment.</strong> DT learns "what action came next in good trajectories" but does not use Bellman backups. Long-horizon causality is only in the data; the model may not generalize as well as value-based methods when the dataset is small or noisy.</p>
+<p><strong>Stitching.</strong> Standard DT does not explicitly "stitch" sub-optimal trajectory segments. Value-based methods can combine a good prefix from one trajectory with a good suffix from another via the value function; DT generates autoregressively from a single context. Variants like <strong>Q-learning DT (QDT)</strong> add TD learning to improve credit assignment.</p>
+<p><strong>Conditioning sensitivity.</strong> Performance depends on the choice of $R^<em>$ at test time. If $R^</em>$ is too low, the model behaves conservatively; if too high, it may hallucinate. Return normalization and percentile-based $R^*$ help but are hyperparameters.</p>
+<p><strong>No theoretical guarantee.</strong> DT does not provide a lower bound or safety guarantee. It is a powerful and flexible sequence model that avoids extrapolation by construction but does not have the same formal guarantees as CQL or MOPO.</p>
 <hr />
 <h2>Summary</h2>
 <table>
 <thead>
 <tr>
 <th>Property</th>
-<th>MOPO</th>
-<th>MOReL</th>
+<th>Decision Transformer</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Data required</td>
-<td>$(s, a, r, s')$ transitions</td>
-<td>$(s, a, r, s')$ transitions</td>
+<td>Trajectories $(s_1, a_1, r_1, \ldots, s_T, a_T, r_T)$ with return-to-go</td>
 </tr>
 <tr>
-<td>Core mechanism</td>
-<td>Ensemble uncertainty as soft reward penalty</td>
-<td>Hard known/unknown partition via uncertainty threshold</td>
+<td>Training</td>
+<td>Supervised learning (maximize log prob of actions given context + RTG)</td>
 </tr>
 <tr>
-<td>Pessimism</td>
-<td>Continuous: $\tilde{r} = r - \lambda u$</td>
-<td>Discrete: absorbing failure state beyond $\epsilon$</td>
+<td>OOD handling</td>
+<td>Structural: no Q, no $\max_a$; only conditional prediction on in-data contexts</td>
 </tr>
 <tr>
-<td>Theoretical guarantee</td>
-<td>Lower bound on $J(\pi)$ via penalized model</td>
-<td>Distribution-free PAC bound</td>
+<td>Credit assignment</td>
+<td>Implicit in the sequence (no TD)</td>
 </tr>
 <tr>
 <td>Key hyperparameters</td>
-<td>$\lambda, h, N$</td>
-<td>$\epsilon, \kappa, h, N$</td>
+<td>Context length, target return $R^*$, return normalization</td>
 </tr>
 <tr>
-<td>Best for</td>
-<td>Maximizing performance on smooth dynamics</td>
-<td>Hard safety requirements, need formal guarantees</td>
-</tr>
-<tr>
-<td>Limitation</td>
-<td>Soft penalty can be insufficient for very unreliable models</td>
-<td>$\epsilon$ calibration critical; hard boundary can be overly conservative</td>
+<td>Implementation</td>
+<td>Transformer (GPT-style, causal mask)</td>
 </tr>
 </tbody>
 </table>
-<p>Both MOPO and MOReL represent a qualitative shift from model-free offline RL: instead of constraining the policy to stay near the data, we expand the data to cover more of the state-action space. The ensemble ensures this expansion is safe — the agent only trusts the model where it is reliable.</p>
-<p>The natural next question: can we do better than learning dynamics from scratch? If we know the physics of the system — conservation laws, differential equations, material properties — we can build that knowledge directly into the model and dramatically reduce the data needed. That is the subject of Chapter 8: Physics-Informed Offline RL.</p>
+<p>Decision Transformers offer a clean alternative to value-based offline RL: no Bellman backup, no extrapolation over actions, and a single supervised objective. They are well-suited to settings where you have long trajectories, multi-task or diverse data, and existing sequence-model infrastructure. For continuous control with a single task and strong performance guarantees, CQL and IQL (Chapters 4–5) and model-based methods (Chapter 8) remain the default choice.</p>
+<p>Chapter 8 turns to <strong>model-based</strong> offline RL: learning a dynamics model and using it to generate synthetic data with uncertainty-aware penalties (MOPO, MOReL).</p>
 <hr />
 <h2>References</h2>
 <ul>
-<li>Yu, T., Thomas, G., Yu, L., Ermon, S., Zou, J., Levine, S., Finn, C., &amp; Ma, T. (2020). <em>MOPO: Model-Based Offline Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/2005.13239">arXiv:2005.13239</a>.</li>
-<li>Kidambi, R., Rajeswaran, A., Netrapalli, P., &amp; Kakade, S. (2020). <em>MOReL: Model-Based Offline Reinforcement Learning.</em> NeurIPS. <a href="https://arxiv.org/abs/2005.05951">arXiv:2005.05951</a>.</li>
-<li>Janner, M., Fu, J., Zhang, M., &amp; Levine, S. (2019). <em>When to Trust Your Model: Model-Based Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/1906.08253">arXiv:1906.08253</a>. <em>(MBPO — online model-based RL foundation for MOPO)</em></li>
-<li>Chua, K., Calandra, R., McAllister, R., &amp; Levine, S. (2018). <em>Deep Reinforcement Learning in a Handful of Trials using Probabilistic Dynamics Models.</em> NeurIPS. <a href="https://arxiv.org/abs/1805.12114">arXiv:1805.12114</a>. <em>(PETS — ensemble uncertainty; foundation for both MOPO and MOReL)</em></li>
-<li>Lakshminarayanan, B., Pritzel, A., &amp; Blundell, C. (2017). <em>Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles.</em> NeurIPS. <a href="https://arxiv.org/abs/1612.01474">arXiv:1612.01474</a>. <em>(why ensembles work as uncertainty estimators)</em></li>
-<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
-<li>Fu, J. et al. (2020). <em>D4RL: Datasets for Deep Data-Driven Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2004.07219">arXiv:2004.07219</a>. <em>(standard benchmark; MOPO and MOReL both evaluated on D4RL)</em></li>
+<li>Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., &amp; Laskin, M. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
+<li>Yamagata, T., Ahmed, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.</em> ICML. <a href="https://arxiv.org/abs/2209.03993">arXiv:2209.03993</a>.</li>
+<li>Zheng, Q., Zhang, A., &amp; Grover, A. (2022). <em>Online Decision Transformer.</em> ICML. <a href="https://arxiv.org/abs/2202.05607">arXiv:2202.05607</a>.</li>
 </ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/en/chapter6.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Decision Transformers</span></a>
-    <a href="/offline-rl-book/en/chapter8.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Physics-Informed Offline RL</span></a>
+<a href="/offline-rl-book/en/chapter6.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Policy-Constraint and Actor-Critic (TD3+BC, AWAC)</span></a>
+    <a href="/offline-rl-book/en/chapter8.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Model-Based Offline RL (MOPO, MOReL)</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

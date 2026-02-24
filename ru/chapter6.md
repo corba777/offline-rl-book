@@ -1,131 +1,143 @@
 ---
 layout: default
-title: "Глава 6: Decision Transformers"
+title: "Глава 6: Ограничение политики и Actor-Critic (TD3+BC, AWAC)"
 lang: ru
 en_url: /en/chapter6/
 prev_chapter:
   url: /ru/chapter5/
-  title: "Ограничение политики и Actor-Critic (TD3+BC, AWAC)"
+  title: "Неявное Q-обучение (IQL)"
 next_chapter:
   url: /ru/chapter7/
-  title: "Модельный Offline RL (MOPO, MOReL)"
+  title: "Decision Transformers"
 permalink: "/offline-rl-book/ru/chapter6/"
 ---
 
-# Глава 6: Decision Transformers
+# Глава 6: Ограничение политики и Actor-Critic (TD3+BC, AWAC)
 
-> *«Что если мы вообще не вычисляем Bellman-бэкап? Спросим: при данной истории и данном желаемом return — какое действие выбрал бы хороший агент?»*
-
----
-
-## Другая парадигма
-
-В главах 2–5 общим был костяк: **функция ценности** (Q или V) и **политика**, обучение с Bellman-бэкапами или policy gradient. Проблема — экстраполяционная ошибка; мы решали её пессимизмом (CQL, IQL) или ограничениями политики (TD3+BC, AWAC).
-
-**Decision Transformer (DT)** (Chen et al., NeurIPS 2021) смотрит иначе: **offline RL как моделирование последовательностей**. По префиксу траектории (прошлые состояния, действия и сумма будущих наград) модель предсказывает следующее действие. **Нет Q-функции**, **нет Bellman-бэкапа**, **нет policy gradient**. «Политика» — условное распределение действий по контексту; обучение — **supervised learning** по последовательностям из датасета.
-
-Так экстраполяционная ошибка обходится структурно: модель никогда не вычисляет $\max_{a'} Q(s', a')$ по OOD-действиям, потому что Q нет. Она только предсказывает действия по входам, встречавшимся в данных.
+> *«Держись того, что видел — но используй критика, чтобы опереться на лучшее из этого.»*
 
 ---
 
-## Идея
+## Где заканчивается пессимизм по значениям
 
-Модель учит условное распределение:
+В главах 3 и 4 мы боролись с ошибкой экстраполяции, делая **функцию ценности** пессимистичной: CQL штрафует Q-значения за OOD-действия; IQL вообще не обращается к OOD, используя экспектильную регрессию и advantage-weighted регрессию.
 
-$$\pi(a_t \mid s_{1:t}, a_{1:t-1}, R_{1:t})$$
+Другой подход — оставить критика (Q или V) по сути без изменений и **ограничить или регуляризовать актора** так, чтобы обученная политика оставалась близка к поведенческой. Агент по-прежнему улучшается за счёт данных — критик указывает, какие действия в датасете были лучше — но политика не может уходить далеко в OOD-области.
 
-где $R_t$ — **return-to-go** в момент $t$: сумма наград с $t$ до конца траектории. На **тесте** задаём целевой return $R^*$ (например, высокий перцентиль по датасету) и подаём его модели; она выдаёт действия, которые в данных соответствовали такому return.
-
-**Почему нет экстраполяции:** модель не оценивает действия вне похожего контекста — только предсказывает следующее действие по (история состояний, история действий, return-to-go), всё это есть в данных.
+Это семейство **policy-constraint** (или **actor-regularized**) offline RL. Методы являются **actor-critic**: обучаются и критик, и политика, но в целевую функцию политики явно входит член, притягивающий её к данным. Два распространённых метода: **TD3+BC** (минималистичный, детерминированный) и **AWAC** (advantage-weighted, in-sample обновления актора).
 
 ---
 
-## Формализация
+## TD3+BC: минималистичный подход с регуляризацией политики
 
-**Представление:** траектория — последовательность $(s_1, a_1, r_1, R_1, \ldots, s_T, a_T, r_T, R_T)$. Контекст длины $K$: для шага $t$ вход — $(R_{t-K+1}, s_{t-K+1}, a_{t-K+1}, \ldots, R_t, s_t)$; цель — $a_t$.
+**TD3+BC** (Fujimoto & Gu, NeurIPS 2021) добавляет к loss актора один член: loss поведенческого клонирования, штрафующий отклонение от действий в датасете. Идея: актор должен максимизировать Q и оставаться близко к действиям из данных.
 
-**Архитектура:** GPT-подобный трансформер с каузальной маской; три потока (return-to-go, состояние, действие) эмбеддятся и проходят через блоки внимания.
+### Идея
 
-**Обучение:** минимизация NLL действий по данным:
+Целевая функция актора:
 
-$$\mathcal{L} = -\mathbb{E}_{\tau \sim \mathcal{D}} \left[ \sum_{t=1}^{T} \log \pi_\theta(a_t \mid R_{1:t}, s_{1:t}, a_{1:t-1}) \right]$$
+$$\pi^* = \arg\max_\pi \; \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \lambda \, Q(s, \pi(s)) - \bigl(\pi(s) - a\bigr)^2 \right]$$
 
-На тесте: инициализируем $R_1 = R^*$, на каждом шаге по текущему контексту получаем $a_t$, обновляем return-to-go и повторяем.
+Первый член — использовать критика; второй — имитировать данные. Гиперпараметр $\lambda$ задаёт баланс. На практике Q нормализуют по батчу, чтобы оба члена были одного масштаба.
+
+### Формализация
+
+**Критик (Q):** как в TD3 — два Q-сети, target-сети, TD loss. **Актор:** детерминированная политика $\pi_\phi(s)$; loss выше. Теоретической гарантии (в отличие от CQL) нет — эмпирический, простой в реализации метод.
+
+---
+
+## AWAC: Advantage-Weighted Actor-Critic
+
+**AWAC** (Nair et al., 2020) обновляет актора **только по данным**: политика подгоняется с весами по преимуществу (advantage), без сэмплирования из текущей политики.
+
+$$\mathcal{L}_\pi(\phi) = -\mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \exp\!\left( \frac{1}{\beta} \bigl( Q(s,a) - V(s) \bigr) \right) \cdot \log \pi_\phi(a | s) \right]$$
+
+$A(s,a) = Q(s,a) - V(s)$ — преимущество действия $a$ в состоянии $s$. Экспоненциальный вес усиливает хорошие действия; $\beta$ — температура. OOD-запросов к актору нет.
 
 ---
 
 ## Реализация
 
-> 📄 Полный код: [`decision_transformer.py`](https://github.com/corba777/offline-rl-book/blob/main/code/decision_transformer.py)
+> 📄 Полный код: [`td3bc.py`](https://github.com/corba777/offline-rl-book/blob/main/code/td3bc.py)
 
-### Эмбеддинги и модель
+### TD3+BC: сети и loss актора
 
-Чанки собираются в `ChunkDataset`; для каждой (траектория, шаг $t$) формируются массивы длины `context_len` по return-to-go, состояниям и действиям (действия до $t-1$; предсказываем $a_t$). Модель склеивает $(R, s, a)$ по шагам в один токен, эмбеддит одним линейным слоем, добавляет позиционное кодирование и прогоняет каузальный трансформер:
+TD3+BC использует ту же архитектуру, что и TD3: детерминированный актор, две Q-сети, target-сети.
 
 ```python
-class DecisionTransformer(nn.Module):
-    """
-    GPT-style model. Input: context_len tokens, each (R, s, a) concatenated and embedded.
-    Output: predicted action for the last timestep.
-    Causal mask: each position sees only past.
-    """
-    def __init__(self, state_dim, action_dim, hidden_dim=128, n_heads=4, n_layers=2, context_len=20):
+class Actor(nn.Module):
+    """Deterministic policy s -> a in [-1, 1]. Same as IQL DeterministicPolicy."""
+    def __init__(self, state_dim, action_dim, hidden_dim=256):
         super().__init__()
-        self.context_len = context_len
-        self.token_dim = 1 + state_dim + action_dim
-        self.embed = nn.Linear(self.token_dim, hidden_dim)
-        self.pos_embed = nn.Parameter(torch.zeros(1, context_len, hidden_dim))
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=hidden_dim, nhead=n_heads, dim_feedforward=hidden_dim * 4,
-            dropout=0.1, activation='relu', batch_first=True, norm_first=False,
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
-        self.action_head = nn.Sequential(
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, action_dim), nn.Tanh(),
         )
+    def forward(self, state):
+        return self.net(state)
+    def act(self, state):
+        with torch.no_grad():
+            return self.forward(state).cpu().numpy().squeeze()
 
-    def _causal_mask(self, L, device):
-        return torch.triu(torch.ones(L, L, device=device) * float('-inf'), diagonal=1)
 
-    def forward(self, R_chunk, S_chunk, A_chunk):
-        B, L, _ = R_chunk.shape
-        tokens = torch.cat([R_chunk, S_chunk, A_chunk], dim=-1)
-        x = self.embed(tokens) + self.pos_embed[:, :L]
-        mask = self._causal_mask(L, x.device)
-        x = self.transformer(x, mask=mask)
-        return self.action_head(x[:, -1])
+def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
+    """
+    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.
+    Q is normalized by (q - q.mean()) / (q.std() + eps) over the batch
+    so the Q-term and BC-term have comparable scale.
+    """
+    pi = actor(states)
+    q = Q1(states, pi)
+    q_norm = (q - q.mean()) / (q.std() + 1e-6)
+    bc_loss = ((pi - actions) ** 2).mean()
+    return -q_norm.mean() * lambda_ + bc_loss
 ```
 
-Цикл обучения: батч из `ChunkDataset`, forward, loss = MSE(predicted_a, target_a).
+Оба члена (Q и BC) вносят вклад в градиент; в `td3bc.py` используется нормализация Q по батчу и фиксированный $\lambda$.
 
-**Ключевые гиперпараметры:** нормализация return по макс. return в датасете, длина контекста, целевой $R^*$ на тесте (например, высокий перцентиль).
+### AWAC-style loss политики (advantage-weighted)
+
+```python
+def awac_actor_loss(policy, Q, V, states, actions, beta=1.0):
+    """
+    Advantage-Weighted Regression: log pi(a|s) weighted by exp(A(s,a)/beta).
+    A(s,a) = Q(s,a) - V(s). Requires stochastic policy that outputs log_prob.
+    """
+    with torch.no_grad():
+        A = Q(states, actions) - V(states)
+        weights = (A / beta).exp()
+        weights = weights / (weights.mean() + 1e-6)  # stabilize
+    log_prob = policy.log_prob(states, actions)
+    return -(weights * log_prob).mean()
+```
+
+Для детерминированной политики (как в TD3) можно использовать гауссов с малой дисперсией вокруг $\pi(s)$ как суррогат log_prob или перейти на стохастическую голову.
 
 ---
 
 ## Ограничения
 
-Нет явного credit assignment (нет TD). Стандартный DT не «сшивает» куски траекторий. Чувствительность к выбору $R^*$ на тесте. Теоретической гарантии нет.
+Гарантии нижней границы нет. Чувствительность к $\lambda$ / $\beta$. Детерминированная политика (TD3+BC) не может быть мультимодальной.
 
 ---
 
 ## Итог
 
-| Свойство | Decision Transformer |
-|---|---|
-| Данные | Траектории с return-to-go |
-| Обучение | Supervised (NLL действий по контексту + RTG) |
-| OOD | Структурно: нет Q и $\max_a$ |
-| Гиперпараметры | Длина контекста, целевой $R^*$, нормализация return |
+| Метод | Где ограничение | OOD актор? | Теория |
+|---|---|---|---|
+| TD3+BC | Loss актора (BC-штраф) | Да | Нет |
+| AWAC | Loss актора (веса по advantage) | Нет | Нет |
 
-Decision Transformers — альтернатива value-based offline RL: один supervised-объектив, без Bellman. Удобны при длинных траекториях и инфраструктуре под sequence modeling. Для непрерывного управления с сильными гарантиями по-прежнему стандарт — CQL, IQL и модельные методы (глава 7).
+Методы с ограничением политики дают простой способ улучшаться над поведенческой политикой, оставаясь близко к данным. TD3+BC — самый простой в реализации; для максимальной устойчивости по-прежнему предпочтительны CQL и IQL.
 
-Глава 7 — **модельный** offline RL: обучение динамики и генерация синтетических данных с штрафами за неопределённость (MOPO, MOReL).
+Глава 6 переходит к другой парадигме: **Decision Transformers** — offline RL как моделирование последовательностей без Bellman-бэкапа.
 
 ---
 
 ## Литература
 
-- Chen, L. et al. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
-- Yamagata, T. et al. (2023). *Q-learning Decision Transformer.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993).
-- Zheng, Q. et al. (2022). *Online Decision Transformer.* ICML. [arXiv:2202.05607](https://arxiv.org/abs/2202.05607).
+- Fujimoto, S., & Gu, S.S. (2021). *A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).* NeurIPS. [arXiv:2106.06860](https://arxiv.org/abs/2106.06860).
+- Nair, A. et al. (2020). *AWAC: Accelerating Online Reinforcement Learning with Offline Datasets.* [arXiv:2006.09359](https://arxiv.org/abs/2006.09359).
+- Kumar, A. et al. (2020). *Conservative Q-Learning for Offline Reinforcement Learning (CQL).* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
+- Kostrikov, I. et al. (2022). *Offline Reinforcement Learning with Implicit Q-Learning (IQL).* ICLR. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169).

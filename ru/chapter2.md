@@ -8,7 +8,7 @@ prev_chapter:
   title: "Поведенческое клонирование"
 next_chapter:
   url: /ru/chapter3/
-  title: "Консервативное Q-обучение (CQL)"
+  title: "Оценка политик вне политики сбора данных (OPE)"
 permalink: "/offline-rl-book/ru/chapter2/"
 ---
 

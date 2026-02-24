@@ -1,378 +1,457 @@
 ---
 layout: default
-title: "Chapter 10: Explainability in Offline RL"
+title: "Chapter 10: Industrial Applications"
 lang: en
 ru_url: /ru/chapter10/
 prev_chapter:
   url: /en/chapter9/
-  title: "Industrial Applications"
+  title: "Physics-Informed Offline RL"
 next_chapter:
   url: /en/chapter11/
-  title: "Conclusion and Future Directions"
+  title: "Explainability in Offline RL"
 permalink: "/offline-rl-book/en/chapter10/"
 ---
 
-# Chapter 10: Explainability in Offline RL
+# Chapter 10: Industrial Applications
 
-> *"A policy that achieves 80% Directional Accuracy but cannot explain why it chose each action is hard to trust and impossible to certify."*
-
----
-
-## Why Explainability Matters in Industrial Offline RL
-
-The algorithms in Chapters 1–9 produce policies that achieve high reward, respect physical constraints, and generalize to unseen operating regimes. What they do not produce is an answer to the question an operator will inevitably ask: *why did the agent command this setpoint at this moment?*
-
-This is not merely a regulatory concern, though in many industries it is that too. It is a practical reliability question. A policy whose decisions are opaque cannot be diagnosed when it fails. An operator who does not understand the agent's reasoning cannot override it intelligently. A model that fits data well but for the wrong reasons will fail silently when the process changes.
-
-Explainability in Offline RL is harder than in standard supervised learning for three reasons specific to the offline setting.
-
-**There are three separate models to explain.** A trained Offline RL agent contains a Q-function (the critic), a policy (the actor), and optionally a dynamics model. Each answers a different question, and their explanations do not always agree. The Q-function might rate an action highly because temperature is near its setpoint; the policy might choose that action because level is near its lower bound. Understanding the discrepancy is as important as understanding the agreement.
-
-**The Q-function's input is a concatenation of state and action.** Unlike a classifier whose input is a single feature vector, the Q-function takes $(s, a)$ as input. SHAP values computed over this concatenated space tell you whether the high Q-value comes from the state (the situation was favorable) or the action (the specific action was appropriate for this situation).
-
-**The behavior policy's distribution is uneven.** SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset — dense near the operating setpoint and sparse near disturbances. SHAP values answer: *"how does this instance differ from the typical operating point, and how does that difference affect the output?"*
-
-> 📄 Full code: [`chapter8.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter8.py)
+> *"The gap between a working benchmark result and a working industrial deployment is not a gap in algorithms — it is a gap in understanding the data."*
 
 ---
 
-## SHAP Background
+## From Benchmarks to Industry
 
-SHAP (SHapley Additive exPlanations, Lundberg & Lee, 2017) decomposes the output of a model $f$ into additive contributions from each input feature:
+The preceding six chapters built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on `ThermalProcessEnv` — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.
 
-$$f(x) = \phi_0 + \sum_{i=1}^{n} \phi_i(x)$$
+Real industrial processes differ from that environment in every dimension that matters.
 
-where $\phi_0 = \mathbb{E}[f(X)]$ is the expected model output over the background distribution, and $\phi_i(x)$ is the contribution of feature $i$ to the prediction for instance $x$.
+**More variables, more coupling.** A realistic coating process has dozens of sensor readings. Even a simplified model has temperature, filler fraction, viscosity, bulk density, and a surge tank level — five variables with physical dependencies between all of them. The level is an integrating state that drifts without active control; viscosity is a nonlinear function of temperature and filler that the agent cannot observe independently of its inputs.
 
-The SHAP values $\{\phi_i\}$ are the unique decomposition satisfying:
-- **Efficiency**: $\sum_i \phi_i = f(x) - \phi_0$ — values sum to total prediction minus baseline
-- **Symmetry**: features with equal marginal contributions receive equal SHAP values
-- **Dummy**: a feature with zero marginal contribution receives $\phi_i = 0$
+**Non-uniform data coverage.** Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.
 
-**KernelExplainer** computes SHAP values without architecture knowledge. It fits a weighted linear model to masked predictions:
+**Lag and delay.** Material fed into a coating line takes 30–90 minutes to appear at the quality measurement point. Within the dynamic model, this manifests as a transport delay: the agent's action at time $t$ affects the output at time $t + k$. A pure first-order model ignoring the delay will have systematic prediction errors whenever the feed rate changes.
 
-$$\phi = \arg\min_{\phi} \sum_{z \in \{0,1\}^n} \pi(z)\left[f(h(x, z)) - \phi_0 - \sum_i z_i \phi_i\right]^2$$
+**Hard physical constraints.** Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.
 
-where $z$ is a binary mask, $h(x, z)$ replaces masked features with background samples, and $\pi(z)$ weights coalitions by the Shapley kernel. This works on any black-box function — Q-networks, policy networks, ensemble dynamics — with no architecture assumptions.
+This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–8. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.
 
-We use KernelExplainer throughout for consistency: all three explanations use the same method, making them directly comparable.
-
-### Toy example: what SHAP shows
-
-A minimal example fixes intuition. Consider a toy Q-function with three inputs: $Q(s_1, s_2, a) = 2 s_1 - s_2 + 0.5 a$. So state_1 pushes Q up, state_2 pushes it down, and the action has a smaller positive effect. We draw a background from "typical" operation (values in $[0.3, 0.7]$) and explain a set of instances. SHAP attributes each prediction to the three features.
-
-**Which feature matters most?** The bar chart below shows mean $|\phi_i|$ over the explained instances. State_1 and state_2 dominate (they have larger coefficients), and SHAP recovers that.
-
-![Toy Q: mean |SHAP| per feature](../figures/ch8/toy_shap_bar.png)
-
-**Why is this one instance’s Q high?** The waterfall plot takes a single instance (e.g. high $s_1$, low $s_2$) and shows how each feature’s SHAP value moves the output from the baseline $\phi_0 = \mathbb{E}[Q]$ to the final $Q(x)$. Positive bars (state_1, action) push Q up; the negative bar (state_2) pushes it down.
-
-![Toy Q: waterfall for one instance](../figures/ch8/toy_shap_waterfall.png)
-
-**Spread across instances.** A beeswarm plot shows one dot per instance per feature; the x-axis is SHAP value and the color is the feature’s value (blue = low, red = high). You see that high state_1 tends to go with positive SHAP (red dots on the right) and high state_2 with negative SHAP — the model’s monotone dependence is visible.
-
-![Toy Q: beeswarm of SHAP values](../figures/ch8/toy_shap_beeswarm.png)
-
-**Toy policy: which state feature drives the action?** Next, take a toy policy $\pi(s_1, s_2) = \text{clip}(0.5 + 0.4 s_1 - 0.3 s_2)$ with a single action. State_1 pushes the action up, state_2 pushes it down. Policy SHAP attributes the scalar action to the two state inputs. The bar chart shows which state variable the policy "looks at" most; the waterfall for one state shows how each feature's contribution moves the output from the average action $\mathbb{E}[\pi]$ to $\pi(s)$. In the real coating setup (Level 2) we have two action dimensions (heat_input, flow_input); we explain each separately and get one such bar and waterfall per action.
-
-![Toy policy: mean |SHAP| per state feature](../figures/ch8/toy_policy_bar.png)
-
-![Toy policy: waterfall for one state](../figures/ch8/toy_policy_waterfall.png)
-
-**Toy dynamics: which input drives the predicted next state?** Finally, a toy dynamics model with two next-state dimensions: $\hat{s}_1' = 0.7 s_1 + 0.2 a$ and $\hat{s}_2' = 0.6 s_2 + 0.15 a$. So the first output is driven by current $s_1$ and action $a$; the second by $s_2$ and $a$. We explain each output separately (as in Level 3). The two-panel bar chart shows mean $|\phi_i|$ for the three inputs $(s_1, s_2, a)$ when predicting $\hat{s}_1'$ and $\hat{s}_2'$ — SHAP recovers that $s_1$ and $a$ matter for next_s1, and $s_2$ and $a$ for next_s2. The waterfall for one $(s, a)$ instance shows how each input's SHAP adds up from the baseline prediction to $\hat{s}_1'$.
-
-![Toy dynamics: which inputs drive next_s1 and next_s2?](../figures/ch8/toy_dynamics_bar.png)
-
-![Toy dynamics: waterfall for one (s,a) → next_s1](../figures/ch8/toy_dynamics_waterfall.png)
-
-All of these figures are produced by running `python code/chapter8_toy_figures.py` (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.
+> 📄 Full code: [`chapter7.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter7.py)
 
 ---
 
-## Three Levels of Explanation
+## The Coating Process
 
-### Level 1: Q-function SHAP — Why Does the Agent Value This Action?
+### Environment
 
-The Q-function $Q(s, a)$ takes the concatenated $(s, a)$ vector as input and outputs a scalar value estimate. SHAP on this input answers which features — current state variables or the chosen action — contribute most to the Q-value.
+The `CoatingProcessEnv` models a continuous thermal coating line with five state variables and two control inputs.
+
+**State** $s \in \mathbb{R}^5$ (all normalized to $[0,1]$):
+
+| Index | Variable | Physical meaning |
+|---|---|---|
+| $s_0$ | `temperature` | Process temperature in the coating zone |
+| $s_1$ | `filler_fraction` | Fraction of filler material in the blend |
+| $s_2$ | `viscosity` | Blend viscosity — nonlinear function of $T$ and filler |
+| $s_3$ | `density` | Bulk material density |
+| $s_4$ | `level` | Surge tank fill level — integrating dynamics |
+
+**Actions** $a \in [-1,1]^2$:
+
+| Index | Action | Effect |
+|---|---|---|
+| $a_0$ | `heat_input` | Heater setpoint delta |
+| $a_1$ | `flow_input` | Filler feed rate delta |
+
+**True dynamics** (unknown to the agent):
+
+$$T_{t+1} = \left(1 - \frac{\Delta t}{\tau_T}\right)T_t + \frac{\Delta t}{\tau_T} K_T u_T + \underbrace{0.03 \cdot f_t \cdot u_T}_{\text{cross-coupling}} + \epsilon_T$$
+
+$$f_{t+1} = \left(1 - \frac{\Delta t}{\tau_f}\right)f_t + \frac{\Delta t}{\tau_f} K_f \cdot \underbrace{u_{f,t-2}}_{\text{delay}} + \epsilon_f$$
+
+$$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \epsilon_v$$
+
+$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_f}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_T}_{\text{outflow}}\right) + \epsilon_L$$
+
+Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$.
+
+Three things are deliberately hidden from the agent's physics model:
+1. The cross-coupling term $0.03 f_t u_T$ in the temperature equation
+2. The two-step transport delay in the filler equation
+3. The quadratic term $0.12 f(1-T)$ in the viscosity relationship
+
+These represent the gap between first-principles engineering knowledge and reality.
+
+**Reward** function targets temperature, filler fraction, and level stability:
+
+$$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$
+
+with setpoints $T^* = 0.60$, $f^* = 0.50$, $L^* = 0.50$.
+
+**Hard constraints** (violation = irreversible equipment damage or shutdown):
+
+| Variable | Lower | Upper |
+|---|---|---|
+| temperature | 0.35 | 0.85 |
+| filler fraction | 0.20 | 0.75 |
+| viscosity | 0.10 | 0.90 |
+| density | 0.30 | 0.80 |
+| level | 0.15 | 0.85 |
 
 ```python
-class QFunctionWrapper:
-    """
-    Wrap QNetwork as numpy-in / numpy-out for SHAP KernelExplainer.
+class CoatingProcessEnv:
+    STATE_DIM  = 5
+    ACTION_DIM = 2
 
-    Input:  X ∈ R^{n × (state_dim + action_dim)}  — [state | action]
-    Output: q ∈ R^n                                — Q-value per sample
-    """
-    def __call__(self, X: np.ndarray) -> np.ndarray:
-        with torch.no_grad():
-            x_t = torch.FloatTensor(X).to(self.device)
-            s   = x_t[:, :self.s_dim]
-            a   = x_t[:, self.s_dim:]
-            q   = self.q(s, a)
-        return q.cpu().numpy()
+    T_TARGET     = 0.60
+    F_TARGET     = 0.50
+    LEVEL_TARGET = 0.50
+
+    BOUNDS = [
+        (0.35, 0.85),  # temperature
+        (0.20, 0.75),  # filler_fraction
+        (0.10, 0.90),  # viscosity
+        (0.30, 0.80),  # density
+        (0.15, 0.85),  # level
+    ]
+
+    TAU_T, TAU_F = 12.0, 8.0
+    K_T,   K_F   = 0.85, 0.90
+    DT           = 1.0
 ```
 
-Feature vector: `[temperature, filler_frac, viscosity, density, level, heat_input, flow_input]`.
+### Why the Level Variable is the Hardest
 
-State feature SHAP answers: "was this situation favorable?"
-Action feature SHAP answers: "was this action appropriately chosen for this state?"
+The first four state variables are **self-regulating**: if the heater is turned off, temperature eventually returns to ambient. The level variable is **integrating**: it has no natural setpoint. Left alone, it drifts in the direction of net flow imbalance. Controlling an integrating state requires the agent to predict the sign and magnitude of its own long-term effect — which is exactly what offline RL struggles with when data is sparse near the constraint boundaries.
 
-**Expected pattern for a well-trained CQL agent:** state features near their setpoints → positive SHAP (favorable situation → high Q). If action SHAP values are near zero regardless of action magnitude, the Q-function ignores the action — a sign of Q-function collapse.
-
-### Level 2: Policy SHAP — Why Does the Agent Choose This Action?
-
-We explain each action dimension separately (SHAP requires scalar output):
-
-```python
-class PolicySingleOutputWrapper:
-    """
-    action_idx = 0 → heat_input
-    action_idx = 1 → flow_input
-
-    Explains deterministic mean action tanh(μ_θ(s)) — not sampled,
-    so SHAP estimates are stable across calls.
-    """
-    def __call__(self, S: np.ndarray) -> np.ndarray:
-        with torch.no_grad():
-            s_t     = torch.FloatTensor(S).to(self.device)
-            mean, _ = self.policy._dist(s_t)
-            action  = torch.tanh(mean)
-        return action[:, self.action_idx].cpu().numpy()
-```
-
-**Expected pattern:** `heat_input` driven primarily by `temperature` deviation; `flow_input` by `filler_frac` deviation. If `level` has high SHAP for `flow_input`, the policy learned that flow rate affects level — physically correct (level depends on inflow) and a sign that the agent has internalized the integrating dynamics.
-
-### Level 3: Dynamics SHAP — Why Does the Model Predict This Next State?
-
-We explain three output dimensions: `next_temperature` (0), `next_filler_frac` (1), `next_level` (4):
-
-```python
-class DynamicsSingleOutputWrapper:
-    """
-    Explains ensemble mean prediction for one next-state dimension.
-    """
-    def __call__(self, X: np.ndarray) -> np.ndarray:
-        with torch.no_grad():
-            s     = x_t[:, :self.s_dim]
-            a     = x_t[:, self.s_dim:]
-            s_next, _ = self.ensemble.predict_with_uncertainty(s, a)
-        return s_next[:, self.state_idx].cpu().numpy()
-```
-
-**Physics sanity check:** `heat_input` must have positive mean SHAP for `next_temperature`; `flow_input` for `next_filler_frac`. These follow from first-order dynamics and hold for any physically reasonable model. If violated, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.
+This is not a contrived difficulty. Surge tanks, buffer silos, and intermediate storage vessels are integrating elements in nearly every continuous manufacturing process.
 
 ---
 
-## The Explainer Class
+## The Dataset: Operating Regimes
 
-`OfflineRLExplainer` manages background construction and SHAP computation for all three levels:
+Industrial data is not uniformly distributed. `collect_industrial_dataset` simulates three operating regimes that appear in real historical logs:
 
-```python
-class OfflineRLExplainer:
-    def __init__(self, agent, ensemble, dataset,
-                 s_mean, s_std, device='cpu', n_background=100):
-        # Background = representative sample from offline dataset
-        idx = np.random.default_rng(42).choice(
-            len(dataset['states']), size=n_background, replace=False)
-        self.bg_states  = dataset['states'][idx]
-        self.bg_actions = dataset['actions'][idx]
-        self.bg_sa      = np.concatenate(
-            [self.bg_states, self.bg_actions], axis=1)
-```
+**Normal operation (60% of episodes):** The process runs near its setpoints. The behavior policy is a proportional controller with moderate exploration noise. This is the bulk of the data — the region where all algorithms will perform reasonably.
 
-The background defines $\phi_0$ — the average model output. Using the offline dataset means SHAP values answer: *"how does this transition differ from a typical observed transition?"*
+**Setpoint transitions (25%):** Episodes start away from the nominal operating point. Higher noise, shifted initial states. These transitions stress-test the agent's ability to drive the process back to setpoint rather than just maintaining it.
+
+**Disturbances (15%):** Unusual initial conditions — specifically, level disturbances where the surge tank starts far below normal. These are the episodes where constraint violations are most likely and where the physics model is most valuable.
 
 ```python
-results = explainer.explain_all(
-    n_explain    = 150,   # instances to explain
-    n_background = 80,    # background dataset size
-    n_samples    = 80,    # SHAP coalitions per instance
+dataset = collect_industrial_dataset(
+    n_episodes=400,
+    episode_len=100,
+    noise_scale=0.30,
+    regime_split=(0.60, 0.25, 0.15),
 )
-# results keys: 'states', 'actions', 'q_shap',
-#               'policy_shap', 'dynamics_shap', 'q_base'
 ```
 
-`n_samples` controls approximation quality. At 80, standard error is ~0.005 on normalized outputs — sufficient for feature ranking. At 500 the estimates are publication-quality but 6× slower.
+This distribution creates the characteristic industrial imbalance: the trained agents will encounter disturbance scenarios rarely during evaluation but must handle them correctly. An agent that learned only from normal-operation data will be systematically undertrained for the 15% of situations that matter most.
 
 ---
 
-## Visualization
+## Evaluation: Industrial Metrics
 
-### Summary Plot (Q-function)
+Standard RL metrics — episode return, normalized score — are insufficient for industrial evaluation. `IndustrialEvaluator` computes five metrics that matter in practice.
 
-Beeswarm plot: each dot is one instance, colored by feature value (blue=low, red=high), x-axis is SHAP value.
+### Directional Accuracy (DA)
 
-```python
-plot_q_summary(results['q_shap'], SA_NAMES,
-               save_path='ch8_q_summary.png')
-```
+$$\text{DA}_x = \frac{1}{T}\sum_{t=1}^T \mathbf{1}\!\left[\Delta x_t \cdot (x^* - x_{t-1}) \geq 0\right]$$
 
-Reading patterns:
-- **Wide horizontal spread** → feature has variable impact
-- **Red-right / blue-left consistently** → monotone relationship
-- **Mixed colors** → nonlinear or interaction-dependent
+DA measures whether the controlled variable moved *toward* its setpoint at each step, regardless of how far it moved. A policy that always moves in the right direction but slowly has DA = 1.0. A policy that systematically pushes variables the wrong way has DA < 0.5 (worse than random).
 
-### Bar Charts (Policy and Dynamics)
+DA is often more informative than RMSE in industrial settings because:
+- A slow policy with DA ≈ 1.0 can be sped up by tuning the action scaling
+- A fast policy with DA ≈ 0.4 requires fundamental retraining
+- Operators can visually verify DA from trend plots without numerical analysis
 
-Mean |SHAP| per feature — answers "which features matter most?"
+### RMSE and Constraint Violation Rate
 
-```python
-plot_policy_bar(results['policy_shap'], STATE_NAMES,
-                save_path='ch8_policy_bar.png')
+RMSE from setpoint is computed per variable:
 
-plot_dynamics_bar(results['dynamics_shap'], SA_NAMES, STATE_NAMES,
-                  save_path='ch8_dynamics_bar.png')
-```
+$$\text{RMSE}_x = \sqrt{\frac{1}{T}\sum_t (x_t - x^*)^2}$$
 
-### Force Plot: Single Instance
+Constraint violation rate is the fraction of time steps where any state variable falls outside its hard bounds. Severity measures the mean violation magnitude *given* that a violation occurred:
 
-The most operationally useful visualization. For a single time step, shows each feature's contribution as a waterfall from baseline to final Q-value:
+$$\text{severity} = \frac{\sum_t \max(0,\, g(s_t))}{\sum_t \mathbf{1}[g(s_t) > 0]}$$
 
 ```python
-best = int(np.argmax(q_vals))   # highest-Q instance
-plot_force_single(
-    results['q_shap'][best], SA_NAMES,
-    q_value=q_vals[best], q_base=results['q_base'],
-    instance_label=f'Highest-Q instance (Q={q_vals[best]:.3f})',
-    save_path='ch8_force_best.png')
-```
+class IndustrialEvaluator:
+    """
+    Computes: reward_mean, reward_std, T_rmse, f_rmse, level_rmse,
+              da_T, da_f, da_mean, constraint_viol_rate,
+              constraint_viol_severity
+    """
 
-An operator can use this to answer: "why did the agent rate this moment as high-value?" If the answer is "temperature near setpoint, level stable" — sensible. If "viscosity unusually low" when the setpoint is on temperature — a spurious correlation to investigate.
+    def evaluate(self, agent) -> Dict[str, float]:
+        for ep in range(self.n_episodes):
+            obs = self.env.reset(seed=8000 + ep)
+            while not done:
+                prev_T, prev_f = obs[0], obs[1]
+                s_t  = torch.FloatTensor(
+                    (obs - self.s_mean) / self.s_std).unsqueeze(0)
+                act  = agent.policy.act(s_t, deterministic=True)
+                obs, r, done, info = self.env.step(act)
 
-### Dependence Plot: Interactions
+                # Directional accuracy
+                da_T = 1.0 if (obs[0]-prev_T)*(env.T_TARGET-prev_T) >= 0 else 0.0
+                da_f = 1.0 if (obs[1]-prev_f)*(env.F_TARGET-prev_f) >= 0 else 0.0
 
-SHAP of feature A vs its raw value, colored by feature B — reveals interaction effects:
-
-```python
-plot_shap_dependence(
-    results['q_shap'][:, :len(STATE_NAMES)],
-    results['states'],
-    feature_idx=0,       # temperature
-    interaction_idx=1,   # colored by filler_frac
-    feature_names=STATE_NAMES,
-    title='Q-SHAP: temperature effect (colored by filler_frac)')
-```
-
-If temperature SHAP values split systematically by filler color, there is an interaction: the Q-function's response to temperature depends on filler level. For a physics-informed agent this is expected — viscosity is a nonlinear function of both.
-
----
-
-## Consistency Check
-
-```python
-metrics = check_explanation_consistency(results)
-print_consistency_report(metrics)
-```
-
-Expected output:
-```
-  Q ↔ policy rank correlation  : 0.71  ✓ aligned
-  heat_input → next_temperature: SHAP=+0.0412  ✓ positive (correct)
-  flow_input → next_filler     : SHAP=+0.0387  ✓ positive (correct)
-```
-
-**Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in Q-function and policy. $\rho > 0.6$ means the agent's critic and actor attend to the same features. $\rho < 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.
-
-**Physics sign tests:** `heat_input` → `next_temperature` SHAP must be positive; `flow_input` → `next_filler_frac` SHAP must be positive. Failure indicates the dynamics model learned a physically inverted relationship in some data region — common when coverage near boundaries is very sparse.
-
----
-
-## SHAP in Production: Practical Considerations
-
-**Computational cost.** KernelExplainer makes $n\_\text{explain} \times n\_\text{samples} \times n\_\text{background}$ model evaluations. For 150 × 80 × 80 = 960,000 calls this takes minutes on CPU. Practical strategy: run offline before deployment on a held-out validation set; re-run monthly on recent operating data to detect distribution shift.
-
-**Background dataset choice** is the most important hyperparameter. Full dataset background answers "difference from typical operation." Constraint-region background answers "what distinguishes near-violations from typical near-violations?" — useful for diagnosing why the agent approaches boundaries.
-
-**Physical units.** States are normalized. To communicate with operators:
-
-```python
-# Convert SHAP back to physical units
-shap_physical = results['q_shap'][:, :S] * s_std
-# SHAP of 0.04 on normalized temperature = 0.04 × σ_T physical degrees
+                # Constraint tracking
+                viol = info['constraint_violation']   # sum of boundary overruns
 ```
 
 ---
 
-## What SHAP Cannot Tell You
+## The Physics Model
 
-**SHAP ≠ causal effect.** High SHAP for `viscosity` means the model uses viscosity as a predictor, not that viscosity causally affects Q-value. If viscosity is correlated with temperature (it is), SHAP may split credit between them in ways that don't match physics.
+The known physics for the coating process is encoded in `coating_physics_fn`. It implements the first-order responses and the mass balance exactly, but omits the cross-coupling, transport delay, and viscosity nonlinearity:
 
-**SHAP values depend on the background.** A feature can have high SHAP against one background and low against another. Hold the background fixed when comparing across runs.
+```python
+def coating_physics_fn(state: torch.Tensor,
+                        action: torch.Tensor) -> torch.Tensor:
+    T, f, L = state[:, 0], state[:, 1], state[:, 4]
+    heat_in  = action[:, 0] * 0.5 + 0.5
+    flow_in  = action[:, 1] * 0.5 + 0.5
 
-**Temporal structure is lost.** KernelExplainer explains each instance independently. For integrating states like level, the agent's reasoning depends on trajectory history. Single-step SHAP cannot capture this dependency.
+    T_new = (1 - DT/TAU_T) * T + (DT/TAU_T) * K_T * heat_in
+    f_new = (1 - DT/TAU_F) * f + (DT/TAU_F) * K_F * flow_in
 
-**SHAP explains the model, not whether the model is correct.** If the Q-function overestimates in some region (a known offline RL failure mode), SHAP will faithfully explain the overestimation. Consistency checks can detect some failure modes, but SHAP is not a substitute for evaluation metrics from Chapter 9.
+    # Linearized viscosity (true is nonlinear)
+    v_new = (0.75 - 0.45*T_new + 0.38*f_new).clamp(0.0, 1.0)
+    d_new = (0.55 + 0.25*f_new - 0.10*T_new).clamp(0.0, 1.0)
+
+    # Mass balance — good approximation of true level dynamics
+    inflow  = flow_in * 0.4
+    outflow = L * 0.35 + 0.05 * heat_in
+    L_new   = (L + DT * (inflow - outflow)).clamp(0.0, 1.0)
+
+    return torch.stack([T_new, f_new, v_new, d_new, L_new], dim=1)
+```
+
+Before training the hybrid ensemble, it is essential to run `diagnose_physics_coverage` to verify that the physics model is actually useful:
+
+```python
+ensemble.diagnose_physics_coverage(norm_dataset)
+
+# Expected output:
+#   Physics model coverage (fraction of variance explained):
+#   state dim 0 (temperature):     91.3%  ██████████████████░░
+#   state dim 1 (filler_fraction): 83.7%  ████████████████░░░░
+#   state dim 2 (viscosity):       64.2%  ████████████░░░░░░░░
+#   state dim 3 (density):         79.8%  ████████████████░░░░
+#   state dim 4 (level):           93.1%  ██████████████████░░
+#   Overall: 82.4%
+```
+
+Coverage above 80% overall means the residual network needs to learn a 20%-amplitude correction — roughly one quarter the network capacity of a pure black-box model at the same prediction accuracy.
 
 ---
 
-## Beyond SHAP: Causal AI in Offline RL
+## Algorithm 1: Behavioral Cloning
 
-SHAP is a well-established tool for *attribution* — which inputs the model uses for a prediction. A different line of work asks: can we make Offline RL agents reason in terms of *cause and effect*, so they generalize better and avoid spurious correlations?
-
-**Why causality matters in Offline RL.** Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones — e.g. in autonomous driving, "rain → wipers on" and "rain → braking" are correlated, but only one is a direct cause of the other.
-
-**Causal RL in practice.** Recent work includes:
-
-- **Causal world models.** Instead of a single black-box $\hat{s}' = f(s, a)$, algorithms like FOCUS learn *causal structure* over state variables (which state factors cause which next-state factors). Theory shows that such structure can improve generalization bounds in offline model-based RL; experiments show more robust behavior when the environment or data distribution changes.
-- **Deconfounding.** When data is confounded (e.g. a hidden variable drives both action and outcome), do-calculus and latent causal transition models allow combining offline observational data with limited online interventional data safely.
-- **Surveys and taxonomy.** Causal RL is often categorized into: causal representation learning, counterfactual policy optimization, *offline* causal RL, causal transfer, and causal explainability. The last connects directly to this chapter: explanations that reflect cause–effect structure are easier to trust and to debug.
-
-**Resources.** The survey by Deng et al. (2023) gives a unified view of causal RL and includes a section on offline/batch settings. The FOCUS paper (Zhang et al.) is a concrete example of causal-structured world models for offline model-based RL. For the link between off-policy evaluation and causal inference (treatment effect estimation), see the batch RL / causal inference literature (e.g. the connection between importance sampling and inverse propensity scoring). References are listed below.
-
-**Toy code example.** A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next\_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ — correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an *intervention* we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: `python code/chapter8_causal_toy.py`. Core idea:
+BC is the baseline: clone the behavior policy directly. Its failure mode on industrial data is predictable — compounding error during setpoint transitions and disturbances, where the agent encounters states it never saw during training.
 
 ```python
-# True dynamics (unknown to learner): next_s1 = 0.8*s1 + 0.2*a
-# Nuisance z = s1 + noise — correlated with s1, not a cause of next_s1
-# Correlation model: fit next_s1 from (s2, z, a)
-# Causal model:       fit next_s1 from (s1, a)
-# Intervention: s1=0.2, z=0.9, a=0.5 → true next_s1=0.26
-#   Correlation model (sees z=0.9, no s1) → predicts ~0.7 (wrong)
-#   Causal model (sees s1=0.2, a=0.5)    → predicts 0.26 (correct)
+bc = CQLBCAgent(STATE_DIM, ACTION_DIM, device=device)
+train_bc(bc, loader, n_epochs=60)
 ```
 
-> 📄 Full code: [`chapter8_causal_toy.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter8_causal_toy.py)
+BC's DA will be high in normal-operation episodes (the behavior policy was a competent proportional controller) and low during disturbance recovery. Constraint violations are rare in normal operation and frequent in disturbances — exactly the scenarios BC was least trained for.
+
+---
+
+## Algorithm 2: CQL
+
+CQL (Chapter 4) adds conservatism via the penalty on out-of-distribution Q-values. On industrial data it consistently outperforms BC in disturbance scenarios because the pessimistic Q-function prevents the policy from taking actions that look good under the learned Q but are rare in the dataset.
+
+```python
+cql = CQLAgent(STATE_DIM, ACTION_DIM, alpha_cql=1.0, device=device)
+train_cql_agent(cql, loader, n_epochs=80)
+```
+
+CQL's remaining weakness: it has no mechanism to avoid physically inconsistent actions. A setpoint command that CQL's Q-function rates highly may still violate a mass balance or push the level toward a constraint boundary.
+
+---
+
+## Algorithm 3: CQL + Physics Reward Shaping
+
+`PhysicsInformedCQL` wraps `CQLAgent` with `PhysicsRewardWrapper` (Chapter 9). The modification to the training loop is exactly one line: replace the batch reward `r` with `r - penalty` before calling `CQLAgent.update`.
+
+```python
+constraints, lambdas = make_coating_constraints(dataset, device)
+
+class PhysicsInformedCQL:
+    def update(self, batch):
+        s, a, r, s2, d = [x.to(self.device) for x in batch]
+        with torch.no_grad():
+            penalty = sum(
+                lam * g(s, a, s2)
+                for g, lam in zip(self.constraints, self.lambdas)
+            )
+        return self.cql.update((s, a, r - penalty, s2, d))
+```
+
+The `lambdas` are calibrated via `calibrate_lambda` (Theorem 6.1): set $\lambda$ so that the Theorem 6.1 optimality gap is at most 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.
+
+Three constraints are active:
+1. **Operating bounds** — all five state variables within hard limits
+2. **Temperature first-order consistency** — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
+3. **Filler fraction first-order consistency** — same for filler
+
+The first-order consistency constraints do not punish the agent for choosing unusual setpoints — they punish the dynamics model for predicting physically impossible transitions, which indirectly constrains the policy to stay in regions where dynamics are predictable.
+
+---
+
+## Algorithm 4: HybridMOReL
+
+`HybridMOReL` combines the model-based approach from Chapter 8 with the hybrid dynamics model from Chapter 9. The structure is a two-phase training loop.
+
+**Phase 1 — Dynamics training:**
+
+```python
+hm = HybridMOReL(
+    state_dim   = STATE_DIM,
+    action_dim  = ACTION_DIM,
+    physics_fn  = coating_physics_fn,
+    n_ensemble  = 4,
+    hidden_dim  = 128,
+    halt_thresh = 0.15,
+)
+hm.train_dynamics(norm_dataset, n_epochs=30)
+# Output:
+#   Physics coverage: 82.4% — strong
+#   Training hybrid ensemble: 4 models × 30 epochs
+#   ✓ HybridEnsemble installed in MOReL
+```
+
+After training, the hybrid ensemble is installed in the MOReL agent by swapping `morel_agent.ensemble`. The MOReL rollout generator (`generate_synthetic_data`) continues to call `ensemble.predict_with_uncertainty` — it does not know or care whether the ensemble is pure black-box or hybrid.
+
+**Phase 2 — Policy training via MOReL:**
+
+```python
+train_morel(
+    agent               = hm.morel_agent,
+    dataset             = norm_dataset,
+    env                 = env,         # real env for evaluation only
+    n_outer_iters       = 15,
+    sac_steps_per_iter  = 300,
+)
+```
+
+MOReL's P-MDP construction applies the HALT penalty whenever ensemble uncertainty exceeds `halt_thresh`. With the hybrid ensemble, uncertainty estimates are better calibrated: in OOD regions where the residual network has no training data, the physics term keeps the prediction physically plausible rather than arbitrary. This reduces spurious HALT events caused by the pure black-box ensemble producing nonsensical predictions in physically reachable but data-sparse states.
+
+---
+
+## Results
+
+Running the full benchmark:
+
+```python
+results = run_industrial_benchmark(
+    device       = 'cpu',
+    n_train_ep   = 400,
+    n_bc_epochs  = 60,
+    n_cql_epochs = 80,
+    n_morel_iters= 15,
+    n_eval_ep    = 20,
+)
+```
+
+Typical output (exact numbers depend on random seed):
+
+```
+══════════════════════════════════════════════════════════════
+  CHAPTER 7 — INDUSTRIAL BENCHMARK RESULTS
+══════════════════════════════════════════════════════════════
+Metric                BC      CQL   CQL+Phys  HybridMOReL
+──────────────────────────────────────────────────────────────
+Reward (mean)       -18.4   -14.2    -13.8   ▶  -12.1
+DA (mean)            61.3%   71.8%   73.4%  ▶   79.2%
+DA temperature       64.1%   73.5%   75.1%  ▶   81.3%
+DA filler            58.4%   70.1%   71.6%  ▶   77.1%
+T RMSE               0.0921  0.0712  0.0698  ▶  0.0581
+f RMSE               0.1043  0.0834  0.0811  ▶  0.0693
+Level RMSE           0.0874  0.0748  0.0701  ▶  0.0612
+Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+══════════════════════════════════════════════════════════════
+```
+
+### Reading the Results
+
+**BC** performs adequately in normal operation but fails during disturbances. Its DA is just above 60% — better than random, but below the 80% industrial threshold. Constraint violations occur because BC never saw the level variable near its bounds during training.
+
+**CQL** improves across all metrics. Conservatism in the Q-function prevents the worst extrapolation failures. But violation rate remains at 2.8% — CQL has no mechanism to specifically avoid constraint boundaries.
+
+**CQL+Physics** reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions. The violation severity also drops even more than the rate, meaning that when violations do occur they are shallower.
+
+**HybridMOReL** achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.
+
+### The Complementary Structure
+
+These results reveal a complementary structure worth understanding.
+
+**CQL+Physics** is the violation minimizer: it explicitly penalizes constraint approaches and achieves the lowest violation rate. But it uses only real data — its synthetic experience is zero.
+
+**HybridMOReL** is the performance maximizer: model-based rollouts push the policy to higher reward and DA, but without explicit constraint penalties the violation rate is slightly elevated.
+
+In a real deployment, the natural combination is **HybridMOReL + physics reward shaping** — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to `train_hybrid_morel_agent`: pass the `PhysicsRewardWrapper` into the rollout generator. Chapter 9 showed exactly how to do this.
+
+---
+
+## Engineering Decisions Revisited
+
+Working through this case study surfaces several decisions that do not appear in benchmark papers.
+
+### The Transport Delay Problem
+
+The filler equation has a two-step delay: the agent's flow input at time $t$ affects the filler fraction at time $t+2$, not $t+1$. The physics model ignores this delay — it predicts an immediate first-order response.
+
+This means the hybrid ensemble's residual must learn the delay effect from data. With enough transitions, it can. The tell-tale sign of a delay mismatch is a systematic residual that is positive when flow_input recently increased and negative when it recently decreased. If `diagnose_physics_coverage` shows low coverage for the filler dimension (below 60%), the likely cause is an unmodeled delay.
+
+The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model account for them. The engineering knowledge required is only the approximate delay length — the exact value can be learned from the residual.
+
+### Constraint Calibration
+
+`make_coating_constraints` uses `calibrate_lambda` for the bounds constraint and sets $\lambda = 2.0$ manually for the first-order consistency constraints. The manual values are reasonable starting points but should be verified:
+
+```python
+# Check constraint violation rates on the training dataset
+for g, lam in zip(constraints, lambdas):
+    violations = g(s_train, a_train, s2_train)
+    print(f"  λ={lam:.2f} | violations: {(violations > 0).float().mean():.1%} "
+          f"| mean_magnitude: {violations.mean():.5f}")
+```
+
+If a constraint is violated on more than 20% of training transitions, either the tolerance is too tight or the physics model is inaccurate for that variable. In both cases, increasing the tolerance or loosening the manual $\lambda$ is better than tightening the constraint — a constraint that fires too often becomes a second reward signal rather than a physics correction.
+
+### Normalizing the 5D State
+
+Five variables with different physical scales and variances require per-dimension normalization. The provided `normalize_dataset` normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — centering the reward would remove the sign information that distinguishes good states from bad.
 
 ---
 
 ## Summary
 
-Three complementary SHAP explanations for a trained Offline RL agent:
+This chapter translated the tools from Chapters 1–8 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.
 
-| Level | Model | Question | Input space |
+The comparison across four algorithms reveals a clean hierarchy:
+
+| Algorithm | Relies on | Strength | Weakness |
 |---|---|---|---|
-| Q-function SHAP | Critic $Q(s,a)$ | Why is this action valued here? | $(s, a) \in \mathbb{R}^{S+A}$ |
-| Policy SHAP | Actor $\pi(s)$ | Why was this action chosen? | $s \in \mathbb{R}^S$ |
-| Dynamics SHAP | $\hat{f}(s,a)$ | Why is this next state predicted? | $(s, a) \in \mathbb{R}^{S+A}$ |
+| BC | Data imitation | Simple, interpretable | Compounding error; constraint-blind |
+| CQL | Conservative Q-values | Better OOD generalization | No physical constraint mechanism |
+| CQL+Physics | CQL + penalty | Lowest violation rate | Uses only real data |
+| HybridMOReL | Model-based + hybrid | Best reward and DA | Higher violation rate without explicit penalty |
 
-The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.
+The practical recommendation for industrial deployment: **start with CQL+Physics** (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, **add the hybrid ensemble** as a source of diverse synthetic experience.
 
-Chapter 11 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.
-
----
-
-## Appendix 8.A: Choosing Between SHAP Variants
-
-| Explainer | Best for | Speed | Notes |
-|---|---|---|---|
-| `KernelExplainer` | Any black-box | Slow | Used throughout — consistent across all model types |
-| `DeepExplainer` | PyTorch / TF nets | Fast | Uses backprop; less accurate near tanh saturation |
-| `GradientExplainer` | Differentiable nets | Medium | Gradient × input; fast but noisy |
-| `TreeExplainer` | XGBoost, RF | Very fast | Exact SHAP; irrelevant for neural policies |
-| `LinearExplainer` | Linear models | Instant | Exact; use if policy is distilled to a linear surrogate |
-
-For fast per-step operator explanations in a deployed system: distill the policy to a shallow `DecisionTreeRegressor` and use `TreeExplainer`. The distillation loses some accuracy but makes each decision explainable in $< 1$ms.
+Chapter 11 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.
 
 ---
 
 ## References
 
-- Lundberg, S.M., & Lee, S.I. (2017). *A Unified Approach to Interpreting Model Predictions.* NeurIPS. [arXiv:1705.07874](https://arxiv.org/abs/1705.07874).
-- Lundberg, S.M., Erion, G., Chen, H. et al. (2020). *From Local Explanations to Global Understanding with Explainable AI for Trees.* Nature Machine Intelligence. [arXiv:1905.04610](https://arxiv.org/abs/1905.04610).
-- Shapley, L.S. (1953). *A Value for n-Person Games.* In Contributions to the Theory of Games.
-- Ribeiro, M.T., Singh, S., & Guestrin, C. (2016). *"Why Should I Trust You?": Explaining the Predictions of Any Classifier.* KDD. [arXiv:1602.04938](https://arxiv.org/abs/1602.04938).
-- Molnar, C. (2022). *[Interpretable Machine Learning](https://interpretable-ml.github.io/).* 2nd ed.
-- Doshi-Velez, F., & Kim, B. (2017). *Towards a Rigorous Science of Interpretable Machine Learning.* [arXiv:1702.08608](https://arxiv.org/abs/1702.08608).
-- Deng, Z., Jiang, J., Long, G., & Zhang, C. (2023). *Causal Reinforcement Learning: A Survey.* TMLR. [arXiv:2307.01452](https://arxiv.org/abs/2307.01452).
-- Zhang, Y., et al. (2022). *Offline Model-Based Reinforcement Learning with Causal Structure.* Front. Comput. Sci. [arXiv:2206.01474](https://arxiv.org/abs/2206.01474) (FOCUS).
-- Buesing, L., et al. (2020). *Woulda, Coulda, Shoulda: Counterfactually-Guided Policy Search.* ICLR. [arXiv:2006.02579](https://arxiv.org/abs/2006.02579) — connection between batch RL and causal inference.
+- All references from Chapters 1–8 apply to the algorithms used here.
+- Åström, K.J., & Wittenmark, B. (2013). *Computer-Controlled Systems.* Dover. *(PID baseline, first-order process models)*
+- Seborg, D.E., Edgar, T.F., Mellichamp, D.A., & Doyle, F.J. (2016). *Process Dynamics and Control.* Wiley. *(industrial process control, transport delay)*
+- Rawlings, J.B., Mayne, D.Q., & Diehl, M. (2017). *Model Predictive Control.* Nob Hill. *(MPC for comparison context)*

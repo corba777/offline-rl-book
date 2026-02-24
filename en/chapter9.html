@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chapter 9: Industrial Applications</title>
+  <title>Chapter 9: Physics-Informed Offline RL</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -58,434 +58,374 @@
   </div>
 </header>
 <main>
-<h1>Chapter 9: Industrial Applications</h1>
+<h1>Chapter 9: Physics-Informed Offline RL</h1>
 <blockquote>
-<p><em>"The gap between a working benchmark result and a working industrial deployment is not a gap in algorithms — it is a gap in understanding the data."</em></p>
+<p><em>"A black-box model that fits the data perfectly inside the training distribution is still useless if it predicts that energy is not conserved outside it."</em></p>
 </blockquote>
 <hr />
-<h2>From Benchmarks to Industry</h2>
-<p>The preceding six chapters built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on <code>ThermalProcessEnv</code> — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.</p>
-<p>Real industrial processes differ from that environment in every dimension that matters.</p>
-<p><strong>More variables, more coupling.</strong> A realistic coating process has dozens of sensor readings. Even a simplified model has temperature, filler fraction, viscosity, bulk density, and a surge tank level — five variables with physical dependencies between all of them. The level is an integrating state that drifts without active control; viscosity is a nonlinear function of temperature and filler that the agent cannot observe independently of its inputs.</p>
-<p><strong>Non-uniform data coverage.</strong> Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.</p>
-<p><strong>Lag and delay.</strong> Material fed into a coating line takes 30–90 minutes to appear at the quality measurement point. Within the dynamic model, this manifests as a transport delay: the agent's action at time $t$ affects the output at time $t + k$. A pure first-order model ignoring the delay will have systematic prediction errors whenever the feed rate changes.</p>
-<p><strong>Hard physical constraints.</strong> Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.</p>
-<p>This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–8. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.</p>
+<h2>Why Physics?</h2>
+<p>Chapters 4–8 treated the world as a black box: we fed in states and actions, observed next states and rewards, and let neural networks figure out the rest. For benchmark tasks like MuJoCo locomotion this is fine — the environment is a simulation, data is plentiful, and there are no hard physical constraints that must hold.</p>
+<p>Industrial processes are different. Three things distinguish them:</p>
+<p><strong>Data is scarce and narrow.</strong> A manufacturing line runs in a small region of its theoretical operating envelope — the operator keeps it there deliberately. An offline dataset from six months of normal operation may contain almost no examples of the process near its physical limits. Any model that tries to reason about those regions is extrapolating.</p>
+<p><strong>Physical laws are partially known.</strong> For most industrial systems, engineers know a great deal: conservation of mass and energy, thermodynamic relationships, transport phenomena, first-order dynamics. This knowledge is imperfect (real systems have unmeasured disturbances, aging equipment, composition variation) but it is not zero. Ignoring it wastes a free source of information.</p>
+<p><strong>Violations of physics are costly.</strong> A policy that violates a mass balance might command an impossible setpoint. A model that predicts temperature decreasing when heat is added is not just inaccurate — it will produce a control policy that actively damages the process.</p>
+<p>Physics-informed offline RL exploits known structure in three places:</p>
+<ol>
+<li><strong>Reward shaping</strong> — encode physical constraints as soft penalties in the reward signal</li>
+<li><strong>Hybrid dynamics model</strong> — replace the pure black-box ensemble with a model that respects known physics exactly and learns the unknown residual</li>
+<li><strong>Constraint-based policy</strong> — embed hard constraints directly into policy optimization (brief treatment, as this overlaps with safe RL)</li>
+</ol>
+<hr />
+<h2>Part I: Physics as Reward Shaping</h2>
+<h3>The Idea</h3>
+<p>The simplest way to use physics: add penalty terms to the reward whenever the system violates known constraints. This works with <em>any</em> offline RL algorithm — CQL, IQL, MOPO — without changing the algorithm itself.</p>
+<p>For a process with state $s = (x_1, \ldots, x_n)$ and known constraint $g(s) \leq 0$:</p>
+<p><div class="math-display">$$\tilde{r}(s, a, s') = r(s, a) - \lambda \cdot \max\bigl(0,\ g(s')\bigr)$$</div></p>
+<p>The $\max(0, \cdot)$ activates the penalty only when the constraint is violated; inside the feasible region it contributes nothing. $\lambda$ controls the trade-off between reward maximization and constraint satisfaction.</p>
+<h3>Types of Physical Constraints</h3>
+<p><strong>Monotone relationships.</strong> Many physical relationships are guaranteed to be monotone. Viscosity of a liquid decreases with temperature (for most fluids in normal operating ranges). Conversion in a reactor increases with residence time up to some limit. If the learned dynamics model predicts the wrong sign, it is physically wrong.</p>
+<p><div class="math-display">$$g_{mono}(s, s') = \max\Bigl(0,\ \text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\Bigr)$$</div></p>
+<p><strong>Conservation laws.</strong> Mass and energy must balance. For a mixing process with input flows $q_{in}$ and output flow $q_{out}$ and a tank of volume $V$:</p>
+<p><div class="math-display">$$\frac{dV}{dt} = q_{in} - q_{out}$$</div></p>
+<p>If a discrete-time model predicts $V_{t+1}$ inconsistent with this, the violation magnitude is:</p>
+<p><div class="math-display">$$g_{mass}(s_t, s_{t+1}) = \bigl| V_{t+1} - V_t - \Delta t (q_{in,t} - q_{out,t}) \bigr| - \delta$$</div></p>
+<p>where $\delta$ is a tolerance for measurement noise and unmodeled flows.</p>
+<p><strong>Feasibility bounds.</strong> Physical state variables have hard limits from thermodynamics, equipment ratings, or safety considerations. Temperature cannot exceed the boiling point of the medium. Concentration cannot be negative. A valve position is in $[0, 1]$.</p>
+<p><div class="math-display">$$g_{bounds}(s) = \sum_i \max(0,\ s_i - s_i^{max}) + \max(0,\ s_i^{min} - s_i)$$</div></p>
+<h3>Implementation</h3>
 <blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter7.py"><code>chapter7.py</code></a></p>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/physics_informed.py"><code>physics_informed.py</code></a></p>
 </blockquote>
-<hr />
-<h2>The Coating Process</h2>
-<h3>Environment</h3>
-<p>The <code>CoatingProcessEnv</code> models a continuous thermal coating line with five state variables and two control inputs.</p>
-<p><strong>State</strong> $s \in \mathbb{R}^5$ (all normalized to $[0,1]$):</p>
-<table>
-<thead>
-<tr>
-<th>Index</th>
-<th>Variable</th>
-<th>Physical meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>$s_0$</td>
-<td><code>temperature</code></td>
-<td>Process temperature in the coating zone</td>
-</tr>
-<tr>
-<td>$s_1$</td>
-<td><code>filler_fraction</code></td>
-<td>Fraction of filler material in the blend</td>
-</tr>
-<tr>
-<td>$s_2$</td>
-<td><code>viscosity</code></td>
-<td>Blend viscosity — nonlinear function of $T$ and filler</td>
-</tr>
-<tr>
-<td>$s_3$</td>
-<td><code>density</code></td>
-<td>Bulk material density</td>
-</tr>
-<tr>
-<td>$s_4$</td>
-<td><code>level</code></td>
-<td>Surge tank fill level — integrating dynamics</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Actions</strong> $a \in [-1,1]^2$:</p>
-<table>
-<thead>
-<tr>
-<th>Index</th>
-<th>Action</th>
-<th>Effect</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>$a_0$</td>
-<td><code>heat_input</code></td>
-<td>Heater setpoint delta</td>
-</tr>
-<tr>
-<td>$a_1$</td>
-<td><code>flow_input</code></td>
-<td>Filler feed rate delta</td>
-</tr>
-</tbody>
-</table>
-<p><strong>True dynamics</strong> (unknown to the agent):</p>
-<p><div class="math-display">$$T_{t+1} = \left(1 - \frac{\Delta t}{\tau_T}\right)T_t + \frac{\Delta t}{\tau_T} K_T u_T + \underbrace{0.03 \cdot f_t \cdot u_T}_{\text{cross-coupling}} + \epsilon_T$$</div></p>
-<p><div class="math-display">$$f_{t+1} = \left(1 - \frac{\Delta t}{\tau_f}\right)f_t + \frac{\Delta t}{\tau_f} K_f \cdot \underbrace{u_{f,t-2}}_{\text{delay}} + \epsilon_f$$</div></p>
-<p><div class="math-display">$$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \epsilon_v$$</div></p>
-<p><div class="math-display">$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_f}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_T}_{\text{outflow}}\right) + \epsilon_L$$</div></p>
-<p>Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$.</p>
-<p>Three things are deliberately hidden from the agent's physics model:
-1. The cross-coupling term $0.03 f_t u_T$ in the temperature equation
-2. The two-step transport delay in the filler equation
-3. The quadratic term $0.12 f(1-T)$ in the viscosity relationship</p>
-<p>These represent the gap between first-principles engineering knowledge and reality.</p>
-<p><strong>Reward</strong> function targets temperature, filler fraction, and level stability:</p>
-<p><div class="math-display">$$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$</div></p>
-<p>with setpoints $T^<em> = 0.60$, $f^</em> = 0.50$, $L^* = 0.50$.</p>
-<p><strong>Hard constraints</strong> (violation = irreversible equipment damage or shutdown):</p>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Lower</th>
-<th>Upper</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>temperature</td>
-<td>0.35</td>
-<td>0.85</td>
-</tr>
-<tr>
-<td>filler fraction</td>
-<td>0.20</td>
-<td>0.75</td>
-</tr>
-<tr>
-<td>viscosity</td>
-<td>0.10</td>
-<td>0.90</td>
-</tr>
-<tr>
-<td>density</td>
-<td>0.30</td>
-<td>0.80</td>
-</tr>
-<tr>
-<td>level</td>
-<td>0.15</td>
-<td>0.85</td>
-</tr>
-</tbody>
-</table>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">CoatingProcessEnv</span><span class="p">:</span>
-    <span class="n">STATE_DIM</span>  <span class="o">=</span> <span class="mi">5</span>
-    <span class="n">ACTION_DIM</span> <span class="o">=</span> <span class="mi">2</span>
-
-    <span class="n">T_TARGET</span>     <span class="o">=</span> <span class="mf">0.60</span>
-    <span class="n">F_TARGET</span>     <span class="o">=</span> <span class="mf">0.50</span>
-    <span class="n">LEVEL_TARGET</span> <span class="o">=</span> <span class="mf">0.50</span>
-
-    <span class="n">BOUNDS</span> <span class="o">=</span> <span class="p">[</span>
-        <span class="p">(</span><span class="mf">0.35</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">),</span>  <span class="c1"># temperature</span>
-        <span class="p">(</span><span class="mf">0.20</span><span class="p">,</span> <span class="mf">0.75</span><span class="p">),</span>  <span class="c1"># filler_fraction</span>
-        <span class="p">(</span><span class="mf">0.10</span><span class="p">,</span> <span class="mf">0.90</span><span class="p">),</span>  <span class="c1"># viscosity</span>
-        <span class="p">(</span><span class="mf">0.30</span><span class="p">,</span> <span class="mf">0.80</span><span class="p">),</span>  <span class="c1"># density</span>
-        <span class="p">(</span><span class="mf">0.15</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">),</span>  <span class="c1"># level</span>
-    <span class="p">]</span>
-
-    <span class="n">TAU_T</span><span class="p">,</span> <span class="n">TAU_F</span> <span class="o">=</span> <span class="mf">12.0</span><span class="p">,</span> <span class="mf">8.0</span>
-    <span class="n">K_T</span><span class="p">,</span>   <span class="n">K_F</span>   <span class="o">=</span> <span class="mf">0.85</span><span class="p">,</span> <span class="mf">0.90</span>
-    <span class="n">DT</span>           <span class="o">=</span> <span class="mf">1.0</span>
-</code></pre></div>
-
-<h3>Why the Level Variable is the Hardest</h3>
-<p>The first four state variables are <strong>self-regulating</strong>: if the heater is turned off, temperature eventually returns to ambient. The level variable is <strong>integrating</strong>: it has no natural setpoint. Left alone, it drifts in the direction of net flow imbalance. Controlling an integrating state requires the agent to predict the sign and magnitude of its own long-term effect — which is exactly what offline RL struggles with when data is sparse near the constraint boundaries.</p>
-<p>This is not a contrived difficulty. Surge tanks, buffer silos, and intermediate storage vessels are integrating elements in nearly every continuous manufacturing process.</p>
-<hr />
-<h2>The Dataset: Operating Regimes</h2>
-<p>Industrial data is not uniformly distributed. <code>collect_industrial_dataset</code> simulates three operating regimes that appear in real historical logs:</p>
-<p><strong>Normal operation (60% of episodes):</strong> The process runs near its setpoints. The behavior policy is a proportional controller with moderate exploration noise. This is the bulk of the data — the region where all algorithms will perform reasonably.</p>
-<p><strong>Setpoint transitions (25%):</strong> Episodes start away from the nominal operating point. Higher noise, shifted initial states. These transitions stress-test the agent's ability to drive the process back to setpoint rather than just maintaining it.</p>
-<p><strong>Disturbances (15%):</strong> Unusual initial conditions — specifically, level disturbances where the surge tank starts far below normal. These are the episodes where constraint violations are most likely and where the physics model is most valuable.</p>
-<div class="codehilite"><pre><span></span><code><span class="n">dataset</span> <span class="o">=</span> <span class="n">collect_industrial_dataset</span><span class="p">(</span>
-    <span class="n">n_episodes</span><span class="o">=</span><span class="mi">400</span><span class="p">,</span>
-    <span class="n">episode_len</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
-    <span class="n">noise_scale</span><span class="o">=</span><span class="mf">0.30</span><span class="p">,</span>
-    <span class="n">regime_split</span><span class="o">=</span><span class="p">(</span><span class="mf">0.60</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.15</span><span class="p">),</span>
-<span class="p">)</span>
-</code></pre></div>
-
-<p>This distribution creates the characteristic industrial imbalance: the trained agents will encounter disturbance scenarios rarely during evaluation but must handle them correctly. An agent that learned only from normal-operation data will be systematically undertrained for the 15% of situations that matter most.</p>
-<hr />
-<h2>Evaluation: Industrial Metrics</h2>
-<p>Standard RL metrics — episode return, normalized score — are insufficient for industrial evaluation. <code>IndustrialEvaluator</code> computes five metrics that matter in practice.</p>
-<h3>Directional Accuracy (DA)</h3>
-<p><div class="math-display">$$\text{DA}_x = \frac{1}{T}\sum_{t=1}^T \mathbf{1}\!\left[\Delta x_t \cdot (x^* - x_{t-1}) \geq 0\right]$$</div></p>
-<p>DA measures whether the controlled variable moved <em>toward</em> its setpoint at each step, regardless of how far it moved. A policy that always moves in the right direction but slowly has DA = 1.0. A policy that systematically pushes variables the wrong way has DA &lt; 0.5 (worse than random).</p>
-<p>DA is often more informative than RMSE in industrial settings because:
-- A slow policy with DA ≈ 1.0 can be sped up by tuning the action scaling
-- A fast policy with DA ≈ 0.4 requires fundamental retraining
-- Operators can visually verify DA from trend plots without numerical analysis</p>
-<h3>RMSE and Constraint Violation Rate</h3>
-<p>RMSE from setpoint is computed per variable:</p>
-<p><div class="math-display">$$\text{RMSE}_x = \sqrt{\frac{1}{T}\sum_t (x_t - x^*)^2}$$</div></p>
-<p>Constraint violation rate is the fraction of time steps where any state variable falls outside its hard bounds. Severity measures the mean violation magnitude <em>given</em> that a violation occurred:</p>
-<p><div class="math-display">$$\text{severity} = \frac{\sum_t \max(0,\, g(s_t))}{\sum_t \mathbf{1}[g(s_t) > 0]}$$</div></p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">IndustrialEvaluator</span><span class="p">:</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">PhysicsRewardWrapper</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Computes: reward_mean, reward_std, T_rmse, f_rmse, level_rmse,</span>
-<span class="sd">              da_T, da_f, da_mean, constraint_viol_rate,</span>
-<span class="sd">              constraint_viol_severity</span>
+<span class="sd">    Wraps any reward function with physics-based penalty terms.</span>
+
+<span class="sd">    Constraints are callables g(state, action, next_state) -&gt; float,</span>
+<span class="sd">    returning a non-negative violation magnitude (0 = constraint satisfied).</span>
+
+<span class="sd">    Usage:</span>
+<span class="sd">        reward_fn = PhysicsRewardWrapper(</span>
+<span class="sd">            base_reward=my_reward,</span>
+<span class="sd">            constraints=[mass_balance_constraint, temperature_bound],</span>
+<span class="sd">            lambdas=[10.0, 5.0],</span>
+<span class="sd">        )</span>
+<span class="sd">        r_phys = reward_fn(state, action, next_state)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">def</span> <span class="nf">evaluate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
-        <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_episodes</span><span class="p">):</span>
-            <span class="n">obs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">reset</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="mi">8000</span> <span class="o">+</span> <span class="n">ep</span><span class="p">)</span>
-            <span class="k">while</span> <span class="ow">not</span> <span class="n">done</span><span class="p">:</span>
-                <span class="n">prev_T</span><span class="p">,</span> <span class="n">prev_f</span> <span class="o">=</span> <span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
-                <span class="n">s_t</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span>
-                    <span class="p">(</span><span class="n">obs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_mean</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_std</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-                <span class="n">act</span>  <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">act</span><span class="p">(</span><span class="n">s_t</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-                <span class="n">obs</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">done</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">act</span><span class="p">)</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base_reward</span><span class="p">,</span> <span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">constraints</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">lambdas</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_reward</span> <span class="o">=</span> <span class="n">base_reward</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">constraints</span> <span class="o">=</span> <span class="n">constraints</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span>     <span class="o">=</span> <span class="n">lambdas</span>
 
-                <span class="c1"># Directional accuracy</span>
-                <span class="n">da_T</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">T_TARGET</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
-                <span class="n">da_f</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">F_TARGET</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">state</span><span class="p">:</span>      <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                 <span class="n">action</span><span class="p">:</span>     <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                 <span class="n">next_state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_reward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span><span class="p">):</span>
+            <span class="n">violation</span> <span class="o">=</span> <span class="n">g</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>        <span class="c1"># (batch,) &gt;= 0</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">r</span> <span class="o">-</span> <span class="n">lam</span> <span class="o">*</span> <span class="n">violation</span>
+        <span class="k">return</span> <span class="n">r</span>
+</code></pre></div>
 
-                <span class="c1"># Constraint tracking</span>
-                <span class="n">viol</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;constraint_violation&#39;</span><span class="p">]</span>   <span class="c1"># sum of boundary overruns</span>
+<p><strong>Example constraint — first-order dynamics consistency:</strong></p>
+<p>A first-order process with known time constant $\tau$ and gain $K$ satisfies:</p>
+<p><div class="math-display">$$x_{t+1} \approx x_t + \frac{\Delta t}{\tau}(K \cdot u_t - x_t)$$</div></p>
+<p>If the learned model's prediction deviates significantly from this, the deviation is a constraint violation:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">first_order_consistency</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">,</span>
+                             <span class="n">tau</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">K</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Physics penalty: predicted next state should be consistent with</span>
+<span class="sd">    first-order dynamics x_{t+1} ≈ x_t + dt/tau * (K*u - x_t).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">x</span>    <span class="o">=</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>    <span class="c1"># process variable</span>
+    <span class="n">u</span>    <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>   <span class="c1"># control input</span>
+    <span class="n">x_phys</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">u</span> <span class="o">-</span> <span class="n">x</span><span class="p">)</span>
+    <span class="n">x_pred</span> <span class="o">=</span> <span class="n">next_state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+    <span class="n">violation</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x_pred</span> <span class="o">-</span> <span class="n">x_phys</span><span class="p">)</span> <span class="o">-</span> <span class="n">tol</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">violation</span>
+</code></pre></div>
+
+<h3>Choosing $\lambda$</h3>
+<p>The penalty weight $\lambda$ has the same role as $\alpha$ in CQL: too small and violations persist; too large and the policy becomes overly conservative, ignoring the reward signal.</p>
+<p>A practical calibration: compute the typical base reward magnitude $\bar{r}$ on the dataset, then set $\lambda$ so that a typical violation (say, 5% mass balance error) costs about 20–50% of $\bar{r}$. This makes the constraint "expensive but not catastrophic."</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Calibrate lambda from dataset statistics</span>
+<span class="n">r_mean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;rewards&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+<span class="n">typical_violation</span> <span class="o">=</span> <span class="mf">0.05</span>   <span class="c1"># expected violation magnitude in the region of interest</span>
+<span class="n">target_penalty_fraction</span> <span class="o">=</span> <span class="mf">0.3</span>   <span class="c1"># want penalty ≈ 30% of mean reward</span>
+
+<span class="n">lam</span> <span class="o">=</span> <span class="p">(</span><span class="n">target_penalty_fraction</span> <span class="o">*</span> <span class="n">r_mean</span><span class="p">)</span> <span class="o">/</span> <span class="n">typical_violation</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Calibrated lambda = </span><span class="si">{</span><span class="n">lam</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 
 <hr />
-<h2>The Physics Model</h2>
-<p>The known physics for the coating process is encoded in <code>coating_physics_fn</code>. It implements the first-order responses and the mass balance exactly, but omits the cross-coupling, transport delay, and viscosity nonlinearity:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">coating_physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
-                        <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-    <span class="n">T</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">L</span> <span class="o">=</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">4</span><span class="p">]</span>
-    <span class="n">heat_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
-    <span class="n">flow_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
+<h2>Part II: Hybrid Dynamics Models</h2>
+<h3>The Limitation of Pure Black-Box Ensembles</h3>
+<p>In Chapter 8, the dynamics ensemble is a pure neural network: it learns $\hat{T}(s' | s, a)$ entirely from data. This works well when:
+- The dataset covers the state-action space densely
+- The model is evaluated near the training distribution</p>
+<p>Outside the data support, a pure black-box model will extrapolate in whatever direction its weights happen to point — which often violates physics. The epistemic uncertainty from ensemble disagreement partially guards against this, but it cannot distinguish "uncertain because data is sparse" from "uncertain because the model is physically wrong."</p>
+<p>A <strong>hybrid model</strong> splits the prediction into two parts:</p>
+<p><div class="math-display">$$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{known physics}} + \underbrace{f_{NN}(s, a; \theta)}_{\text{learned residual}}$$</div></p>
+<p>The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong.</p>
+<h3>Why This Helps Offline RL</h3>
+<p><strong>Better extrapolation.</strong> The physics component provides a principled prediction even where data is sparse. The neural residual is near zero where data is sparse (prior to training, and by regularization), so the hybrid model degrades gracefully to the physics model in OOD regions rather than making wild predictions.</p>
+<p><strong>Smaller residuals = easier learning.</strong> If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model converges faster and generalizes better.</p>
+<p><strong>Improved uncertainty calibration.</strong> Ensemble disagreement now measures uncertainty about the <em>residual</em>, not the total dynamics. In OOD regions, the physics term is still active; only the residual is uncertain. This gives more meaningful uncertainty estimates.</p>
+<h3>Formalization</h3>
+<p>Let $f_{phys}(s, a)$ be the known physics model (deterministic, no parameters). The residual network predicts a Gaussian over the residual:</p>
+<p><div class="math-display">$$\hat{f}_{NN}(s, a; \theta) = \bigl(\mu_\theta(s, a),\ \sigma^2_\theta(s, a)\bigr)$$</div></p>
+<p>The full prediction is:</p>
+<p><div class="math-display">$$s' \sim \mathcal{N}\!\bigl(f_{phys}(s, a) + \mu_\theta(s, a),\ \sigma^2_\theta(s, a) \cdot I\bigr)$$</div></p>
+<p>Training minimizes the NLL of the residual $\delta = s' - f_{phys}(s, a)$:</p>
+<p><div class="math-display">$$\mathcal{L}(\theta) = \mathbb{E}_{(s,a,s') \sim \mathcal{D}} \!\left[\frac{\|\delta - \mu_\theta\|^2}{2\sigma^2_\theta} + \frac{1}{2}\log \sigma^2_\theta \right]$$</div></p>
+<p>This is identical to training the probabilistic ensemble in Chapter 8, except the <em>target</em> is the residual $\delta$ rather than the full $s'$.</p>
+<h3>Implementation</h3>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">HybridDynamicsNet</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hybrid dynamics model: physics baseline + learned residual.</span>
 
-    <span class="n">T_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">T</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_T</span> <span class="o">*</span> <span class="n">heat_in</span>
-    <span class="n">f_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">f</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_F</span> <span class="o">*</span> <span class="n">flow_in</span>
+<span class="sd">    Args:</span>
+<span class="sd">        state_dim:   dimensionality of state</span>
+<span class="sd">        action_dim:  dimensionality of action</span>
+<span class="sd">        physics_fn:  callable (state, action) -&gt; next_state_physics</span>
+<span class="sd">                     Must operate on torch.Tensor inputs.</span>
+<span class="sd">        hidden_dim:  residual network hidden size</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="c1"># Linearized viscosity (true is nonlinear)</span>
-    <span class="n">v_new</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.75</span> <span class="o">-</span> <span class="mf">0.45</span><span class="o">*</span><span class="n">T_new</span> <span class="o">+</span> <span class="mf">0.38</span><span class="o">*</span><span class="n">f_new</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
-    <span class="n">d_new</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.55</span> <span class="o">+</span> <span class="mf">0.25</span><span class="o">*</span><span class="n">f_new</span> <span class="o">-</span> <span class="mf">0.10</span><span class="o">*</span><span class="n">T_new</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                 <span class="n">physics_fn</span><span class="p">,</span>
+                 <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">128</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">physics_fn</span> <span class="o">=</span> <span class="n">physics_fn</span>
 
-    <span class="c1"># Mass balance — good approximation of true level dynamics</span>
-    <span class="n">inflow</span>  <span class="o">=</span> <span class="n">flow_in</span> <span class="o">*</span> <span class="mf">0.4</span>
-    <span class="n">outflow</span> <span class="o">=</span> <span class="n">L</span> <span class="o">*</span> <span class="mf">0.35</span> <span class="o">+</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">heat_in</span>
-    <span class="n">L_new</span>   <span class="o">=</span> <span class="p">(</span><span class="n">L</span> <span class="o">+</span> <span class="n">DT</span> <span class="o">*</span> <span class="p">(</span><span class="n">inflow</span> <span class="o">-</span> <span class="n">outflow</span><span class="p">))</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="c1"># Residual network: smaller than a pure black-box model</span>
+        <span class="c1"># because residuals are smoother and lower-amplitude</span>
+        <span class="n">inp</span> <span class="o">=</span> <span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">inp</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_var_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">T_new</span><span class="p">,</span> <span class="n">f_new</span><span class="p">,</span> <span class="n">v_new</span><span class="p">,</span> <span class="n">d_new</span><span class="p">,</span> <span class="n">L_new</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-</code></pre></div>
+        <span class="c1"># Tighter log_var bounds for residuals (smaller magnitude expected)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">8.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">1.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
 
-<p>Before training the hybrid ensemble, it is essential to run <code>diagnose_physics_coverage</code> to verify that the physics model is actually useful:</p>
-<div class="codehilite"><pre><span></span><code><span class="n">ensemble</span><span class="o">.</span><span class="n">diagnose_physics_coverage</span><span class="p">(</span><span class="n">norm_dataset</span><span class="p">)</span>
-
-<span class="c1"># Expected output:</span>
-<span class="c1">#   Physics model coverage (fraction of variance explained):</span>
-<span class="c1">#   state dim 0 (temperature):     91.3%  ██████████████████░░</span>
-<span class="c1">#   state dim 1 (filler_fraction): 83.7%  ████████████████░░░░</span>
-<span class="c1">#   state dim 2 (viscosity):       64.2%  ████████████░░░░░░░░</span>
-<span class="c1">#   state dim 3 (density):         79.8%  ████████████████░░░░</span>
-<span class="c1">#   state dim 4 (level):           93.1%  ██████████████████░░</span>
-<span class="c1">#   Overall: 82.4%</span>
-</code></pre></div>
-
-<p>Coverage above 80% overall means the residual network needs to learn a 20%-amplitude correction — roughly one quarter the network capacity of a pure black-box model at the same prediction accuracy.</p>
-<hr />
-<h2>Algorithm 1: Behavioral Cloning</h2>
-<p>BC is the baseline: clone the behavior policy directly. Its failure mode on industrial data is predictable — compounding error during setpoint transitions and disturbances, where the agent encounters states it never saw during training.</p>
-<div class="codehilite"><pre><span></span><code><span class="n">bc</span> <span class="o">=</span> <span class="n">CQLBCAgent</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
-<span class="n">train_bc</span><span class="p">(</span><span class="n">bc</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
-</code></pre></div>
-
-<p>BC's DA will be high in normal-operation episodes (the behavior policy was a competent proportional controller) and low during disturbance recovery. Constraint violations are rare in normal operation and frequent in disturbances — exactly the scenarios BC was least trained for.</p>
-<hr />
-<h2>Algorithm 2: CQL</h2>
-<p>CQL (Chapter 3) adds conservatism via the penalty on out-of-distribution Q-values. On industrial data it consistently outperforms BC in disturbance scenarios because the pessimistic Q-function prevents the policy from taking actions that look good under the learned Q but are rare in the dataset.</p>
-<div class="codehilite"><pre><span></span><code><span class="n">cql</span> <span class="o">=</span> <span class="n">CQLAgent</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">,</span> <span class="n">alpha_cql</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
-<span class="n">train_cql_agent</span><span class="p">(</span><span class="n">cql</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
-</code></pre></div>
-
-<p>CQL's remaining weakness: it has no mechanism to avoid physically inconsistent actions. A setpoint command that CQL's Q-function rates highly may still violate a mass balance or push the level toward a constraint boundary.</p>
-<hr />
-<h2>Algorithm 3: CQL + Physics Reward Shaping</h2>
-<p><code>PhysicsInformedCQL</code> wraps <code>CQLAgent</code> with <code>PhysicsRewardWrapper</code> (Chapter 8). The modification to the training loop is exactly one line: replace the batch reward <code>r</code> with <code>r - penalty</code> before calling <code>CQLAgent.update</code>.</p>
-<div class="codehilite"><pre><span></span><code><span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span> <span class="o">=</span> <span class="n">make_coating_constraints</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
-
-<span class="k">class</span> <span class="nc">PhysicsInformedCQL</span><span class="p">:</span>
-    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">):</span>
-        <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">]</span>
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns (mean_next_state, log_var_residual).&quot;&quot;&quot;</span>
+        <span class="c1"># Physics prediction (no gradient needed)</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">penalty</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
-                <span class="n">lam</span> <span class="o">*</span> <span class="n">g</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
-                <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span><span class="p">)</span>
-            <span class="p">)</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cql</span><span class="o">.</span><span class="n">update</span><span class="p">((</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span> <span class="o">-</span> <span class="n">penalty</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+            <span class="n">phys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
+
+        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">],</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+        <span class="n">residual_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+        <span class="n">log_var</span>       <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_var_head</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+        <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">-</span> <span class="n">F</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span> <span class="o">-</span> <span class="n">log_var</span><span class="p">)</span>
+        <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span> <span class="o">+</span> <span class="n">F</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="n">log_var</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="p">)</span>
+
+        <span class="c1"># Combine: full prediction = physics + residual</span>
+        <span class="k">return</span> <span class="n">phys</span> <span class="o">+</span> <span class="n">residual_mean</span><span class="p">,</span> <span class="n">log_var</span>
+
+    <span class="k">def</span> <span class="nf">nll_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                 <span class="n">next_state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;NLL of next_state; target is residual from physics.&quot;&quot;&quot;</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
+        <span class="c1"># The target is the full next_state; mean already includes physics</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="n">log_var</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
+        <span class="n">nll</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">log_var</span> <span class="o">+</span> <span class="p">(</span><span class="n">next_state</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">var</span><span class="p">)</span>
+        <span class="n">loss</span> <span class="o">=</span> <span class="n">nll</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="n">bound_reg</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">loss</span> <span class="o">+</span> <span class="n">bound_reg</span><span class="p">,</span> <span class="p">{</span>
+            <span class="s1">&#39;nll&#39;</span><span class="p">:</span> <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+            <span class="s1">&#39;residual_mse&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">next_state</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="p">}</span>
 </code></pre></div>
 
-<p>The <code>lambdas</code> are calibrated via <code>calibrate_lambda</code> (Theorem 6.1): set $\lambda$ so that the Theorem 6.1 optimality gap is at most 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.</p>
-<p>Three constraints are active:
-1. <strong>Operating bounds</strong> — all five state variables within hard limits
-2. <strong>Temperature first-order consistency</strong> — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
-3. <strong>Filler fraction first-order consistency</strong> — same for filler</p>
-<p>The first-order consistency constraints do not punish the agent for choosing unusual setpoints — they punish the dynamics model for predicting physically impossible transitions, which indirectly constrains the policy to stay in regions where dynamics are predictable.</p>
+<p><strong>Physics function for a generic first-order process:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">first_order_physics</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                        <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                        <span class="n">tau</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">10.0</span><span class="p">,</span>
+                        <span class="n">K</span><span class="p">:</span> <span class="nb">float</span>   <span class="o">=</span> <span class="mf">0.8</span><span class="p">,</span>
+                        <span class="n">dt</span><span class="p">:</span> <span class="nb">float</span>  <span class="o">=</span> <span class="mf">1.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Euler discretization of first-order ODE:</span>
+<span class="sd">        dx/dt = (K*u - x) / tau</span>
+<span class="sd">    =&gt;  x_{t+1} = x_t + dt/tau * (K*u_t - x_t)</span>
+
+<span class="sd">    For a multi-variable state, apply element-wise with per-variable</span>
+<span class="sd">    tau and K (pass as vectors).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">state</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">action</span><span class="p">[:,</span> <span class="p">:</span><span class="n">state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">-</span> <span class="n">state</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>Building a Hybrid Ensemble</h3>
+<p>The ensemble from Chapter 8 is straightforwardly extended — each model in the ensemble is a <code>HybridDynamicsNet</code> sharing the same <code>physics_fn</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">HybridEnsemble</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Ensemble of hybrid dynamics models sharing the same physics component.</span>
+<span class="sd">    Uncertainty = disagreement on the *residual* term across models.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_models</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                 <span class="n">physics_fn</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">128</span><span class="p">,</span>
+                 <span class="n">lr</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;cpu&#39;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_models</span>  <span class="o">=</span> <span class="n">n_models</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">device</span>    <span class="o">=</span> <span class="n">device</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">models</span>    <span class="o">=</span> <span class="p">[</span>
+            <span class="n">HybridDynamicsNet</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">physics_fn</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_models</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">optimizers</span> <span class="o">=</span> <span class="p">[</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">lr</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">train_ensemble</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dataset</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">n_epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+                       <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span> <span class="n">log_every</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Bootstrap training — identical structure to Chapter 8 ensemble.&quot;&quot;&quot;</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">])</span>
+        <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;next_states&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">opt</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizers</span><span class="p">)):</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="mf">0.8</span> <span class="o">*</span> <span class="n">n</span><span class="p">),))</span>
+            <span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">TensorDataset</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">a</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">s2</span><span class="p">[</span><span class="n">idx</span><span class="p">]),</span>
+                                <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">drop_last</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_epochs</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">total_nll</span><span class="p">,</span> <span class="n">nb</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mi">0</span>
+                <span class="k">for</span> <span class="n">s_b</span><span class="p">,</span> <span class="n">a_b</span><span class="p">,</span> <span class="n">s2_b</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
+                    <span class="n">loss</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">nll_loss</span><span class="p">(</span><span class="n">s_b</span><span class="p">,</span> <span class="n">a_b</span><span class="p">,</span> <span class="n">s2_b</span><span class="p">)</span>
+                    <span class="n">opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">();</span> <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">clip_grad_norm_</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="mf">5.0</span><span class="p">)</span>
+                    <span class="n">opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+                    <span class="n">total_nll</span> <span class="o">+=</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;nll&#39;</span><span class="p">];</span> <span class="n">nb</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">if</span> <span class="n">epoch</span> <span class="o">%</span> <span class="n">log_every</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  HybridModel </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> | epoch </span><span class="si">{</span><span class="n">epoch</span><span class="si">:</span><span class="s2">3d</span><span class="si">}</span><span class="s2"> | &quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;NLL=</span><span class="si">{</span><span class="n">total_nll</span><span class="o">/</span><span class="n">nb</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">predict_with_uncertainty</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                                  <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns (mean_next_state, epistemic_uncertainty).&quot;&quot;&quot;</span>
+        <span class="n">means</span> <span class="o">=</span> <span class="p">[</span><span class="n">m</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">]</span>
+        <span class="n">means</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">means</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">means</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">means</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>Comparing Hybrid vs Pure Black-Box</h3>
+<p>The key diagnostic is <strong>residual magnitude</strong> on the training data. If the physics model is reasonable, residuals should be small and smooth. If residuals are large or structured (have clear patterns), the physics model is missing something important.</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">diagnose_hybrid_model</span><span class="p">(</span><span class="n">hybrid_model</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span> <span class="n">physics_fn</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compare physics prediction vs true next_state.</span>
+<span class="sd">    Print residual statistics to assess physics model quality.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][:</span><span class="mi">500</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][:</span><span class="mi">500</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;next_states&#39;</span><span class="p">][:</span><span class="mi">500</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">phys_pred</span> <span class="o">=</span> <span class="n">physics_fn</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+        <span class="n">residuals</span> <span class="o">=</span> <span class="n">s2</span> <span class="o">-</span> <span class="n">phys_pred</span>                     <span class="c1"># what the NN must learn</span>
+        <span class="n">residual_std</span> <span class="o">=</span> <span class="n">residuals</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+        <span class="n">full_std</span>     <span class="o">=</span> <span class="n">s2</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="n">coverage</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="p">(</span><span class="n">residual_std</span> <span class="o">/</span> <span class="p">(</span><span class="n">full_std</span> <span class="o">+</span> <span class="mf">1e-8</span><span class="p">))</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Physics model coverage (fraction of variance explained):&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">cov</span><span class="p">,</span> <span class="n">rs</span><span class="p">,</span> <span class="n">fs</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">coverage</span><span class="p">,</span> <span class="n">residual_std</span><span class="p">,</span> <span class="n">full_std</span><span class="p">)):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  State dim </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">: physics covers </span><span class="si">{</span><span class="n">cov</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2">  &quot;</span>
+              <span class="sa">f</span><span class="s2">&quot;(residual std=</span><span class="si">{</span><span class="n">rs</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">, total std=</span><span class="si">{</span><span class="n">fs</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">coverage</span>
+</code></pre></div>
+
+<p>A physics model explaining 70–90% of variance is excellent; the residual model needs to learn only the remaining 10–30%, which requires far less data.</p>
 <hr />
-<h2>Algorithm 4: HybridMOReL</h2>
-<p><code>HybridMOReL</code> combines the model-based approach from Chapter 7 with the hybrid dynamics model from Chapter 6. The structure is a two-phase training loop.</p>
-<p><strong>Phase 1 — Dynamics training:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="n">hm</span> <span class="o">=</span> <span class="n">HybridMOReL</span><span class="p">(</span>
-    <span class="n">state_dim</span>   <span class="o">=</span> <span class="n">STATE_DIM</span><span class="p">,</span>
-    <span class="n">action_dim</span>  <span class="o">=</span> <span class="n">ACTION_DIM</span><span class="p">,</span>
-    <span class="n">physics_fn</span>  <span class="o">=</span> <span class="n">coating_physics_fn</span><span class="p">,</span>
-    <span class="n">n_ensemble</span>  <span class="o">=</span> <span class="mi">4</span><span class="p">,</span>
-    <span class="n">hidden_dim</span>  <span class="o">=</span> <span class="mi">128</span><span class="p">,</span>
-    <span class="n">halt_thresh</span> <span class="o">=</span> <span class="mf">0.15</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="n">hm</span><span class="o">.</span><span class="n">train_dynamics</span><span class="p">(</span><span class="n">norm_dataset</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
-<span class="c1"># Output:</span>
-<span class="c1">#   Physics coverage: 82.4% — strong</span>
-<span class="c1">#   Training hybrid ensemble: 4 models × 30 epochs</span>
-<span class="c1">#   ✓ HybridEnsemble installed in MOReL</span>
-</code></pre></div>
-
-<p>After training, the hybrid ensemble is installed in the MOReL agent by swapping <code>morel_agent.ensemble</code>. The MOReL rollout generator (<code>generate_synthetic_data</code>) continues to call <code>ensemble.predict_with_uncertainty</code> — it does not know or care whether the ensemble is pure black-box or hybrid.</p>
-<p><strong>Phase 2 — Policy training via MOReL:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="n">train_morel</span><span class="p">(</span>
-    <span class="n">agent</span>               <span class="o">=</span> <span class="n">hm</span><span class="o">.</span><span class="n">morel_agent</span><span class="p">,</span>
-    <span class="n">dataset</span>             <span class="o">=</span> <span class="n">norm_dataset</span><span class="p">,</span>
-    <span class="n">env</span>                 <span class="o">=</span> <span class="n">env</span><span class="p">,</span>         <span class="c1"># real env for evaluation only</span>
-    <span class="n">n_outer_iters</span>       <span class="o">=</span> <span class="mi">15</span><span class="p">,</span>
-    <span class="n">sac_steps_per_iter</span>  <span class="o">=</span> <span class="mi">300</span><span class="p">,</span>
-<span class="p">)</span>
-</code></pre></div>
-
-<p>MOReL's P-MDP construction applies the HALT penalty whenever ensemble uncertainty exceeds <code>halt_thresh</code>. With the hybrid ensemble, uncertainty estimates are better calibrated: in OOD regions where the residual network has no training data, the physics term keeps the prediction physically plausible rather than arbitrary. This reduces spurious HALT events caused by the pure black-box ensemble producing nonsensical predictions in physically reachable but data-sparse states.</p>
+<h2>Part III: Constraint-Based Policy (Brief)</h2>
+<h3>Hard vs Soft Constraints</h3>
+<p>Reward penalties (Part I) are <strong>soft constraints</strong>: the policy <em>prefers</em> to avoid violations but can still choose them if the reward benefit is large enough. For safety-critical systems this may be insufficient.</p>
+<p><strong>Hard constraints</strong> guarantee $g(s, a) \leq 0$ at every step. Two common approaches in offline RL:</p>
+<p><strong>Projection.</strong> After computing the policy action $a_{raw} = \pi_\theta(s)$, project it onto the feasible set:</p>
+<p><div class="math-display">$$a_{safe} = \arg\min_{a : g(s,a) \leq 0} \| a - a_{raw} \|^2$$</div></p>
+<p>This is trivial for box constraints (clamp) and for linear constraints (quadratic programming). For complex nonlinear constraints it requires a solver at inference time.</p>
+<p><strong>Lagrangian relaxation.</strong> Augment the objective with constraint multipliers and optimize jointly:</p>
+<p><div class="math-display">$$\max_{\pi} \min_{\lambda \geq 0}\ \mathbb{E}\bigl[R(\pi)\bigr] - \lambda \cdot \mathbb{E}\bigl[g(s, \pi(s))\bigr]$$</div></p>
+<p>The multiplier $\lambda$ is updated to increase whenever the constraint is violated, making violations increasingly costly. In offline RL this is applied to the offline dataset, not through environment interaction.</p>
+<p>For most industrial applications, <strong>soft constraints via reward shaping</strong> (Part I) combined with the KNOWN/UNKNOWN boundary from MOReL (Chapter 8) provide sufficient safety. The hard constraint machinery is warranted when:
+- A constraint violation is irreversible (equipment damage, safety incident)
+- The constraint boundary is precisely known
+- Online projection is computationally feasible</p>
 <hr />
-<h2>Results</h2>
-<p>Running the full benchmark:</p>
-<div class="codehilite"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">run_industrial_benchmark</span><span class="p">(</span>
-    <span class="n">device</span>       <span class="o">=</span> <span class="s1">&#39;cpu&#39;</span><span class="p">,</span>
-    <span class="n">n_train_ep</span>   <span class="o">=</span> <span class="mi">400</span><span class="p">,</span>
-    <span class="n">n_bc_epochs</span>  <span class="o">=</span> <span class="mi">60</span><span class="p">,</span>
-    <span class="n">n_cql_epochs</span> <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>
-    <span class="n">n_morel_iters</span><span class="o">=</span> <span class="mi">15</span><span class="p">,</span>
-    <span class="n">n_eval_ep</span>    <span class="o">=</span> <span class="mi">20</span><span class="p">,</span>
-<span class="p">)</span>
+<h2>Part IV: When Physics Helps Most</h2>
+<p>Not every offline RL problem benefits equally from physics. The value of physical knowledge depends on three factors:</p>
+<p><strong>Data coverage.</strong> The sparser the dataset, the more physics helps. A dataset covering 20% of the operating envelope leaves 80% where only physics can guide the model.</p>
+<p><strong>Physics accuracy.</strong> A first-principles model that captures 90% of the dynamics is highly valuable. An analytical model that captures only 30% may still cause problems if its errors are systematic (i.e., confidently wrong in a predictable way). Validate the physics model on a held-out subset before trusting it.</p>
+<p><strong>Constraint hardness.</strong> Mass balance and energy conservation are exact (up to measurement error). Empirical correlations (viscosity-temperature-composition) are approximate. Use the former as hard constraints; use the latter as soft penalties or initial guesses for the neural residual.</p>
+<div class="codehilite"><pre><span></span><code>                    Physics Knowledge Available
+                    None         Partial       Strong
+                   ┌────────────┬─────────────┬──────────────┐
+Data   Sparse      │  Pure BC   │ Reward pen. │ Hybrid model │
+Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
+       Dense       │ CQL / IQL  │ CQL + pen.  │ Hybrid + CQL │
+                   └────────────┴─────────────┴──────────────┘
 </code></pre></div>
 
-<p>Typical output (exact numbers depend on random seed):</p>
-<div class="codehilite"><pre><span></span><code>══════════════════════════════════════════════════════════════
-  CHAPTER 7 — INDUSTRIAL BENCHMARK RESULTS
-══════════════════════════════════════════════════════════════
-Metric                BC      CQL   CQL+Phys  HybridMOReL
-──────────────────────────────────────────────────────────────
-Reward (mean)       -18.4   -14.2    -13.8   ▶  -12.1
-DA (mean)            61.3%   71.8%   73.4%  ▶   79.2%
-DA temperature       64.1%   73.5%   75.1%  ▶   81.3%
-DA filler            58.4%   70.1%   71.6%  ▶   77.1%
-T RMSE               0.0921  0.0712  0.0698  ▶  0.0581
-f RMSE               0.1043  0.0834  0.0811  ▶  0.0693
-Level RMSE           0.0874  0.0748  0.0701  ▶  0.0612
-Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
-══════════════════════════════════════════════════════════════
-</code></pre></div>
-
-<h3>Reading the Results</h3>
-<p><strong>BC</strong> performs adequately in normal operation but fails during disturbances. Its DA is just above 60% — better than random, but below the 80% industrial threshold. Constraint violations occur because BC never saw the level variable near its bounds during training.</p>
-<p><strong>CQL</strong> improves across all metrics. Conservatism in the Q-function prevents the worst extrapolation failures. But violation rate remains at 2.8% — CQL has no mechanism to specifically avoid constraint boundaries.</p>
-<p><strong>CQL+Physics</strong> reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions. The violation severity also drops even more than the rate, meaning that when violations do occur they are shallower.</p>
-<p><strong>HybridMOReL</strong> achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.</p>
-<h3>The Complementary Structure</h3>
-<p>These results reveal a complementary structure worth understanding.</p>
-<p><strong>CQL+Physics</strong> is the violation minimizer: it explicitly penalizes constraint approaches and achieves the lowest violation rate. But it uses only real data — its synthetic experience is zero.</p>
-<p><strong>HybridMOReL</strong> is the performance maximizer: model-based rollouts push the policy to higher reward and DA, but without explicit constraint penalties the violation rate is slightly elevated.</p>
-<p>In a real deployment, the natural combination is <strong>HybridMOReL + physics reward shaping</strong> — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to <code>train_hybrid_morel_agent</code>: pass the <code>PhysicsRewardWrapper</code> into the rollout generator. Chapter 8 showed exactly how to do this.</p>
+<p>The bottom-left cell (dense data, no physics) is the D4RL benchmark — where Chapters 4–8 shine. Industrial settings typically live in the top-right: sparse data, partial physics knowledge.</p>
 <hr />
-<h2>Engineering Decisions Revisited</h2>
-<p>Working through this case study surfaces several decisions that do not appear in benchmark papers.</p>
-<h3>The Transport Delay Problem</h3>
-<p>The filler equation has a two-step delay: the agent's flow input at time $t$ affects the filler fraction at time $t+2$, not $t+1$. The physics model ignores this delay — it predicts an immediate first-order response.</p>
-<p>This means the hybrid ensemble's residual must learn the delay effect from data. With enough transitions, it can. The tell-tale sign of a delay mismatch is a systematic residual that is positive when flow_input recently increased and negative when it recently decreased. If <code>diagnose_physics_coverage</code> shows low coverage for the filler dimension (below 60%), the likely cause is an unmodeled delay.</p>
-<p>The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model account for them. The engineering knowledge required is only the approximate delay length — the exact value can be learned from the residual.</p>
-<h3>Constraint Calibration</h3>
-<p><code>make_coating_constraints</code> uses <code>calibrate_lambda</code> for the bounds constraint and sets $\lambda = 2.0$ manually for the first-order consistency constraints. The manual values are reasonable starting points but should be verified:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Check constraint violation rates on the training dataset</span>
-<span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span><span class="p">):</span>
-    <span class="n">violations</span> <span class="o">=</span> <span class="n">g</span><span class="p">(</span><span class="n">s_train</span><span class="p">,</span> <span class="n">a_train</span><span class="p">,</span> <span class="n">s2_train</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  λ=</span><span class="si">{</span><span class="n">lam</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> | violations: </span><span class="si">{</span><span class="p">(</span><span class="n">violations</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">float</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2"> &quot;</span>
-          <span class="sa">f</span><span class="s2">&quot;| mean_magnitude: </span><span class="si">{</span><span class="n">violations</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</code></pre></div>
-
-<p>If a constraint is violated on more than 20% of training transitions, either the tolerance is too tight or the physics model is inaccurate for that variable. In both cases, increasing the tolerance or loosening the manual $\lambda$ is better than tightening the constraint — a constraint that fires too often becomes a second reward signal rather than a physics correction.</p>
-<h3>Normalizing the 5D State</h3>
-<p>Five variables with different physical scales and variances require per-dimension normalization. The provided <code>normalize_dataset</code> normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — centering the reward would remove the sign information that distinguishes good states from bad.</p>
+<h2>Further Directions</h2>
+<p><strong>Koopman operator methods.</strong> Nonlinear dynamics become linear in a suitable latent space — the Koopman eigenspace. If this space can be learned or approximated, the dynamics model simplifies enormously: linear prediction, linear uncertainty propagation, and tractable optimal control. Active research area; not yet standardized for offline RL.</p>
+<p><strong>Gaussian Processes.</strong> GPs offer exact uncertainty quantification and naturally incorporate physical structure through kernel design. They are computationally expensive for large datasets but highly effective when data is very scarce (hundreds of transitions rather than thousands).</p>
+<p><strong>Physics-informed neural networks (PINNs).</strong> Instead of a residual model, enforce physics equations as a regularization loss during neural network training. A PINN predicting the wrong sign for a known derivative can be penalized during training. Compatible with any architecture.</p>
+<p><strong>Structured state spaces.</strong> If the physics dictates a specific state-space structure (e.g., a mass-spring-damper Lagrangian system), neural networks can be constrained to architectures that respect this structure (Hamiltonian or Lagrangian neural networks). Very effective when the structural assumption holds; brittle when it doesn't.</p>
 <hr />
 <h2>Summary</h2>
-<p>This chapter translated the tools from Chapters 1–8 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
-<p>The comparison across four algorithms reveals a clean hierarchy:</p>
 <table>
 <thead>
 <tr>
-<th>Algorithm</th>
-<th>Relies on</th>
-<th>Strength</th>
-<th>Weakness</th>
+<th>Approach</th>
+<th>What changes</th>
+<th>When to use</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>BC</td>
-<td>Data imitation</td>
-<td>Simple, interpretable</td>
-<td>Compounding error; constraint-blind</td>
+<td>Reward shaping</td>
+<td>Reward function</td>
+<td>Any algorithm; physical bounds known</td>
 </tr>
 <tr>
-<td>CQL</td>
-<td>Conservative Q-values</td>
-<td>Better OOD generalization</td>
-<td>No physical constraint mechanism</td>
+<td>Hybrid dynamics</td>
+<td>Dynamics model</td>
+<td>Partial physics known; sparse data</td>
 </tr>
 <tr>
-<td>CQL+Physics</td>
-<td>CQL + penalty</td>
-<td>Lowest violation rate</td>
-<td>Uses only real data</td>
+<td>Projection</td>
+<td>Policy output</td>
+<td>Box/linear constraints; safety-critical</td>
 </tr>
 <tr>
-<td>HybridMOReL</td>
-<td>Model-based + hybrid</td>
-<td>Best reward and DA</td>
-<td>Higher violation rate without explicit penalty</td>
+<td>Lagrangian</td>
+<td>Objective</td>
+<td>Complex nonlinear constraints</td>
 </tr>
 </tbody>
 </table>
-<p>The practical recommendation for industrial deployment: <strong>start with CQL+Physics</strong> (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, <strong>add the hybrid ensemble</strong> as a source of diverse synthetic experience.</p>
-<p>Chapter 10 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.</p>
+<p>Physics-informed methods are not a replacement for offline RL algorithms — they are a layer on top. Reward shaping plugs into CQL or IQL without modifying a line of algorithm code. The hybrid model replaces the ensemble in MOPO or MOReL while keeping everything else intact. The combination of a physically grounded dynamics model with a pessimistic offline RL algorithm (MOReL + hybrid ensemble) is the natural architecture for industrial settings where data is sparse but domain knowledge is rich.</p>
+<p>Chapter 9 works through an industrial case study showing how these pieces fit together in practice.</p>
 <hr />
 <h2>References</h2>
 <ul>
-<li>All references from Chapters 1–8 apply to the algorithms used here.</li>
-<li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(PID baseline, first-order process models)</em></li>
-<li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(industrial process control, transport delay)</em></li>
-<li>Rawlings, J.B., Mayne, D.Q., &amp; Diehl, M. (2017). <em>Model Predictive Control.</em> Nob Hill. <em>(MPC for comparison context)</em></li>
+<li>Banerjee, C., Nguyen, T., Fookes, C., &amp; Raissi, M. (2023). <em>A Survey on Physics Informed Reinforcement Learning.</em> Expert Systems with Applications. <a href="https://arxiv.org/abs/2309.01909">arXiv:2309.01909</a>.</li>
+<li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1811.10561">arXiv:1811.10561</a>.</li>
+<li>Liu, Y., &amp; Wang, X. (2021). <em>Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2008.05598">arXiv:2008.05598</a>.</li>
+<li>Lusch, B., Kutz, J.N., &amp; Brunton, S.L. (2018). <em>Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.</em> Nature Communications. <em>(Koopman)</em></li>
+<li>García, J., &amp; Fernández, F. (2015). <em>A Comprehensive Survey on Safe Reinforcement Learning.</em> JMLR. <em>(constraint methods)</em></li>
+<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
 </ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/en/chapter8.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Physics-Informed Offline RL</span></a>
-    <a href="/offline-rl-book/en/chapter10.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Explainability in Offline RL</span></a>
+<a href="/offline-rl-book/en/chapter8.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Model-Based Offline RL (MOPO, MOReL)</span></a>
+    <a href="/offline-rl-book/en/chapter10.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Industrial Applications</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

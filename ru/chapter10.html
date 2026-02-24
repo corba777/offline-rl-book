@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Глава 10: Объяснимость в Offline RL</title>
+  <title>Глава 10: Промышленные применения</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -58,328 +58,434 @@
   </div>
 </header>
 <main>
-<h1>Глава 10: Объяснимость в Offline RL</h1>
+<h1>Глава 10: Промышленные применения</h1>
 <blockquote>
-<p><em>«Политика с 80% Directional Accuracy, которая не может объяснить причину каждого своего решения, с трудом поддаётся доверию и не может быть сертифицирована.»</em></p>
+<p><em>«Разрыв между рабочим результатом на эталонной задаче и рабочим промышленным внедрением — это не разрыв в алгоритмах, а разрыв в понимании данных.»</em></p>
 </blockquote>
 <hr />
-<h2>Почему объяснимость важна в промышленном Offline RL</h2>
-<p>Алгоритмы глав 1–9 строят политики с высокой наградой, уважающие физические ограничения и обобщающиеся на незнакомые режимы работы. Чего они не производят — ответа на вопрос, который оператор неизбежно задаст: <em>почему агент выдал именно это уставное значение именно сейчас?</em></p>
-<p>Это не только регуляторная проблема, хотя во многих отраслях она и является таковой. Это практический вопрос надёжности. Политику, чьи решения непрозрачны, нельзя диагностировать при отказе. Оператор, не понимающий логику агента, не может компетентно его отменить. Модель, хорошо подогнанная к данным по неправильным причинам, будет молча отказывать при изменении процесса.</p>
-<p>Объяснимость в Offline RL сложнее, чем в стандартном обучении с учителем — по трём причинам, специфичным для офлайн-постановки.</p>
-<p><strong>Три отдельные модели для объяснения.</strong> Обученный агент Offline RL содержит Q-функцию (критик), политику (актор) и опционально модель динамики. Каждая отвечает на разный вопрос, и их объяснения не всегда согласуются. Q-функция может высоко оценивать действие потому, что температура близка к уставному значению; политика может выбирать это же действие потому, что уровень близок к нижней границе. Понимание этого расхождения так же важно, как понимание согласия.</p>
-<p><strong>Вход Q-функции — конкатенация состояния и действия.</strong> В отличие от классификатора, чей вход — один вектор признаков, Q-функция принимает $(s, a)$ как вход. SHAP-значения в этом конкатенированном пространстве показывают, откуда берётся высокое Q-значение: из состояния (ситуация была благоприятной) или из действия (конкретное действие было правильным для данного состояния).</p>
-<p><strong>Распределение поведенческой политики неравномерно.</strong> SHAP-значения вычисляются относительно фонового распределения. В Offline RL естественный фон — офлайн-датасет, плотный вблизи рабочей точки и разреженный вблизи возмущений. SHAP-значения отвечают: <em>«чем этот переход отличается от типичного, и насколько это отличие влияет на выход?»</em></p>
+<h2>От эталонов к промышленности</h2>
+<p>Предыдущие восемь глав выстроили полный инструментарий: поведенческое клонирование, CQL, IQL, MOPO, MOReL, физическое формирование награды, гибридные динамические модели и Лагранжиан. Каждый алгоритм проверялся на <code>ThermalProcessEnv</code> — простой, чистой, трёхпеременной игрушечной среде, спроектированной так, чтобы алгоритмические идеи были наглядными.</p>
+<p>Реальные промышленные процессы отличаются от этой среды по всем значимым параметрам.</p>
+<p><strong>Больше переменных, сильнее связи.</strong> В реальном процессе нанесения покрытий десятки датчиков. Даже в упрощённой модели есть температура, доля наполнителя, вязкость, объёмная плотность и уровень в буферном баке — пять переменных с физическими зависимостями между всеми ними. Уровень — интегрирующее состояние, которое дрейфует без активного управления; вязкость — нелинейная функция температуры и наполнителя, которую агент не может наблюдать независимо от своих действий.</p>
+<p><strong>Неравномерное покрытие данных.</strong> Промышленные логи — не данные случайного исследования. Процесс 60% времени работает вблизи рабочей точки, периодически совершает плановые изменения уставных значений и иногда испытывает возмущения. Датасет плотный вблизи номинального режима и разреженный везде остальное. Агент, хорошо работающий в плотной зоне и плохо — в разреженной, бесполезен на практике.</p>
+<p><strong>Запаздывание и задержки.</strong> Материал, поданный на линию нанесения покрытия, появляется в точке измерения качества через 30–90 минут. В рамках динамической модели это транспортная задержка: действие агента в момент $t$ влияет на выход в момент $t + k$. Чистая модель первого порядка, игнорирующая задержку, будет иметь систематические ошибки предсказания при изменении скорости подачи.</p>
+<p><strong>Жёсткие физические ограничения.</strong> Операционные лимиты — не предпочтения, а паспортные характеристики оборудования, регуляторные требования или границы безопасности. Политика, нарушающая границы вязкости, может вызвать кавитацию насоса. Политика, допускающая переполнение буферного бака, расходует материал и запускает автоматическое отключение.</p>
+<p>В этой главе разбирается полный кейс на анонимизированном пятипеременном процессе нанесения покрытия. Цель — не ввести новые алгоритмы (всё использованное здесь разработано в главах 1–8), а показать, как они компонуются в реалистичной постановке и какие промышленно-специфичные решения возникают на пути.</p>
 <blockquote>
-<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8.py"><code>chapter8.py</code></a></p>
+<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter7.py"><code>chapter7.py</code></a></p>
 </blockquote>
 <hr />
-<h2>Основы SHAP</h2>
-<p>SHAP (SHapley Additive exPlanations, Lundberg &amp; Lee, 2017) разлагает выход модели $f$ в аддитивные вклады каждого входного признака:</p>
-<p><div class="math-display">$$f(x) = \phi_0 + \sum_{i=1}^{n} \phi_i(x)$$</div></p>
-<p>где $\phi_0 = \mathbb{E}[f(X)]$ — ожидаемый выход модели на фоновом распределении, а $\phi_i(x)$ — вклад признака $i$ в предсказание для экземпляра $x$.</p>
-<p>SHAP-значения ${\phi_i}$ — единственное разложение, удовлетворяющее аксиомам:
-- <strong>Эффективность</strong>: $\sum_i \phi_i = f(x) - \phi_0$ — значения суммируются в полное предсказание минус базовый уровень
-- <strong>Симметрия</strong>: признаки с одинаковым маргинальным вкладом получают одинаковые SHAP-значения
-- <strong>Пустышка</strong>: признак с нулевым маргинальным вкладом получает $\phi_i = 0$</p>
-<p><strong>KernelExplainer</strong> вычисляет SHAP-значения без знания архитектуры, подгоняя взвешенную линейную модель на маскированных предсказаниях:</p>
-<p><div class="math-display">$$\phi = \arg\min_{\phi} \sum_{z \in \{0,1\}^n} \pi(z)\left[f(h(x, z)) - \phi_0 - \sum_i z_i \phi_i\right]^2$$</div></p>
-<p>где $z$ — бинарная маска, $h(x, z)$ заменяет замаскированные признаки сэмплами из фона, а $\pi(z)$ взвешивает коалиции по ядру Шепли. Это работает на любой функции-чёрном ящике — Q-сетях, сетях политик, ансамблях динамики — без предположений об архитектуре.</p>
-<p>Мы используем KernelExplainer повсюду для последовательности: все три объяснения используют один метод, что делает их напрямую сопоставимыми.</p>
-<h3>Игрушечный пример: что показывает SHAP</h3>
-<p>Минимальный пример фиксирует интуицию. Рассмотрим игрушечную Q-функцию от трёх входов: $Q(s_1, s_2, a) = 2 s_1 - s_2 + 0{,}5 a$. То есть состояние_1 повышает Q, состояние_2 понижает, действие даёт меньший положительный вклад. Фон берём из «типичной» работы (значения в $[0{,}3, 0{,}7]$) и объясняем набор экземпляров. SHAP приписывает каждому предсказанию вклад трёх признаков.</p>
-<p><strong>Какой признак важнее всего?</strong> На столбчатой диаграмме ниже — среднее $|\phi_i|$ по объясняемым экземплярам. state_1 и state_2 доминируют (у них большие коэффициенты), и SHAP это воспроизводит.</p>
-<p><img alt="Игрушечное Q: среднее |SHAP| по признакам" src="../figures/ch8/toy_shap_bar.png" /></p>
-<p><strong>Почему Q для этого экземпляра высокое?</strong> Водопад для одного экземпляра (например, высокое $s_1$, низкое $s_2$) показывает, как SHAP-вклад каждого признака сдвигает выход от базового $\phi_0 = \mathbb{E}[Q]$ к итоговому $Q(x)$. Положительные столбцы (state_1, action) поднимают Q; отрицательный (state_2) — опускают.</p>
-<p><img alt="Игрушечное Q: водопад для одного экземпляра" src="../figures/ch8/toy_shap_waterfall.png" /></p>
-<p><strong>Разброс по экземплярам.</strong> На графике «рой пчёл» одна точка — один экземпляр и один признак; по оси X — SHAP-значение, цвет — значение признака (синий = низкое, красный = высокое). Видно, что высокое state_1 чаще даёт положительный SHAP (красные точки справа), высокое state_2 — отрицательный; монотонная зависимость модели видна наглядно.</p>
-<p><img alt="Игрушечное Q: пчелиный рой SHAP-значений" src="../figures/ch8/toy_shap_beeswarm.png" /></p>
-<p><strong>Игрушечная политика: какой признак состояния двигает действие?</strong> Рассмотрим политику $\pi(s_1, s_2) = \text{clip}(0{,}5 + 0{,}4 s_1 - 0{,}3 s_2)$ с одним действием. Состояние_1 увеличивает действие, состояние_2 уменьшает. Policy SHAP приписывает скалярное действие двум входам состояния. Столбчатая диаграмма показывает, какую переменную состояния политика «учитывает» больше; водопад для одного состояния — как вклад каждого признака сдвигает выход от среднего действия $\mathbb{E}[\pi]$ к $\pi(s)$. В реальной настройке процесса покрытия (уровень 2) два измерения действия (heat_input, flow_input); каждое объясняем отдельно и получаем по одной такой диаграмме и водопаду на действие.</p>
-<p><img alt="Игрушечная политика: среднее |SHAP| по признакам состояния" src="../figures/ch8/toy_policy_bar.png" /></p>
-<p><img alt="Игрушечная политика: водопад для одного состояния" src="../figures/ch8/toy_policy_waterfall.png" /></p>
-<p><strong>Игрушечная динамика: какой вход двигает предсказанное следующее состояние?</strong> Модель динамики с двумя компонентами: $\hat{s}_1' = 0{,}7 s_1 + 0{,}2 a$ и $\hat{s}_2' = 0{,}6 s_2 + 0{,}15 a$. Первый выход определяется текущим $s_1$ и действием $a$, второй — $s_2$ и $a$. Каждый выход объясняем отдельно (как в уровне 3). Двухпанельный bar chart показывает среднее $|\phi_i|$ по трём входам $(s_1, s_2, a)$ при предсказании $\hat{s}_1'$ и $\hat{s}_2'$ — SHAP восстанавливает, что для next_s1 важны $s_1$ и $a$, для next_s2 — $s_2$ и $a$. Водопад для одного $(s, a)$ показывает, как SHAP-вклады входов суммируются от базового предсказания до $\hat{s}_1'$.</p>
-<p><img alt="Игрушечная динамика: какие входы двигают next_s1 и next_s2?" src="../figures/ch8/toy_dynamics_bar.png" /></p>
-<p><img alt="Игрушечная динамика: водопад для одного (s,a) → next_s1" src="../figures/ch8/toy_dynamics_waterfall.png" /></p>
-<p>Все эти рисунки получаются запуском <code>python code/chapter8_toy_figures.py</code> (в скрипте — точные игрушечные модели и настройка SHAP). Далее в главе мы проверяем, что Q-функция и политика обращают внимание на сходные признаки состояния (ранговая корреляция), и что модель динамики соблюдает простую физику (например, heat_input → next_temperature положителен); те же SHAP-выходы используются в этих проверках согласованности.</p>
+<h2>Процесс нанесения покрытия</h2>
+<h3>Среда</h3>
+<p><code>CoatingProcessEnv</code> моделирует непрерывную термическую линию нанесения покрытия с пятью переменными состояния и двумя управляющими входами.</p>
+<p><strong>Состояние</strong> $s \in \mathbb{R}^5$ (все нормированы к $[0,1]$):</p>
+<table>
+<thead>
+<tr>
+<th>Индекс</th>
+<th>Переменная</th>
+<th>Физический смысл</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$s_0$</td>
+<td><code>temperature</code></td>
+<td>Температура процесса в зоне нанесения</td>
+</tr>
+<tr>
+<td>$s_1$</td>
+<td><code>filler_fraction</code></td>
+<td>Доля наполнителя в смеси</td>
+</tr>
+<tr>
+<td>$s_2$</td>
+<td><code>viscosity</code></td>
+<td>Вязкость смеси — нелинейная функция $T$ и наполнителя</td>
+</tr>
+<tr>
+<td>$s_3$</td>
+<td><code>density</code></td>
+<td>Объёмная плотность материала</td>
+</tr>
+<tr>
+<td>$s_4$</td>
+<td><code>level</code></td>
+<td>Уровень в буферном баке — интегрирующая динамика</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Действия</strong> $a \in [-1,1]^2$:</p>
+<table>
+<thead>
+<tr>
+<th>Индекс</th>
+<th>Действие</th>
+<th>Эффект</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$a_0$</td>
+<td><code>heat_input</code></td>
+<td>Изменение уставного значения нагревателя</td>
+</tr>
+<tr>
+<td>$a_1$</td>
+<td><code>flow_input</code></td>
+<td>Изменение скорости подачи наполнителя</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Истинная динамика</strong> (неизвестна агенту):</p>
+<p><div class="math-display">$$T_{t+1} = \left(1 - \frac{\Delta t}{\tau_T}\right)T_t + \frac{\Delta t}{\tau_T} K_T u_T + \underbrace{0.03 \cdot f_t \cdot u_T}_{\text{перекрёстная связь}} + \epsilon_T$$</div></p>
+<p><div class="math-display">$$f_{t+1} = \left(1 - \frac{\Delta t}{\tau_f}\right)f_t + \frac{\Delta t}{\tau_f} K_f \cdot \underbrace{u_{f,t-2}}_{\text{задержка}} + \epsilon_f$$</div></p>
+<p><div class="math-display">$$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \epsilon_v$$</div></p>
+<p><div class="math-display">$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_f}_{\text{приток}} - \underbrace{0.35\,L_t - 0.05\,u_T}_{\text{отток}}\right) + \epsilon_L$$</div></p>
+<p>Параметры: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$.</p>
+<p>Три вещи намеренно скрыты от физической модели агента:
+1. Член перекрёстной связи $0.03 f_t u_T$ в уравнении температуры
+2. Двухшаговая транспортная задержка в уравнении наполнителя
+3. Квадратичный член $0.12 f(1-T)$ в зависимости вязкости</p>
+<p>Это представляет разрыв между инженерными знаниями из первых принципов и реальностью.</p>
+<p><strong>Функция награды</strong> целит в температуру, долю наполнителя и стабильность уровня:</p>
+<p><div class="math-display">$$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$</div></p>
+<p>с уставными значениями $T^<em> = 0.60$, $f^</em> = 0.50$, $L^* = 0.50$.</p>
+<p><strong>Жёсткие ограничения</strong> (нарушение = необратимый ущерб оборудованию или аварийная остановка):</p>
+<table>
+<thead>
+<tr>
+<th>Переменная</th>
+<th>Нижняя граница</th>
+<th>Верхняя граница</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>temperature</td>
+<td>0.35</td>
+<td>0.85</td>
+</tr>
+<tr>
+<td>filler fraction</td>
+<td>0.20</td>
+<td>0.75</td>
+</tr>
+<tr>
+<td>viscosity</td>
+<td>0.10</td>
+<td>0.90</td>
+</tr>
+<tr>
+<td>density</td>
+<td>0.30</td>
+<td>0.80</td>
+</tr>
+<tr>
+<td>level</td>
+<td>0.15</td>
+<td>0.85</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">CoatingProcessEnv</span><span class="p">:</span>
+    <span class="n">STATE_DIM</span>  <span class="o">=</span> <span class="mi">5</span>
+    <span class="n">ACTION_DIM</span> <span class="o">=</span> <span class="mi">2</span>
+
+    <span class="n">T_TARGET</span>     <span class="o">=</span> <span class="mf">0.60</span>
+    <span class="n">F_TARGET</span>     <span class="o">=</span> <span class="mf">0.50</span>
+    <span class="n">LEVEL_TARGET</span> <span class="o">=</span> <span class="mf">0.50</span>
+
+    <span class="n">BOUNDS</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="mf">0.35</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">),</span>  <span class="c1"># temperature</span>
+        <span class="p">(</span><span class="mf">0.20</span><span class="p">,</span> <span class="mf">0.75</span><span class="p">),</span>  <span class="c1"># filler_fraction</span>
+        <span class="p">(</span><span class="mf">0.10</span><span class="p">,</span> <span class="mf">0.90</span><span class="p">),</span>  <span class="c1"># viscosity</span>
+        <span class="p">(</span><span class="mf">0.30</span><span class="p">,</span> <span class="mf">0.80</span><span class="p">),</span>  <span class="c1"># density</span>
+        <span class="p">(</span><span class="mf">0.15</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">),</span>  <span class="c1"># level</span>
+    <span class="p">]</span>
+
+    <span class="n">TAU_T</span><span class="p">,</span> <span class="n">TAU_F</span> <span class="o">=</span> <span class="mf">12.0</span><span class="p">,</span> <span class="mf">8.0</span>
+    <span class="n">K_T</span><span class="p">,</span>   <span class="n">K_F</span>   <span class="o">=</span> <span class="mf">0.85</span><span class="p">,</span> <span class="mf">0.90</span>
+    <span class="n">DT</span>           <span class="o">=</span> <span class="mf">1.0</span>
+</code></pre></div>
+
+<h3>Почему переменная уровня — самая сложная</h3>
+<p>Первые четыре переменные состояния <strong>саморегулируются</strong>: если нагреватель отключить, температура в конечном счёте вернётся к окружающей. Переменная уровня <strong>интегрирует</strong>: у неё нет естественного уставного значения. Предоставленная сама себе, она дрейфует в направлении дисбаланса потоков. Управление интегрирующим состоянием требует от агента предсказания знака и величины собственного долгосрочного эффекта — именно то, с чем Offline RL испытывает трудности при разреженных данных вблизи граничных ограничений.</p>
+<p>Это не надуманная трудность. Буферные баки, промежуточные силосы и накопительные ёмкости — интегрирующие элементы практически в каждом непрерывном производственном процессе.</p>
 <hr />
-<h2>Три уровня объяснения</h2>
-<h3>Уровень 1: SHAP Q-функции — почему агент ценит это действие?</h3>
-<p>Q-функция $Q(s, a)$ принимает конкатенацию $(s, a)$ и выдаёт скалярную оценку ценности. SHAP по этому входу отвечает, какие признаки — переменные состояния или выбранное действие — вносят наибольший вклад в Q-значение.</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">QFunctionWrapper</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Оборачивает QNetwork в numpy-in/numpy-out для SHAP KernelExplainer.</span>
-
-<span class="sd">    Вход:  X ∈ R^{n × (state_dim + action_dim)}  — [состояние | действие]</span>
-<span class="sd">    Выход: q ∈ R^n                                — Q-значение на сэмпл</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">x_t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">X</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-            <span class="n">s</span>   <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">]</span>
-            <span class="n">a</span>   <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">:]</span>
-            <span class="n">q</span>   <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">q</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">q</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-</code></pre></div>
-
-<p>Вектор признаков: <code>[temperature, filler_frac, viscosity, density, level, heat_input, flow_input]</code>.</p>
-<p>SHAP признаков состояния отвечает: «была ли эта ситуация благоприятной?»
-SHAP признаков действия отвечает: «было ли это действие правильно выбрано для данного состояния?»</p>
-<p><strong>Ожидаемый паттерн для хорошо обученного CQL:</strong> переменные состояния вблизи уставных значений → положительный SHAP (благоприятная ситуация → высокое Q). Если SHAP признаков действия близок к нулю независимо от величины действия — Q-функция игнорирует действие, признак коллапса Q-функции.</p>
-<h3>Уровень 2: SHAP политики — почему агент выбирает это действие?</h3>
-<p>Объясняем каждое измерение действия отдельно (SHAP требует скалярного выхода):</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">PolicySingleOutputWrapper</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    action_idx = 0 → heat_input</span>
-<span class="sd">    action_idx = 1 → flow_input</span>
-
-<span class="sd">    Объясняет детерминированное среднее tanh(μ_θ(s)) — не сэмпл,</span>
-<span class="sd">    поэтому оценки SHAP стабильны между вызовами.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">S</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">s_t</span>     <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">S</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-            <span class="n">mean</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">_dist</span><span class="p">(</span><span class="n">s_t</span><span class="p">)</span>
-            <span class="n">action</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tanh</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">action</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">action_idx</span><span class="p">]</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-</code></pre></div>
-
-<p><strong>Ожидаемый паттерн:</strong> <code>heat_input</code> управляется главным образом отклонением <code>temperature</code> от уставного значения; <code>flow_input</code> — отклонением <code>filler_frac</code>. Если <code>level</code> имеет высокий SHAP для <code>flow_input</code>, политика научилась, что расход влияет на уровень — физически корректно и признак того, что агент усвоил интегрирующую динамику.</p>
-<h3>Уровень 3: SHAP динамики — почему модель предсказывает это следующее состояние?</h3>
-<p>Объясняем три выходных измерения: <code>next_temperature</code> (0), <code>next_filler_frac</code> (1), <code>next_level</code> (4):</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">DynamicsSingleOutputWrapper</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Объясняет предсказание среднего по ансамблю для одного измерения состояния.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">s</span>     <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">]</span>
-            <span class="n">a</span>     <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">:]</span>
-            <span class="n">s_next</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">s_next</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_idx</span><span class="p">]</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-</code></pre></div>
-
-<p><strong>Проверка физического здравого смысла:</strong> <code>heat_input</code> должен иметь положительный средний SHAP для <code>next_temperature</code>; <code>flow_input</code> — для <code>next_filler_frac</code>. Это следует из динамики первого порядка и должно выполняться для любой физически разумной модели. При нарушении — модель динамики выучила физически невозможную зависимость в некоторой области данных. Красный флаг перед развёртыванием.</p>
-<hr />
-<h2>Класс Explainer</h2>
-<p><code>OfflineRLExplainer</code> управляет построением фонового датасета и вычислением SHAP для всех трёх уровней:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">OfflineRLExplainer</span><span class="p">:</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">,</span> <span class="n">ensemble</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span>
-                 <span class="n">s_mean</span><span class="p">,</span> <span class="n">s_std</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">n_background</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
-        <span class="c1"># Фон = репрезентативная выборка из офлайн-датасета</span>
-        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span>
-            <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">]),</span> <span class="n">size</span><span class="o">=</span><span class="n">n_background</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span>  <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bg_sa</span>      <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
-            <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-</code></pre></div>
-
-<p>Фон определяет $\phi_0$ — средний выход модели. Использование офлайн-датасета означает: SHAP отвечает на вопрос «чем этот переход отличается от типичного наблюдённого?»</p>
-<div class="codehilite"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">explainer</span><span class="o">.</span><span class="n">explain_all</span><span class="p">(</span>
-    <span class="n">n_explain</span>    <span class="o">=</span> <span class="mi">150</span><span class="p">,</span>   <span class="c1"># экземпляры для объяснения</span>
-    <span class="n">n_background</span> <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>    <span class="c1"># размер фонового датасета</span>
-    <span class="n">n_samples</span>    <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>    <span class="c1"># коалиций SHAP на экземпляр</span>
+<h2>Датасет: операционные режимы</h2>
+<p>Промышленные данные распределены неравномерно. <code>collect_industrial_dataset</code> симулирует три режима, характерных для реальных исторических логов:</p>
+<p><strong>Нормальная работа (60% эпизодов):</strong> процесс работает вблизи уставных значений. Политика поведения — пропорциональный регулятор с умеренным исследовательским шумом. Это основной массив данных — область, где все алгоритмы покажут приемлемые результаты.</p>
+<p><strong>Переходы к новой уставной точке (25%):</strong> эпизоды начинаются вдали от номинальной точки. Более высокий шум, смещённые начальные состояния. Эти переходы проверяют способность агента вернуть процесс к уставному значению, а не просто поддерживать его.</p>
+<p><strong>Возмущения (15%):</strong> необычные начальные условия — в частности, возмущения уровня, когда буферный бак начинается намного ниже нормы. Именно в этих эпизодах наиболее вероятны нарушения ограничений и наиболее ценна физическая модель.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">dataset</span> <span class="o">=</span> <span class="n">collect_industrial_dataset</span><span class="p">(</span>
+    <span class="n">n_episodes</span><span class="o">=</span><span class="mi">400</span><span class="p">,</span>
+    <span class="n">episode_len</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="n">noise_scale</span><span class="o">=</span><span class="mf">0.30</span><span class="p">,</span>
+    <span class="n">regime_split</span><span class="o">=</span><span class="p">(</span><span class="mf">0.60</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.15</span><span class="p">),</span>
 <span class="p">)</span>
-<span class="c1"># ключи results: &#39;states&#39;, &#39;actions&#39;, &#39;q_shap&#39;,</span>
-<span class="c1">#                &#39;policy_shap&#39;, &#39;dynamics_shap&#39;, &#39;q_base&#39;</span>
 </code></pre></div>
 
-<p><code>n_samples</code> управляет качеством аппроксимации. При 80 стандартная ошибка ~0.005 на нормированных выходах — достаточно для ранжирования признаков. При 500 — качество для публикаций, но в 6 раз медленнее.</p>
+<p>Такое распределение создаёт характерный промышленный дисбаланс: обученные агенты будут редко сталкиваться со сценариями возмущений при оценке, но должны правильно их обрабатывать. Агент, обученный только на данных нормальной работы, будет систематически недообучен для 15% ситуаций, которые важнее всего.</p>
 <hr />
-<h2>Визуализация</h2>
-<h3>Сводный график (Q-функция)</h3>
-<p>График «рой пчёл» (beeswarm): каждая точка — один экземпляр, цвет — значение признака (синий=низкое, красный=высокое), ось X — SHAP-значение.</p>
-<div class="codehilite"><pre><span></span><code><span class="n">plot_q_summary</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
-               <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_q_summary.png&#39;</span><span class="p">)</span>
-</code></pre></div>
+<h2>Оценка: промышленные метрики</h2>
+<p>Стандартные RL-метрики — суммарная награда, нормированная оценка — недостаточны для промышленной оценки. <code>IndustrialEvaluator</code> вычисляет пять метрик, значимых на практике.</p>
+<h3>Направленная точность (DA)</h3>
+<p><div class="math-display">$$\text{DA}_x = \frac{1}{T}\sum_{t=1}^T \mathbf{1}\!\left[\Delta x_t \cdot (x^* - x_{t-1}) \geq 0\right]$$</div></p>
+<p>DA измеряет, двигалась ли управляемая переменная <em>в сторону</em> своего уставного значения на каждом шаге, независимо от расстояния. Политика, всегда двигающаяся в правильном направлении, но медленно, имеет DA = 1.0. Политика, систематически толкающая переменные в неправильную сторону, имеет DA &lt; 0.5 (хуже случайного).</p>
+<p>DA часто более информативна, чем RMSE в промышленных условиях:
+- Медленную политику с DA ≈ 1.0 можно ускорить, настроив масштабирование действий
+- Быстрая политика с DA ≈ 0.4 требует фундаментального переобучения
+- Операторы могут визуально верифицировать DA по трендовым графикам без численного анализа</p>
+<h3>RMSE и частота нарушений ограничений</h3>
+<p>RMSE от уставного значения вычисляется по каждой переменной:</p>
+<p><div class="math-display">$$\text{RMSE}_x = \sqrt{\frac{1}{T}\sum_t (x_t - x^*)^2}$$</div></p>
+<p>Частота нарушений ограничений — доля временны́х шагов, на которых хотя бы одна переменная состояния выходит за жёсткие границы. Тяжесть измеряет среднюю величину нарушения <em>при условии</em> возникновения нарушения:</p>
+<p><div class="math-display">$$\text{severity} = \frac{\sum_t \max(0,\, g(s_t))}{\sum_t \mathbf{1}[g(s_t) > 0]}$$</div></p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">IndustrialEvaluator</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Вычисляет: reward_mean, reward_std, T_rmse, f_rmse, level_rmse,</span>
+<span class="sd">               da_T, da_f, da_mean, constraint_viol_rate,</span>
+<span class="sd">               constraint_viol_severity</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
-<p>Паттерны для чтения:
-- <strong>Широкий горизонтальный разброс</strong> → признак имеет переменный эффект
-- <strong>Красные точки стабильно правее синих</strong> → монотонная зависимость
-- <strong>Смешанные цвета</strong> → нелинейная или зависимая от взаимодействий связь</p>
-<h3>Столбчатые диаграммы (политика и динамика)</h3>
-<p>Среднее |SHAP| по признакам — отвечает на «какие признаки важнее всего?»</p>
-<div class="codehilite"><pre><span></span><code><span class="n">plot_policy_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;policy_shap&#39;</span><span class="p">],</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
-                <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_policy_bar.png&#39;</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">evaluate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+        <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_episodes</span><span class="p">):</span>
+            <span class="n">obs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">reset</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="mi">8000</span> <span class="o">+</span> <span class="n">ep</span><span class="p">)</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="n">done</span><span class="p">:</span>
+                <span class="n">prev_T</span><span class="p">,</span> <span class="n">prev_f</span> <span class="o">=</span> <span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">s_t</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span>
+                    <span class="p">(</span><span class="n">obs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_mean</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_std</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">act</span>  <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">act</span><span class="p">(</span><span class="n">s_t</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="n">obs</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">done</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">act</span><span class="p">)</span>
 
-<span class="n">plot_dynamics_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;dynamics_shap&#39;</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
-                  <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_dynamics_bar.png&#39;</span><span class="p">)</span>
-</code></pre></div>
+                <span class="c1"># Направленная точность</span>
+                <span class="n">da_T</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">T_TARGET</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+                <span class="n">da_f</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">F_TARGET</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
 
-<h3>Force plot: один экземпляр</h3>
-<p>Наиболее операционно полезная визуализация. Для одного временного шага показывает вклад каждого признака как водопад от базового уровня до итогового Q-значения:</p>
-<div class="codehilite"><pre><span></span><code><span class="n">best</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">q_vals</span><span class="p">))</span>   <span class="c1"># экземпляр с наибольшим Q</span>
-<span class="n">plot_force_single</span><span class="p">(</span>
-    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][</span><span class="n">best</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
-    <span class="n">q_value</span><span class="o">=</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">],</span> <span class="n">q_base</span><span class="o">=</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_base&#39;</span><span class="p">],</span>
-    <span class="n">instance_label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;Highest-Q instance (Q=</span><span class="si">{</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">]</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">)&#39;</span><span class="p">,</span>
-    <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_force_best.png&#39;</span><span class="p">)</span>
-</code></pre></div>
-
-<p>Оператор использует этот график для ответа: «почему агент оценил этот момент как высокоценный?» Если ответ — «температура у уставного значения, уровень стабилен» — разумно. Если «вязкость необычно низкая», когда уставная точка по температуре — подозрительная корреляция для расследования.</p>
-<h3>График зависимости: взаимодействия</h3>
-<p>SHAP признака A против его сырого значения, окрашенный по признаку B — выявляет эффекты взаимодействия:</p>
-<div class="codehilite"><pre><span></span><code><span class="n">plot_shap_dependence</span><span class="p">(</span>
-    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][:,</span> <span class="p">:</span><span class="nb">len</span><span class="p">(</span><span class="n">STATE_NAMES</span><span class="p">)],</span>
-    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">],</span>
-    <span class="n">feature_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>       <span class="c1"># temperature</span>
-    <span class="n">interaction_idx</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>   <span class="c1"># окрашен по filler_frac</span>
-    <span class="n">feature_names</span><span class="o">=</span><span class="n">STATE_NAMES</span><span class="p">,</span>
-    <span class="n">title</span><span class="o">=</span><span class="s1">&#39;Q-SHAP: влияние температуры (окрашено по filler_frac)&#39;</span><span class="p">)</span>
-</code></pre></div>
-
-<p>Если SHAP температуры систематически разделяется по цвету наполнителя — есть взаимодействие: реакция Q-функции на температуру зависит от доли наполнителя. Для физически-информированного агента это ожидаемо — вязкость нелинейно зависит от обеих переменных.</p>
-<hr />
-<h2>Проверка согласованности</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">metrics</span> <span class="o">=</span> <span class="n">check_explanation_consistency</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
-<span class="n">print_consistency_report</span><span class="p">(</span><span class="n">metrics</span><span class="p">)</span>
-</code></pre></div>
-
-<p>Ожидаемый вывод:</p>
-<div class="codehilite"><pre><span></span><code>  Q ↔ policy rank correlation  : 0.71  ✓ согласованы
-  heat_input → next_temperature: SHAP=+0.0412  ✓ положительный (верно)
-  flow_input → next_filler     : SHAP=+0.0387  ✓ положительный (верно)
-</code></pre></div>
-
-<p><strong>Ранговая корреляция Спирмена Q-политика $\rho$:</strong> ранжирует признаки состояния по среднему |SHAP| в Q-функции и в политике. $\rho &gt; 0.6$ означает, что критик и актор обращают внимание на одни и те же признаки. $\rho &lt; 0.3$ указывает на коллапс политики — актор игнорирует большую часть состояния, которое важно критику. Характерно при слишком большом $\alpha$ в CQL.</p>
-<p><strong>Проверки знака физики:</strong> SHAP <code>heat_input</code> → <code>next_temperature</code> должен быть положительным; <code>flow_input</code> → <code>next_filler_frac</code> — тоже. Нарушение указывает на то, что модель динамики выучила физически инвертированную зависимость в некоторой области данных — характерно при очень разреженном покрытии вблизи границ.</p>
-<hr />
-<h2>SHAP в производстве: практические соображения</h2>
-<p><strong>Вычислительная стоимость.</strong> KernelExplainer делает $n_\text{explain} \times n_\text{samples} \times n_\text{background}$ обращений к модели. Для 150 × 80 × 80 = 960,000 вызовов на CPU это занимает минуты. Практическая стратегия: запускать офлайн перед развёртыванием на отложенной валидационной выборке; ежемесячно перезапускать на свежих эксплуатационных данных для обнаружения дрейфа распределения.</p>
-<p><strong>Выбор фонового датасета</strong> — важнейший гиперпараметр. Полный датасет в качестве фона отвечает «отличие от типичной работы». Фон из зоны ограничений отвечает «что отличает приближение к нарушению от типичного приближения» — полезно для диагностики, почему агент приближается к границам.</p>
-<p><strong>Физические единицы.</strong> Состояния нормированы. Для коммуникации с операторами:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Перевод SHAP обратно в физические единицы</span>
-<span class="n">shap_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][:,</span> <span class="p">:</span><span class="n">S</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span>
-<span class="c1"># SHAP 0.04 на нормированной температуре = 0.04 × σ_T физических градусов</span>
+                <span class="c1"># Отслеживание ограничений</span>
+                <span class="n">viol</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;constraint_violation&#39;</span><span class="p">]</span>   <span class="c1"># сумма превышений границ</span>
 </code></pre></div>
 
 <hr />
-<h2>Что SHAP не может сказать</h2>
-<p><strong>SHAP ≠ причинно-следственная связь.</strong> Высокий SHAP для <code>viscosity</code> означает, что модель использует вязкость как предиктор, а не что вязкость причинно влияет на Q-значение. Если вязкость скоррелирована с температурой (так и есть, через нелинейную зависимость), SHAP может разделить «заслугу» между ними способами, не совпадающими с физической интуицией.</p>
-<p><strong>SHAP-значения зависят от фона.</strong> Признак может иметь высокий SHAP относительно одного фона и низкий — относительно другого. При сравнении SHAP-анализов между запусками держите фон фиксированным.</p>
-<p><strong>Временна́я структура теряется.</strong> KernelExplainer объясняет каждый экземпляр независимо. Для интегрирующих состояний вроде уровня логика агента зависит от истории траектории. Одношаговые SHAP не могут отразить эту временну́ю зависимость.</p>
-<p><strong>SHAP объясняет модель, а не её правильность.</strong> Если Q-функция переоценивает в некоторой области (известный режим отказа Offline RL), SHAP будет добросовестно объяснять эту переоценку. Проверки согласованности позволяют обнаружить некоторые режимы отказа, но SHAP не заменяет метрики оценки из главы 7.</p>
-<hr />
-<h2>За пределами SHAP: Causal AI в Offline RL</h2>
-<p>SHAP даёт <em>атрибуцию</em> — какие входы модель использует для предсказания. Другое направление исследований ставит вопрос: можно ли заставить агентов Offline RL рассуждать в терминах <em>причины и следствия</em>, чтобы они лучше обобщали и не опирались на ложные корреляции?</p>
-<p><strong>Зачем причинность в Offline RL.</strong> Офлайн-данные наблюдательные: мы видим $(s, a, s', r)$ при поведенческой политике, но не знаем, что было бы при другом действии. Обычные модельные методы учат переходы по корреляциям; при сдвиге распределения или при наличии смешивающих факторов (независимые переменные, влияющие и на действие, и на следующее состояние) такие модели могут давать сбой. Причинный подход стремится отделить истинные причинные влияния от ложных — например, «дождь → дворники» и «дождь → торможение» коррелируют, но только одно из них — прямая причина другого.</p>
-<p><strong>Causal RL на практике.</strong> В последних работах рассматриваются:</p>
-<ul>
-<li><strong>Причинные мировые модели.</strong> Вместо одного чёрного ящика $\hat{s}' = f(s, a)$ алгоритмы вроде FOCUS учат <em>причинную структуру</em> над переменными состояния (какие факторы состояния причинно влияют на какие следующие). Теория показывает, что такая структура может улучшать границы обобщения в модельном Offline RL; эксперименты — более устойчивое поведение при изменении среды или распределения данных.</li>
-<li><strong>Устранение смешивания (deconfounding).</strong> Когда данные смешаны скрытой переменной (например, скрытый фактор влияет и на действие, и на исход), do-исчисление и латентные причинные модели переходов позволяют безопасно комбинировать офлайн-наблюдательные данные с ограниченными онлайн-интервенционными данными.</li>
-<li><strong>Обзоры и таксономия.</strong> Causal RL часто делят на: причинное представление (representation learning), контрафактная оптимизация политики, <em>офлайн</em> causal RL, причинный перенос и причинная объяснимость. Последнее напрямую связано с этой главой: объяснения, отражающие причинно-следственную структуру, проще доверять и отлаживать.</li>
-</ul>
-<p><strong>Ресурсы.</strong> Обзор Deng et al. (2023) даёт единую картину causal RL и включает раздел об офлайн/батчевых настройках. Статья FOCUS (Zhang et al.) — конкретный пример причинных мировых моделей для модельного Offline RL. Связь off-policy оценки с причинным выводом (оценка эффекта вмешательства) освещена в литературе по batch RL и causal inference (например, важностное взвешивание и inverse propensity scoring). Ссылки приведены ниже.</p>
-<p><strong>Игрушечный пример кода.</strong> Минимальный скрипт показывает, почему предикторы, опирающиеся на корреляции, могут ошибаться при интервенции. Истинная динамика: $\text{next_s1} = 0{,}8\,s_1 + 0{,}2\,a$ (причинные родители: $s_1$, $a$). Добавляем «мешающую» переменную $z = s_1 + \text{шум}$ — она коррелирует с $s_1$, но не является причиной next_s1. «Корреляционная» модель предсказывает next_s1 по $(s_2, z, a)$ (не видит $s_1$, использует $z$ как прокси). «Причинная» модель использует только $(s_1, a)$. Обе хорошо подходят на обучающей выборке. При <em>интервенции</em> задаём $z=0{,}9$, $s_1=0{,}2$, $a=0{,}5$: истинное next_s1 = $0{,}26$, но корреляционная модель даёт завышенный прогноз (из-за $z$); причинная — $0{,}26$. Запуск: <code>python code/chapter8_causal_toy.py</code>. Идея в коде:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Истинная динамика (неизвестна обучающемуся): next_s1 = 0.8*s1 + 0.2*a</span>
-<span class="c1"># Мешающая z = s1 + шум — коррелирует с s1, не причина next_s1</span>
-<span class="c1"># Корреляционная модель: next_s1 по (s2, z, a)</span>
-<span class="c1"># Причинная модель:       next_s1 по (s1, a)</span>
-<span class="c1"># Интервенция: s1=0.2, z=0.9, a=0.5 → истинное next_s1=0.26</span>
-<span class="c1">#   Корреляционная (видит z=0.9, не видит s1) → ~0.7 (ошибка)</span>
-<span class="c1">#   Причинная (видит s1=0.2, a=0.5)           → 0.26 (верно)</span>
+<h2>Физическая модель</h2>
+<p>Известная физика для процесса нанесения покрытия закодирована в <code>coating_physics_fn</code>. Она реализует отклики первого порядка и баланс масс в точности, но не включает перекрёстную связь, транспортную задержку и нелинейность вязкости:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">coating_physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                        <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="n">T</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">L</span> <span class="o">=</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">4</span><span class="p">]</span>
+    <span class="n">heat_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
+    <span class="n">flow_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
+
+    <span class="n">T_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">T</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_T</span> <span class="o">*</span> <span class="n">heat_in</span>
+    <span class="n">f_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">f</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_F</span> <span class="o">*</span> <span class="n">flow_in</span>
+
+    <span class="c1"># Линеаризованная вязкость (истинная — нелинейная)</span>
+    <span class="n">v_new</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.75</span> <span class="o">-</span> <span class="mf">0.45</span><span class="o">*</span><span class="n">T_new</span> <span class="o">+</span> <span class="mf">0.38</span><span class="o">*</span><span class="n">f_new</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">d_new</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.55</span> <span class="o">+</span> <span class="mf">0.25</span><span class="o">*</span><span class="n">f_new</span> <span class="o">-</span> <span class="mf">0.10</span><span class="o">*</span><span class="n">T_new</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="c1"># Баланс масс — хорошее приближение истинной динамики уровня</span>
+    <span class="n">inflow</span>  <span class="o">=</span> <span class="n">flow_in</span> <span class="o">*</span> <span class="mf">0.4</span>
+    <span class="n">outflow</span> <span class="o">=</span> <span class="n">L</span> <span class="o">*</span> <span class="mf">0.35</span> <span class="o">+</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">heat_in</span>
+    <span class="n">L_new</span>   <span class="o">=</span> <span class="p">(</span><span class="n">L</span> <span class="o">+</span> <span class="n">DT</span> <span class="o">*</span> <span class="p">(</span><span class="n">inflow</span> <span class="o">-</span> <span class="n">outflow</span><span class="p">))</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">T_new</span><span class="p">,</span> <span class="n">f_new</span><span class="p">,</span> <span class="n">v_new</span><span class="p">,</span> <span class="n">d_new</span><span class="p">,</span> <span class="n">L_new</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 </code></pre></div>
 
-<blockquote>
-<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8_causal_toy.py"><code>chapter8_causal_toy.py</code></a></p>
-</blockquote>
+<p>Перед обучением гибридного ансамбля необходимо запустить <code>diagnose_physics_coverage</code>, чтобы убедиться в ценности физической модели:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">ensemble</span><span class="o">.</span><span class="n">diagnose_physics_coverage</span><span class="p">(</span><span class="n">norm_dataset</span><span class="p">)</span>
+
+<span class="c1"># Ожидаемый вывод:</span>
+<span class="c1">#   Покрытие физической модели (доля объяснённой дисперсии):</span>
+<span class="c1">#   измерение 0 (temperature):     91.3%  ██████████████████░░</span>
+<span class="c1">#   измерение 1 (filler_fraction): 83.7%  ████████████████░░░░</span>
+<span class="c1">#   измерение 2 (viscosity):       64.2%  ████████████░░░░░░░░</span>
+<span class="c1">#   измерение 3 (density):         79.8%  ████████████████░░░░</span>
+<span class="c1">#   измерение 4 (level):           93.1%  ██████████████████░░</span>
+<span class="c1">#   В среднем: 82.4%</span>
+</code></pre></div>
+
+<p>Среднее покрытие выше 80% означает, что остаточной сети нужно выучить поправку с 20%-амплитудой — примерно в четыре раза меньшей ёмкости, чем у чистой чёрноящичной модели при той же точности предсказания.</p>
+<hr />
+<h2>Алгоритм 1: Поведенческое клонирование</h2>
+<p>BC — это базовый уровень: напрямую клонировать политику поведения. Режим отказа на промышленных данных предсказуем — накопительная ошибка в ходе переходов уставных значений и возмущений, когда агент встречает состояния, которых не видел при обучении.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">bc</span> <span class="o">=</span> <span class="n">CQLBCAgent</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="n">train_bc</span><span class="p">(</span><span class="n">bc</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+</code></pre></div>
+
+<p>DA у BC будет высоким в эпизодах нормальной работы (политика поведения была компетентным пропорциональным регулятором) и низким при восстановлении после возмущений. Нарушения ограничений редки при нормальной работе и часты при возмущениях — именно в сценариях, для которых BC был наименее обучен.</p>
+<hr />
+<h2>Алгоритм 2: CQL</h2>
+<p>CQL (глава 3) добавляет консерватизм через штраф за значения Q вне распределения. На промышленных данных он стабильно превосходит BC в сценариях возмущений, поскольку пессимистическая Q-функция предотвращает выбор действий, которые выглядят хорошо под обученным Q, но редки в датасете.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">cql</span> <span class="o">=</span> <span class="n">CQLAgent</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">,</span> <span class="n">alpha_cql</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="n">train_cql_agent</span><span class="p">(</span><span class="n">cql</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Оставшаяся слабость CQL: у него нет механизма избегания физически несогласованных действий. Уставное значение, которое Q-функция CQL оценивает высоко, всё равно может нарушать баланс масс или толкать уровень к граничному ограничению.</p>
+<hr />
+<h2>Алгоритм 3: CQL + физическое формирование награды</h2>
+<p><code>PhysicsInformedCQL</code> оборачивает <code>CQLAgent</code> с <code>PhysicsRewardWrapper</code> (глава 6). Изменение обучающего цикла — ровно одна строка: заменить пакетную награду <code>r</code> на <code>r - penalty</code> перед вызовом <code>CQLAgent.update</code>.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span> <span class="o">=</span> <span class="n">make_coating_constraints</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">PhysicsInformedCQL</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">):</span>
+        <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">]</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">penalty</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+                <span class="n">lam</span> <span class="o">*</span> <span class="n">g</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cql</span><span class="o">.</span><span class="n">update</span><span class="p">((</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span> <span class="o">-</span> <span class="n">penalty</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+</code></pre></div>
+
+<p><code>lambdas</code> калибруются через <code>calibrate_lambda</code> (Теорема 6.1): $\lambda$ устанавливается так, чтобы зазор оптимальности из Теоремы 6.1 не превышал 10% среднего дохода за эпизод.</p>
+<p>Три ограничения активны:
+1. <strong>Операционные границы</strong> — все пять переменных состояния в жёстких лимитах
+2. <strong>Согласованность первого порядка для температуры</strong> — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
+3. <strong>Согласованность первого порядка для наполнителя</strong> — аналогично</p>
+<p>Ограничения согласованности не наказывают агента за выбор необычных уставных значений — они наказывают динамическую модель за предсказание физически невозможных переходов, что косвенно ограничивает политику оставаться в областях, где динамика предсказуема.</p>
+<hr />
+<h2>Алгоритм 4: HybridMOReL</h2>
+<p><code>HybridMOReL</code> объединяет модельно-основанный подход из главы 5 с гибридной динамической моделью из главы 6. Структура — двухфазный обучающий цикл.</p>
+<p><strong>Фаза 1 — Обучение динамики:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="n">hm</span> <span class="o">=</span> <span class="n">HybridMOReL</span><span class="p">(</span>
+    <span class="n">state_dim</span>   <span class="o">=</span> <span class="n">STATE_DIM</span><span class="p">,</span>
+    <span class="n">action_dim</span>  <span class="o">=</span> <span class="n">ACTION_DIM</span><span class="p">,</span>
+    <span class="n">physics_fn</span>  <span class="o">=</span> <span class="n">coating_physics_fn</span><span class="p">,</span>
+    <span class="n">n_ensemble</span>  <span class="o">=</span> <span class="mi">4</span><span class="p">,</span>
+    <span class="n">hidden_dim</span>  <span class="o">=</span> <span class="mi">128</span><span class="p">,</span>
+    <span class="n">halt_thresh</span> <span class="o">=</span> <span class="mf">0.15</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">hm</span><span class="o">.</span><span class="n">train_dynamics</span><span class="p">(</span><span class="n">norm_dataset</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+<span class="c1"># Вывод:</span>
+<span class="c1">#   Диагностика физического покрытия: 82.4% — сильное</span>
+<span class="c1">#   Обучение гибридного ансамбля: 4 модели × 30 эпох</span>
+<span class="c1">#   ✓ HybridEnsemble установлен в MOReL</span>
+</code></pre></div>
+
+<p>После обучения гибридный ансамбль устанавливается в агент MOReL заменой <code>morel_agent.ensemble</code>. Генератор развёрток MOReL (<code>generate_synthetic_data</code>) продолжает вызывать <code>ensemble.predict_with_uncertainty</code> — он не знает и не заботится о том, чёрноящичный ансамбль или гибридный.</p>
+<p><strong>Фаза 2 — Обучение политики через MOReL:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="n">train_morel</span><span class="p">(</span>
+    <span class="n">agent</span>               <span class="o">=</span> <span class="n">hm</span><span class="o">.</span><span class="n">morel_agent</span><span class="p">,</span>
+    <span class="n">dataset</span>             <span class="o">=</span> <span class="n">norm_dataset</span><span class="p">,</span>
+    <span class="n">env</span>                 <span class="o">=</span> <span class="n">env</span><span class="p">,</span>         <span class="c1"># реальная среда только для оценки</span>
+    <span class="n">n_outer_iters</span>       <span class="o">=</span> <span class="mi">15</span><span class="p">,</span>
+    <span class="n">sac_steps_per_iter</span>  <span class="o">=</span> <span class="mi">300</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>Конструкция P-MDP в MOReL применяет штраф HALT всякий раз, когда неопределённость ансамбля превышает <code>halt_thresh</code>. С гибридным ансамблем оценки неопределённости лучше откалиброваны: в OOD-областях, где у остаточной сети нет обучающих данных, физический член сохраняет физически обоснованное предсказание вместо произвольного. Это сокращает число ложных событий HALT, вызванных чистым чёрноящичным ансамблем, выдающим бессмысленные предсказания в физически достижимых, но малоданных состояниях.</p>
+<hr />
+<h2>Результаты</h2>
+<p>Запуск полного бенчмарка:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">run_industrial_benchmark</span><span class="p">(</span>
+    <span class="n">device</span>       <span class="o">=</span> <span class="s1">&#39;cpu&#39;</span><span class="p">,</span>
+    <span class="n">n_train_ep</span>   <span class="o">=</span> <span class="mi">400</span><span class="p">,</span>
+    <span class="n">n_bc_epochs</span>  <span class="o">=</span> <span class="mi">60</span><span class="p">,</span>
+    <span class="n">n_cql_epochs</span> <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>
+    <span class="n">n_morel_iters</span><span class="o">=</span> <span class="mi">15</span><span class="p">,</span>
+    <span class="n">n_eval_ep</span>    <span class="o">=</span> <span class="mi">20</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>Типичный вывод (точные числа зависят от случайного зерна):</p>
+<div class="codehilite"><pre><span></span><code>══════════════════════════════════════════════════════════════════
+  ГЛАВА 7 — РЕЗУЛЬТАТЫ ПРОМЫШЛЕННОГО БЕНЧМАРКА
+══════════════════════════════════════════════════════════════════
+Метрика               BC      CQL   CQL+Phys  HybridMOReL
+──────────────────────────────────────────────────────────────────
+Reward (mean)       -18.4   -14.2    -13.8   ▶  -12.1
+DA (mean)            61.3%   71.8%   73.4%  ▶   79.2%
+DA temperature       64.1%   73.5%   75.1%  ▶   81.3%
+DA filler            58.4%   70.1%   71.6%  ▶   77.1%
+T RMSE               0.0921  0.0712  0.0698  ▶  0.0581
+f RMSE               0.1043  0.0834  0.0811  ▶  0.0693
+Level RMSE           0.0874  0.0748  0.0701  ▶  0.0612
+Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+══════════════════════════════════════════════════════════════════
+</code></pre></div>
+
+<h3>Интерпретация результатов</h3>
+<p><strong>BC</strong> работает удовлетворительно при нормальной работе, но отказывает при возмущениях. DA чуть выше 60% — лучше случайного, но ниже промышленного порога в 80%. Нарушения ограничений возникают потому, что BC никогда не видел переменную уровня вблизи её границ в ходе обучения.</p>
+<p><strong>CQL</strong> улучшает все метрики. Консерватизм Q-функции предотвращает худшие ошибки экстраполяции. Но частота нарушений остаётся 2.8% — у CQL нет механизма специфического избегания граничных ограничений.</p>
+<p><strong>CQL+Physics</strong> снижает нарушения до 1.1% — наименьший показатель среди безмодельных методов. Штраф в награде делает приближение к граничным ограничениям явно дорогостоящим в ходе обучения. DA улучшается умеренно — физические ограничения действуют как форма неявной регуляризации, удерживающей политику в физически осмысленных областях.</p>
+<p><strong>HybridMOReL</strong> достигает наилучшей награды и наивысшего DA. Модельно-основанные развёртки дают политике более разнообразный обучающий опыт, чем один реальный датасет. Гибридный ансамбль делает эти развёртки физически согласованными. Частота нарушений (1.9%) чуть выше, чем у CQL+Physics, поскольку MOReL фокусируется на максимизации награды в P-MDP без явного штрафа за ограничения.</p>
+<h3>Комплементарная структура</h3>
+<p>Результаты показывают комплементарную структуру, которую важно понять.</p>
+<p><strong>CQL+Physics</strong> — минимизатор нарушений: явно штрафует приближение к ограничениям и достигает наименьшей частоты нарушений. Но использует только реальные данные — синтетического опыта ноль.</p>
+<p><strong>HybridMOReL</strong> — максимизатор производительности: модельно-основанные развёртки толкают политику к более высокой награде и DA, но без явных штрафов за ограничения частота нарушений чуть выше.</p>
+<p>В реальном внедрении естественная комбинация — <strong>HybridMOReL + физическое формирование награды</strong>: использовать гибридную модель для разнообразных синтетических развёрток И применять штраф за ограничения ко всем наградам (реальным и синтетическим). Это однострочное изменение в <code>train_hybrid_morel_agent</code> — передать <code>PhysicsRewardWrapper</code> в генератор развёрток. Глава 6 показала именно это.</p>
+<hr />
+<h2>Инженерные решения</h2>
+<p>Работа с этим кейсом выявляет несколько решений, которые не появляются в статьях по эталонным задачам.</p>
+<h3>Проблема транспортной задержки</h3>
+<p>Уравнение наполнителя имеет двухшаговую задержку: входное воздействие агента в момент $t$ влияет на долю наполнителя в момент $t+2$, а не $t+1$. Физическая модель игнорирует эту задержку — предсказывает немедленный отклик первого порядка.</p>
+<p>Это означает, что остаточная нейросеть гибридного ансамбля должна выучить эффект задержки из данных. При достаточном количестве переходов это возможно. Признак несоответствия задержки — систематический остаток, положительный когда flow_input недавно увеличился и отрицательный когда уменьшился. Если <code>diagnose_physics_coverage</code> показывает низкое покрытие для измерения наполнителя (ниже 60%), вероятная причина — немоделированная задержка.</p>
+<p>Решение явное: дополнить состояние последними $k$ значениями flow_input и позволить физической модели их учитывать. Инженерные знания, необходимые — только приближённая длина задержки; точное значение выучивается из остатка.</p>
+<h3>Калибровка ограничений</h3>
+<p><code>make_coating_constraints</code> использует <code>calibrate_lambda</code> для ограничения операционных границ и устанавливает $\lambda = 2.0$ вручную для ограничений согласованности первого порядка. Ручные значения — разумные отправные точки, которые стоит верифицировать:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Проверить частоту нарушений ограничений на обучающем датасете</span>
+<span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span><span class="p">):</span>
+    <span class="n">violations</span> <span class="o">=</span> <span class="n">g</span><span class="p">(</span><span class="n">s_train</span><span class="p">,</span> <span class="n">a_train</span><span class="p">,</span> <span class="n">s2_train</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  λ=</span><span class="si">{</span><span class="n">lam</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> | нарушения: </span><span class="si">{</span><span class="p">(</span><span class="n">violations</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">float</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2"> &quot;</span>
+          <span class="sa">f</span><span class="s2">&quot;| средняя величина: </span><span class="si">{</span><span class="n">violations</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Если ограничение нарушается более чем на 20% обучающих переходов, либо допуск слишком жёсткий, либо физическая модель неточна для этой переменной. В обоих случаях увеличение допуска или ослабление ручного $\lambda$ лучше, чем ужесточение ограничения — ограничение, срабатывающее слишком часто, становится вторым сигналом награды, а не физической коррекцией.</p>
+<h3>Нормировка 5-мерного состояния</h3>
+<p>Пять переменных с разными физическими масштабами и дисперсиями требуют нормировки по каждому измерению. Предоставленная функция <code>normalize_dataset</code> нормирует состояния к нулевому среднему и единичной дисперсии по каждому измерению. Награда масштабируется по стандартному отклонению, но не центрируется — центрирование награды удалило бы знаковую информацию, различающую хорошие состояния от плохих.</p>
 <hr />
 <h2>Итог</h2>
-<p>Три взаимодополняющих SHAP-объяснения для обученного агента Offline RL:</p>
+<p>Эта глава перевела инструменты из глав 1–6 в реалистичный промышленный pipeline. Процесс нанесения покрытия ввёл два вызова, отсутствующих в игрушечной среде: интегрирующую переменную уровня и транспортную задержку в динамике наполнителя. Оба потребовали инженерных знаний — в физической модели или в спецификации ограничений.</p>
+<p>Сравнение четырёх алгоритмов выявляет чёткую иерархию:</p>
 <table>
 <thead>
 <tr>
-<th>Уровень</th>
-<th>Модель</th>
-<th>Вопрос</th>
-<th>Входное пространство</th>
+<th>Алгоритм</th>
+<th>На чём строится</th>
+<th>Сильная сторона</th>
+<th>Слабость</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>SHAP Q-функции</td>
-<td>Критик $Q(s,a)$</td>
-<td>Почему это действие ценно здесь?</td>
-<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+<td>BC</td>
+<td>Имитация данных</td>
+<td>Простой, интерпретируемый</td>
+<td>Накопительная ошибка; без физики</td>
 </tr>
 <tr>
-<td>SHAP политики</td>
-<td>Актор $\pi(s)$</td>
-<td>Почему было выбрано это действие?</td>
-<td>$s \in \mathbb{R}^S$</td>
+<td>CQL</td>
+<td>Консервативные Q-значения</td>
+<td>Лучшее OOD-обобщение</td>
+<td>Нет механизма ограничений</td>
 </tr>
 <tr>
-<td>SHAP динамики</td>
-<td>$\hat{f}(s,a)$</td>
-<td>Почему предсказано именно это следующее состояние?</td>
-<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+<td>CQL+Physics</td>
+<td>CQL + штраф</td>
+<td>Наименьшая частота нарушений</td>
+<td>Только реальные данные</td>
+</tr>
+<tr>
+<td>HybridMOReL</td>
+<td>Модельный + гибридный</td>
+<td>Лучшая награда и DA</td>
+<td>Чуть выше частота нарушений</td>
 </tr>
 </tbody>
 </table>
-<p>Проверка согласованности — ранговая корреляция Спирмена Q-политика и проверки знака физики — обеспечивает автоматическую верификацию взаимной когерентности и физической обоснованности трёх объяснений.</p>
-<p>Объяснимость на основе SHAP — не замена оценке (метрики DA и частоты нарушений из главы 7), соблюдению ограничений (глава 6) или аккуратному моделированию динамики (глава 5). Это слой прозрачности, делающий эти компоненты поддающимися аудиту.</p>
-<p>Глава 9 завершает книгу широким взглядом: что область достигла, куда движется, и какие открытые проблемы остаются нерешёнными.</p>
-<hr />
-<h2>Приложение 8.А: Выбор между вариантами SHAP</h2>
-<table>
-<thead>
-<tr>
-<th>Explainer</th>
-<th>Лучше всего для</th>
-<th>Скорость</th>
-<th>Примечания</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>KernelExplainer</code></td>
-<td>Любой чёрный ящик</td>
-<td>Медленно</td>
-<td>Используется в главе — единообразен для всех типов моделей</td>
-</tr>
-<tr>
-<td><code>DeepExplainer</code></td>
-<td>PyTorch / TF сети</td>
-<td>Быстро</td>
-<td>Использует backprop; менее точен вблизи насыщения tanh</td>
-</tr>
-<tr>
-<td><code>GradientExplainer</code></td>
-<td>Дифференцируемые сети</td>
-<td>Средне</td>
-<td>Градиент × вход; быстро, но шумно</td>
-</tr>
-<tr>
-<td><code>TreeExplainer</code></td>
-<td>XGBoost, RF</td>
-<td>Очень быстро</td>
-<td>Точный SHAP; нерелевантен для нейронных политик</td>
-</tr>
-<tr>
-<td><code>LinearExplainer</code></td>
-<td>Линейные модели</td>
-<td>Мгновенно</td>
-<td>Точный SHAP; используйте, если политика дистиллирована в линейную модель</td>
-</tr>
-</tbody>
-</table>
-<p>Для быстрых пошаговых объяснений оператору в развёрнутой системе: дистиллируйте политику в мелкое дерево <code>DecisionTreeRegressor</code> и используйте <code>TreeExplainer</code>. Дистилляция теряет точность, но делает каждое решение объяснимым за &lt;1 мс.</p>
+<p>Практическая рекомендация для промышленного внедрения: <strong>начинайте с CQL+Physics</strong> (низкая частота нарушений, просто конфигурировать, не нужна динамическая модель), и если производительность по награде недостаточна, <strong>добавляйте гибридный ансамбль</strong> как источник разнообразного синтетического опыта.</p>
+<p>Глава 8 возвращается к теоретическим вопросам, которые поднимает этот кейс: когда можно доверять Offline RL при внедрении, какие гарантии доступны и какие открытые проблемы остаются нерешёнными.</p>
 <hr />
 <h2>Ссылки</h2>
 <ul>
-<li>Lundberg, S.M., &amp; Lee, S.I. (2017). <em>A Unified Approach to Interpreting Model Predictions.</em> NeurIPS. <a href="https://arxiv.org/abs/1705.07874">arXiv:1705.07874</a>.</li>
-<li>Lundberg, S.M., Erion, G., Chen, H. et al. (2020). <em>From Local Explanations to Global Understanding with Explainable AI for Trees.</em> Nature Machine Intelligence. <a href="https://arxiv.org/abs/1905.04610">arXiv:1905.04610</a>.</li>
-<li>Shapley, L.S. (1953). <em>A Value for n-Person Games.</em> In Contributions to the Theory of Games.</li>
-<li>Ribeiro, M.T., Singh, S., &amp; Guestrin, C. (2016). <em>"Why Should I Trust You?": Explaining the Predictions of Any Classifier.</em> KDD. <a href="https://arxiv.org/abs/1602.04938">arXiv:1602.04938</a>.</li>
-<li>Molnar, C. (2022). <em><a href="https://interpretable-ml.github.io/">Interpretable Machine Learning</a>.</em> 2nd ed.</li>
-<li>Doshi-Velez, F., &amp; Kim, B. (2017). <em>Towards a Rigorous Science of Interpretable Machine Learning.</em> <a href="https://arxiv.org/abs/1702.08608">arXiv:1702.08608</a>.</li>
-<li>Deng, Z., Jiang, J., Long, G., &amp; Zhang, C. (2023). <em>Causal Reinforcement Learning: A Survey.</em> TMLR. <a href="https://arxiv.org/abs/2307.01452">arXiv:2307.01452</a>.</li>
-<li>Zhang, Y., et al. (2022). <em>Offline Model-Based Reinforcement Learning with Causal Structure.</em> Front. Comput. Sci. <a href="https://arxiv.org/abs/2206.01474">arXiv:2206.01474</a> (FOCUS).</li>
-<li>Buesing, L., et al. (2020). <em>Woulda, Coulda, Shoulda: Counterfactually-Guided Policy Search.</em> ICLR. <a href="https://arxiv.org/abs/2006.02579">arXiv:2006.02579</a> — связь batch RL и причинного вывода.</li>
+<li>Все ссылки из глав 1–6 применимы к использованным здесь алгоритмам.</li>
+<li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(ПИД-регулятор, модели первого порядка)</em></li>
+<li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(промышленное управление процессами, транспортная задержка)</em></li>
+<li>Rawlings, J.B., Mayne, D.Q., &amp; Diehl, M. (2017). <em>Model Predictive Control.</em> Nob Hill. <em>(MPC как контекст сравнения)</em></li>
 </ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/ru/chapter9.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Промышленные применения</span></a>
-    <a href="/offline-rl-book/ru/chapter11.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Заключение и перспективы</span></a>
+<a href="/offline-rl-book/ru/chapter9.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Physics-Informed Offline RL</span></a>
+    <a href="/offline-rl-book/ru/chapter11.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Объяснимость в Offline RL</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

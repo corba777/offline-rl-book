@@ -1,450 +1,415 @@
 ---
 layout: default
-title: "Chapter 8: Physics-Informed Offline RL"
+title: "Chapter 8: Model-Based Offline RL (MOPO, MOReL)"
 lang: en
 ru_url: /ru/chapter8/
 prev_chapter:
   url: /en/chapter7/
-  title: "Model-Based Offline RL (MOPO, MOReL)"
+  title: "Decision Transformers"
 next_chapter:
   url: /en/chapter9/
-  title: "Industrial Applications"
+  title: "Physics-Informed Offline RL"
 permalink: "/offline-rl-book/en/chapter8/"
 ---
 
-# Chapter 8: Physics-Informed Offline RL
+# Chapter 8: Model-Based Offline RL (MOPO, MOReL)
 
-> *"A black-box model that fits the data perfectly inside the training distribution is still useless if it predicts that energy is not conserved outside it."*
-
----
-
-## Why Physics?
-
-Chapters 3–7 treated the world as a black box: we fed in states and actions, observed next states and rewards, and let neural networks figure out the rest. For benchmark tasks like MuJoCo locomotion this is fine — the environment is a simulation, data is plentiful, and there are no hard physical constraints that must hold.
-
-Industrial processes are different. Three things distinguish them:
-
-**Data is scarce and narrow.** A manufacturing line runs in a small region of its theoretical operating envelope — the operator keeps it there deliberately. An offline dataset from six months of normal operation may contain almost no examples of the process near its physical limits. Any model that tries to reason about those regions is extrapolating.
-
-**Physical laws are partially known.** For most industrial systems, engineers know a great deal: conservation of mass and energy, thermodynamic relationships, transport phenomena, first-order dynamics. This knowledge is imperfect (real systems have unmeasured disturbances, aging equipment, composition variation) but it is not zero. Ignoring it wastes a free source of information.
-
-**Violations of physics are costly.** A policy that violates a mass balance might command an impossible setpoint. A model that predicts temperature decreasing when heat is added is not just inaccurate — it will produce a control policy that actively damages the process.
-
-Physics-informed offline RL exploits known structure in three places:
-
-1. **Reward shaping** — encode physical constraints as soft penalties in the reward signal
-2. **Hybrid dynamics model** — replace the pure black-box ensemble with a model that respects known physics exactly and learns the unknown residual
-3. **Constraint-based policy** — embed hard constraints directly into policy optimization (brief treatment, as this overlaps with safe RL)
+> *"If you can't run new experiments, build a simulator from the data you have — and experiment inside it. But remember: the simulator lies in the places you've never been."*
 
 ---
 
-## Part I: Physics as Reward Shaping
+## Beyond Model-Free
+
+Chapters 2–7 attacked offline RL from the same angle: modify the value function to be pessimistic about actions not in the dataset. CQL pushes Q-values down for OOD actions. IQL avoids querying OOD actions entirely.
+
+Both methods share a fundamental limitation: **they can only use the transitions the behavior policy collected**. If critical regions of the state-action space are simply absent from the dataset, model-free methods have nothing to learn from.
+
+Model-based offline RL takes a different approach: **learn the dynamics of the system**, then generate synthetic transitions in your head. Instead of constraining yourself to existing data, you construct a mental model and *imagine* what would happen under new actions.
+
+This is powerful — but dangerous. The model is wrong wherever the data is sparse, and a policy that exploits model errors will fail as catastrophically as one that exploits Q-function errors. The two algorithms in this chapter solve this differently:
+
+- **MOPO** (Yu et al., NeurIPS 2020) — penalize synthetic rewards by model uncertainty. Let the policy range freely but make uncertain regions unattractive.
+- **MOReL** (Kidambi et al., NeurIPS 2020) — construct an explicit boundary. Inside well-modeled regions the agent optimizes normally; outside it receives a large fixed penalty.
+
+Same goal, different geometry of pessimism.
+
+---
+
+## Part I: MOPO
 
 ### The Idea
 
-The simplest way to use physics: add penalty terms to the reward whenever the system violates known constraints. This works with *any* offline RL algorithm — CQL, IQL, MOPO — without changing the algorithm itself.
+**Model-Based Offline Policy Optimization (MOPO)** works in three phases:
 
-For a process with state $s = (x_1, \ldots, x_n)$ and known constraint $g(s) \leq 0$:
+1. **Learn a dynamics model** $\hat{T}(s' | s, a)$ from the offline dataset using an **ensemble** of neural networks. Each model in the ensemble makes slightly different predictions. Where they agree, the model is confident. Where they disagree, the model is uncertain.
 
-$$\tilde{r}(s, a, s') = r(s, a) - \lambda \cdot \max\bigl(0,\ g(s')\bigr)$$
+2. **Generate synthetic rollouts** by branching from real states. Start at a real state $s \in \mathcal{D}$, choose an action, predict $s'$ with the model, repeat for $h$ steps. After each step, **penalize the reward** by the model's uncertainty:
 
-The $\max(0, \cdot)$ activates the penalty only when the constraint is violated; inside the feasible region it contributes nothing. $\lambda$ controls the trade-off between reward maximization and constraint satisfaction.
+$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$
 
-### Types of Physical Constraints
+3. **Train a standard RL algorithm** (SAC) on the combined real + synthetic data. The penalty ensures the agent avoids regions where the model is unreliable.
 
-**Monotone relationships.** Many physical relationships are guaranteed to be monotone. Viscosity of a liquid decreases with temperature (for most fluids in normal operating ranges). Conversion in a reactor increases with residence time up to some limit. If the learned dynamics model predicts the wrong sign, it is physically wrong.
-
-$$g_{mono}(s, s') = \max\Bigl(0,\ \text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\Bigr)$$
-
-**Conservation laws.** Mass and energy must balance. For a mixing process with input flows $q_{in}$ and output flow $q_{out}$ and a tank of volume $V$:
-
-$$\frac{dV}{dt} = q_{in} - q_{out}$$
-
-If a discrete-time model predicts $V_{t+1}$ inconsistent with this, the violation magnitude is:
-
-$$g_{mass}(s_t, s_{t+1}) = \bigl| V_{t+1} - V_t - \Delta t (q_{in,t} - q_{out,t}) \bigr| - \delta$$
-
-where $\delta$ is a tolerance for measurement noise and unmodeled flows.
-
-**Feasibility bounds.** Physical state variables have hard limits from thermodynamics, equipment ratings, or safety considerations. Temperature cannot exceed the boiling point of the medium. Concentration cannot be negative. A valve position is in $[0, 1]$.
-
-$$g_{bounds}(s) = \sum_i \max(0,\ s_i - s_i^{max}) + \max(0,\ s_i^{min} - s_i)$$
-
-### Implementation
-
-> 📄 Full code: [`physics_informed.py`](https://github.com/corba777/offline-rl-book/blob/main/code/physics_informed.py)
-
-```python
-class PhysicsRewardWrapper:
-    """
-    Wraps any reward function with physics-based penalty terms.
-
-    Constraints are callables g(state, action, next_state) -> float,
-    returning a non-negative violation magnitude (0 = constraint satisfied).
-
-    Usage:
-        reward_fn = PhysicsRewardWrapper(
-            base_reward=my_reward,
-            constraints=[mass_balance_constraint, temperature_bound],
-            lambdas=[10.0, 5.0],
-        )
-        r_phys = reward_fn(state, action, next_state)
-    """
-
-    def __init__(self, base_reward, constraints, lambdas):
-        assert len(constraints) == len(lambdas)
-        self.base_reward = base_reward
-        self.constraints = constraints
-        self.lambdas     = lambdas
-
-    def __call__(self,
-                 state:      torch.Tensor,
-                 action:     torch.Tensor,
-                 next_state: torch.Tensor) -> torch.Tensor:
-        r = self.base_reward(state, action, next_state)
-        for g, lam in zip(self.constraints, self.lambdas):
-            violation = g(state, action, next_state)        # (batch,) >= 0
-            r = r - lam * violation
-        return r
-```
-
-**Example constraint — first-order dynamics consistency:**
-
-A first-order process with known time constant $\tau$ and gain $K$ satisfies:
-
-$$x_{t+1} \approx x_t + \frac{\Delta t}{\tau}(K \cdot u_t - x_t)$$
-
-If the learned model's prediction deviates significantly from this, the deviation is a constraint violation:
-
-```python
-def first_order_consistency(state, action, next_state,
-                             tau=10.0, K=0.8, dt=1.0, tol=0.05):
-    """
-    Physics penalty: predicted next state should be consistent with
-    first-order dynamics x_{t+1} ≈ x_t + dt/tau * (K*u - x_t).
-    """
-    x    = state[:, 0]    # process variable
-    u    = action[:, 0]   # control input
-    x_phys = x + (dt / tau) * (K * u - x)
-    x_pred = next_state[:, 0]
-    violation = torch.clamp(torch.abs(x_pred - x_phys) - tol, min=0.0)
-    return violation
-```
-
-### Choosing $\lambda$
-
-The penalty weight $\lambda$ has the same role as $\alpha$ in CQL: too small and violations persist; too large and the policy becomes overly conservative, ignoring the reward signal.
-
-A practical calibration: compute the typical base reward magnitude $\bar{r}$ on the dataset, then set $\lambda$ so that a typical violation (say, 5% mass balance error) costs about 20–50% of $\bar{r}$. This makes the constraint "expensive but not catastrophic."
-
-```python
-# Calibrate lambda from dataset statistics
-r_mean = np.abs(dataset['rewards']).mean()
-typical_violation = 0.05   # expected violation magnitude in the region of interest
-target_penalty_fraction = 0.3   # want penalty ≈ 30% of mean reward
-
-lam = (target_penalty_fraction * r_mean) / typical_violation
-print(f"Calibrated lambda = {lam:.2f}")
-```
-
----
-
-## Part II: Hybrid Dynamics Models
-
-### The Limitation of Pure Black-Box Ensembles
-
-In Chapter 7, the dynamics ensemble is a pure neural network: it learns $\hat{T}(s' | s, a)$ entirely from data. This works well when:
-- The dataset covers the state-action space densely
-- The model is evaluated near the training distribution
-
-Outside the data support, a pure black-box model will extrapolate in whatever direction its weights happen to point — which often violates physics. The epistemic uncertainty from ensemble disagreement partially guards against this, but it cannot distinguish "uncertain because data is sparse" from "uncertain because the model is physically wrong."
-
-A **hybrid model** splits the prediction into two parts:
-
-$$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{known physics}} + \underbrace{f_{NN}(s, a; \theta)}_{\text{learned residual}}$$
-
-The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong.
-
-### Why This Helps Offline RL
-
-**Better extrapolation.** The physics component provides a principled prediction even where data is sparse. The neural residual is near zero where data is sparse (prior to training, and by regularization), so the hybrid model degrades gracefully to the physics model in OOD regions rather than making wild predictions.
-
-**Smaller residuals = easier learning.** If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model converges faster and generalizes better.
-
-**Improved uncertainty calibration.** Ensemble disagreement now measures uncertainty about the *residual*, not the total dynamics. In OOD regions, the physics term is still active; only the residual is uncertain. This gives more meaningful uncertainty estimates.
+The result: an effective dataset 10–100× larger than the original, with built-in safety from the uncertainty penalty.
 
 ### Formalization
 
-Let $f_{phys}(s, a)$ be the known physics model (deterministic, no parameters). The residual network predicts a Gaussian over the residual:
+#### The Dynamics Ensemble
 
-$$\hat{f}_{NN}(s, a; \theta) = \bigl(\mu_\theta(s, a),\ \sigma^2_\theta(s, a)\bigr)$$
+We train an ensemble of $N$ probabilistic models $\{\hat{T}_i\}_{i=1}^N$, each outputting a Gaussian over next states:
 
-The full prediction is:
+$$\hat{T}_i(s' | s, a) = \mathcal{N}\left(s + \mu_{\theta_i}(s, a), \; \sigma^2_{\theta_i}(s, a)\right)$$
 
-$$s' \sim \mathcal{N}\!\bigl(f_{phys}(s, a) + \mu_\theta(s, a),\ \sigma^2_\theta(s, a) \cdot I\bigr)$$
+Key design choices:
 
-Training minimizes the NLL of the residual $\delta = s' - f_{phys}(s, a)$:
+- **Residual prediction**: predict $\Delta s = s' - s$ rather than $s'$ directly. This gives the network an identity baseline — predicting "nothing changes" costs zero, and the network only needs to learn the correction.
+- **NLL training**: minimizing negative log-likelihood $-\log \hat{T}_i(s' | s, a)$ trains both the mean (accuracy) and variance (calibrated uncertainty).
+- **Bootstrap sampling**: each model is trained on a random 80% of the data, forcing diversity across ensemble members.
 
-$$\mathcal{L}(\theta) = \mathbb{E}_{(s,a,s') \sim \mathcal{D}} \!\left[\frac{\|\delta - \mu_\theta\|^2}{2\sigma^2_\theta} + \frac{1}{2}\log \sigma^2_\theta \right]$$
+#### Uncertainty Estimation
 
-This is identical to training the probabilistic ensemble in Chapter 7, except the *target* is the residual $\delta$ rather than the full $s'$.
+Given $(s, a)$, each model predicts a mean $\hat{s}'_i$. The **epistemic uncertainty** — "how much do the models disagree?" — is:
+
+$$u(s, a) = \left\| \text{Std}_{i=1}^N \left[ \hat{s}'_i \right] \right\|_2$$
+
+This is the standard deviation of predictions across ensemble members, collapsed to a scalar via L2 norm.
+
+**Why ensemble disagreement works**: if all models saw similar data near $(s, a)$, they converge to similar predictions — low $u$. If the data is sparse, bootstrap resampling makes each model learn different spurious patterns — high $u$. This is the key mechanism: uncertainty is high exactly where the data is absent.
+
+#### The MOPO Objective
+
+MOPO constructs a **pessimistic MDP** $\tilde{\mathcal{M}}$ with penalized rewards and then optimizes the policy in this MDP:
+
+$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$
+
+$$\pi^* = \arg\max_\pi \; \mathbb{E}_{\tilde{\mathcal{M}}} \left[ \sum_t \gamma^t \tilde{r}(s_t, a_t) \right]$$
+
+The theoretical guarantee from Yu et al. (2020):
+
+$$J(\pi) \geq \hat{J}_{\tilde{\mathcal{M}}}(\pi) - C \cdot \mathbb{E}_{s \sim d^\pi} \left[ \max_a u(s, a) \right]$$
+
+where $J(\pi)$ is the true return and $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ is the return in the pessimistic model. The bound says: optimizing in the penalized model gives a lower bound on real performance, with a gap proportional to the remaining model error.
+
+#### Branched Rollouts
+
+Rather than rolling out entire episodes from scratch, MOPO uses **branched rollouts**:
+
+1. Sample a starting state $s_0$ uniformly from the real dataset $\mathcal{D}$.
+2. Roll out for $h$ steps using the model and current policy.
+3. Each synthetic transition $(s_t, a_t, \tilde{r}_t, s_{t+1})$ is added to a synthetic buffer.
+
+Starting from real states ensures the rollout begins in a well-modeled region. The short horizon $h$ limits error compounding. The penalized reward discourages visiting poorly modeled regions within the rollout.
 
 ### Implementation
 
+> 📄 Full code: [`mopo.py`](https://github.com/corba777/offline-rl-book/blob/main/code/mopo.py)
+
+#### Probabilistic Dynamics Model
+
+Each member of the ensemble outputs mean and log-variance for next-state residuals:
+
 ```python
-class HybridDynamicsNet(nn.Module):
+class ProbabilisticDynamicsNet(nn.Module):
     """
-    Hybrid dynamics model: physics baseline + learned residual.
+    Single probabilistic dynamics model: (s, a) -> (mean, log_var) of s'.
 
-    Args:
-        state_dim:   dimensionality of state
-        action_dim:  dimensionality of action
-        physics_fn:  callable (state, action) -> next_state_physics
-                     Must operate on torch.Tensor inputs.
-        hidden_dim:  residual network hidden size
+    Outputs a Gaussian over next-state *residuals*:
+        s'_pred ~ N(s + mean(s,a), exp(log_var(s,a)))
+
+    Residual prediction is critical for stability — the identity baseline
+    makes it easier to learn small corrections.
+
+    Trained with NLL — not MSE — so the network learns its own uncertainty.
     """
-
-    def __init__(self, state_dim: int, action_dim: int,
-                 physics_fn,
-                 hidden_dim: int = 128):
+    def __init__(self, state_dim, action_dim, hidden_dim=256):
         super().__init__()
-        self.physics_fn = physics_fn
-
-        # Residual network: smaller than a pure black-box model
-        # because residuals are smoother and lower-amplitude
-        inp = state_dim + action_dim
+        inp_dim = state_dim + action_dim
         self.trunk = nn.Sequential(
-            nn.Linear(inp, hidden_dim), nn.SiLU(),
+            nn.Linear(inp_dim, hidden_dim), nn.SiLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim), nn.SiLU(),
         )
         self.mean_head    = nn.Linear(hidden_dim, state_dim)
         self.log_var_head = nn.Linear(hidden_dim, state_dim)
+        # Learnable bounds on log_var to prevent numerical issues
+        self.min_log_var = nn.Parameter(-10.0 * torch.ones(state_dim))
+        self.max_log_var = nn.Parameter(0.5  * torch.ones(state_dim))
+```
 
-        # Tighter log_var bounds for residuals (smaller magnitude expected)
-        self.min_log_var = nn.Parameter(-8.0 * torch.ones(state_dim))
-        self.max_log_var = nn.Parameter(-1.0 * torch.ones(state_dim))
+The `SiLU` activation (swish) outperforms ReLU for dynamics models — smoother gradients help fit smooth physical transitions. The learnable log-variance bounds prevent the model from collapsing variance to zero (overconfidence) or infinity.
 
-    def forward(self, state: torch.Tensor,
-                action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Returns (mean_next_state, log_var_residual)."""
-        # Physics prediction (no gradient needed)
-        with torch.no_grad():
-            phys = self.physics_fn(state, action)
+#### NLL Training
 
-        h = self.trunk(torch.cat([state, action], -1))
-        residual_mean = self.mean_head(h)
-        log_var       = self.log_var_head(h)
-        log_var = self.max_log_var - F.softplus(self.max_log_var - log_var)
-        log_var = self.min_log_var + F.softplus(log_var - self.min_log_var)
-
-        # Combine: full prediction = physics + residual
-        return phys + residual_mean, log_var
-
-    def nll_loss(self, state: torch.Tensor, action: torch.Tensor,
-                 next_state: torch.Tensor) -> tuple[torch.Tensor, dict]:
-        """NLL of next_state; target is residual from physics."""
+```python
+    def nll_loss(self, state, action, next_state):
         mean, log_var = self.forward(state, action)
-        # The target is the full next_state; mean already includes physics
-        var = log_var.exp()
-        nll = 0.5 * (log_var + (next_state - mean).pow(2) / var)
-        loss = nll.sum(-1).mean()
+        residual = next_state - state            # true Δs
+        var      = log_var.exp()
+        # NLL = 0.5 * [ log_var + (residual - mean)² / var ]
+        nll      = 0.5 * (log_var + (residual - mean).pow(2) / var)
+        loss     = nll.sum(-1).mean()
+        # Regularize variance bounds (from PETS, Chua et al. 2018)
         bound_reg = 0.01 * (self.max_log_var.sum() - self.min_log_var.sum())
-        return loss + bound_reg, {
-            'nll': loss.item(),
-            'residual_mse': (next_state - mean).pow(2).mean().item(),
-        }
+        return loss + bound_reg
 ```
 
-**Physics function for a generic first-order process:**
+Training with NLL rather than MSE is essential. MSE trains only the mean, leaving the variance unconstrained. NLL jointly trains mean (minimize prediction error) and variance (calibrate confidence) — making the learned $\sigma^2$ meaningful as an uncertainty proxy.
+
+#### Synthetic Rollouts with Uncertainty Penalty
 
 ```python
-def first_order_physics(state: torch.Tensor,
-                        action: torch.Tensor,
-                        tau: float = 10.0,
-                        K: float   = 0.8,
-                        dt: float  = 1.0) -> torch.Tensor:
-    """
-    Euler discretization of first-order ODE:
-        dx/dt = (K*u - x) / tau
-    =>  x_{t+1} = x_t + dt/tau * (K*u_t - x_t)
+    def generate_synthetic_data(self, real_states):
+        state = real_states[random_idx]  # branch from real data
 
-    For a multi-variable state, apply element-wise with per-variable
-    tau and K (pass as vectors).
-    """
-    return state + (dt / tau) * (K * action[:, :state.shape[1]] - state)
+        for step in range(self.rollout_horizon):
+            action, _   = self.policy.sample(state)
+            next_state, uncertainty = self.ensemble.predict_with_uncertainty(
+                state, action)
+            reward = self._model_reward(state, action, next_state)
+
+            # THE key line: penalize reward by epistemic uncertainty
+            penalized_reward = reward - self.lam * uncertainty
+
+            # store (state, action, penalized_reward, next_state)
+            state = next_state  # continue rollout
 ```
 
-### Building a Hybrid Ensemble
+The single subtraction `reward - self.lam * uncertainty` is what converts naive MBRL (dangerous) into MOPO (safe). Without it, the agent exploits model errors wherever the model erroneously predicts high reward. With it, uncertain predictions are automatically penalized — pushing the policy back toward data-supported regions.
 
-The ensemble from Chapter 7 is straightforwardly extended — each model in the ensemble is a `HybridDynamicsNet` sharing the same `physics_fn`:
+#### Policy Training on Mixed Data
 
 ```python
-class HybridEnsemble:
-    """
-    Ensemble of hybrid dynamics models sharing the same physics component.
-    Uncertainty = disagreement on the *residual* term across models.
-    """
-
-    def __init__(self, n_models: int, state_dim: int, action_dim: int,
-                 physics_fn, hidden_dim: int = 128,
-                 lr: float = 1e-3, device: str = 'cpu'):
-        self.n_models  = n_models
-        self.device    = device
-        self.models    = [
-            HybridDynamicsNet(state_dim, action_dim, physics_fn, hidden_dim).to(device)
-            for _ in range(n_models)
-        ]
-        self.optimizers = [optim.Adam(m.parameters(), lr=lr) for m in self.models]
-
-    def train_ensemble(self, dataset: dict, n_epochs: int = 50,
-                       batch_size: int = 256, log_every: int = 10):
-        """Bootstrap training — identical structure to Chapter 7 ensemble."""
-        n = len(dataset['states'])
-        s  = torch.FloatTensor(dataset['states']).to(self.device)
-        a  = torch.FloatTensor(dataset['actions']).to(self.device)
-        s2 = torch.FloatTensor(dataset['next_states']).to(self.device)
-
-        for i, (model, opt) in enumerate(zip(self.models, self.optimizers)):
-            idx = torch.randint(0, n, (int(0.8 * n),))
-            loader = DataLoader(TensorDataset(s[idx], a[idx], s2[idx]),
-                                batch_size=batch_size, shuffle=True, drop_last=True)
-            for epoch in range(1, n_epochs + 1):
-                total_nll, nb = 0.0, 0
-                for s_b, a_b, s2_b in loader:
-                    loss, info = model.nll_loss(s_b, a_b, s2_b)
-                    opt.zero_grad(); loss.backward()
-                    nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-                    opt.step()
-                    total_nll += info['nll']; nb += 1
-                if epoch % log_every == 0:
-                    print(f"  HybridModel {i} | epoch {epoch:3d} | "
-                          f"NLL={total_nll/nb:.4f}")
-
-    @torch.no_grad()
-    def predict_with_uncertainty(self, states: torch.Tensor,
-                                  actions: torch.Tensor):
-        """Returns (mean_next_state, epistemic_uncertainty)."""
-        means = [m(states, actions)[0] for m in self.models]
-        means = torch.stack(means, 0)
-        return means.mean(0), means.std(0).norm(dim=-1)
+    def update(self, real_batch, synthetic):
+        # Combine real + synthetic at specified ratio
+        s  = torch.cat([s_real,  s_synthetic],  dim=0)
+        a  = torch.cat([a_real,  a_synthetic],  dim=0)
+        r  = torch.cat([r_real,  r_synthetic],  dim=0)
+        # Standard SAC TD update on combined data
+        with torch.no_grad():
+            a2, lp2 = self.policy.sample(s2)
+            q_next  = torch.min(Q1_tgt(s2, a2), Q2_tgt(s2, a2))
+            target  = r + gamma * (1 - d) * (q_next - alpha_ent * lp2)
+        q_loss = F.mse_loss(Q1(s, a), target) + F.mse_loss(Q2(s, a), target)
 ```
 
-### Comparing Hybrid vs Pure Black-Box
-
-The key diagnostic is **residual magnitude** on the training data. If the physics model is reasonable, residuals should be small and smooth. If residuals are large or structured (have clear patterns), the physics model is missing something important.
-
-```python
-def diagnose_hybrid_model(hybrid_model, dataset, physics_fn, device='cpu'):
-    """
-    Compare physics prediction vs true next_state.
-    Print residual statistics to assess physics model quality.
-    """
-    s  = torch.FloatTensor(dataset['states'][:500]).to(device)
-    a  = torch.FloatTensor(dataset['actions'][:500]).to(device)
-    s2 = torch.FloatTensor(dataset['next_states'][:500]).to(device)
-
-    with torch.no_grad():
-        phys_pred = physics_fn(s, a)
-        residuals = s2 - phys_pred                     # what the NN must learn
-        residual_std = residuals.std(0).cpu().numpy()
-        full_std     = s2.std(0).cpu().numpy()
-
-    coverage = 1.0 - (residual_std / (full_std + 1e-8))
-
-    print("Physics model coverage (fraction of variance explained):")
-    for i, (cov, rs, fs) in enumerate(zip(coverage, residual_std, full_std)):
-        print(f"  State dim {i}: physics covers {cov:.1%}  "
-              f"(residual std={rs:.4f}, total std={fs:.4f})")
-    return coverage
-```
-
-A physics model explaining 70–90% of variance is excellent; the residual model needs to learn only the remaining 10–30%, which requires far less data.
+The `real_ratio` parameter (default 0.5) controls the mix. At `real_ratio=1.0` this reduces to pure model-free on real data. At `real_ratio=0.0` the agent trains entirely on synthetic data — rarely safe. Keeping 50–70% real data provides the best balance.
 
 ---
 
-## Part III: Constraint-Based Policy (Brief)
+## Part II: MOReL
 
-### Hard vs Soft Constraints
+### A Different Geometry of Pessimism
 
-Reward penalties (Part I) are **soft constraints**: the policy *prefers* to avoid violations but can still choose them if the reward benefit is large enough. For safety-critical systems this may be insufficient.
+MOPO uses a **continuous** penalty: the further from the data, the larger the subtracted cost. The policy can still venture into uncertain regions — it just finds them less attractive.
 
-**Hard constraints** guarantee $g(s, a) \leq 0$ at every step. Two common approaches in offline RL:
+MOReL takes a **discrete** approach: partition the state-action space into "known" and "unknown" regions, and impose a **hard penalty** $\kappa$ in the unknown region. This creates a sharp boundary rather than a gradient.
 
-**Projection.** After computing the policy action $a_{raw} = \pi_\theta(s)$, project it onto the feasible set:
+**Model-Based Offline Reinforcement Learning (MOReL)** — Kidambi et al., NeurIPS 2020 — constructs a **Pessimistic MDP (P-MDP)** directly from the offline data, with a built-in absorbing failure state for OOD transitions.
 
-$$a_{safe} = \arg\min_{a : g(s,a) \leq 0} \| a - a_{raw} \|^2$$
+### The P-MDP Construction
 
-This is trivial for box constraints (clamp) and for linear constraints (quadratic programming). For complex nonlinear constraints it requires a solver at inference time.
+Let $\mathcal{D}$ be the offline dataset. MOReL defines a threshold $\epsilon$ on prediction uncertainty and partitions state-action space:
 
-**Lagrangian relaxation.** Augment the objective with constraint multipliers and optimize jointly:
+$$\text{KNOWN}  = \{(s,a) : u(s,a) \leq \epsilon\}$$
+$$\text{UNKNOWN} = \{(s,a) : u(s,a) > \epsilon\}$$
 
-$$\max_{\pi} \min_{\lambda \geq 0}\ \mathbb{E}\bigl[R(\pi)\bigr] - \lambda \cdot \mathbb{E}\bigl[g(s, \pi(s))\bigr]$$
+The **Pessimistic MDP** $\tilde{\mathcal{M}} = (\mathcal{S} \cup \{s_\perp\}, \mathcal{A}, \tilde{T}, \tilde{r}, \gamma)$ is defined as:
 
-The multiplier $\lambda$ is updated to increase whenever the constraint is violated, making violations increasingly costly. In offline RL this is applied to the offline dataset, not through environment interaction.
+$$\tilde{T}(s' | s, a) = \begin{cases} \hat{T}(s' | s, a) & \text{if } (s,a) \in \text{KNOWN} \\ \delta(s_\perp) & \text{if } (s,a) \in \text{UNKNOWN} \end{cases}$$
 
-For most industrial applications, **soft constraints via reward shaping** (Part I) combined with the KNOWN/UNKNOWN boundary from MOReL (Chapter 7) provide sufficient safety. The hard constraint machinery is warranted when:
-- A constraint violation is irreversible (equipment damage, safety incident)
-- The constraint boundary is precisely known
-- Online projection is computationally feasible
+$$\tilde{r}(s, a) = \begin{cases} \hat{r}(s, a) & \text{if } s \neq s_\perp \\ -\kappa & \text{if } s = s_\perp \end{cases}$$
+
+where $s_\perp$ is an absorbing failure state and $\kappa > 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive.
+
+### The Theoretical Guarantee
+
+**Theorem (Kidambi et al., 2020).** Let $\hat{\pi}$ be the optimal policy in the P-MDP $\tilde{\mathcal{M}}$. For any policy $\pi$, let $d^\pi$ denote its state-action occupancy measure. Then:
+
+$$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^{\hat{\pi}}}[\text{UNKNOWN}]$$
+
+The bound says: the gap between the optimal policy and what MOReL finds is bounded by the probability of MOReL's policy entering the unknown region, weighted by the penalty. If the P-MDP is well-constructed (the known region covers $\hat{\pi}$'s trajectory), the gap is small.
+
+This is a stronger guarantee than MOPO's: it is **distribution-free** and does not require assumptions on the dynamics error distribution. The tradeoff is that the known/unknown boundary is hard and requires choosing $\epsilon$ carefully.
+
+### Implementation
+
+> 📄 Full code: [`morel.py`](https://github.com/corba777/offline-rl-book/blob/main/code/morel.py)
+
+MOReL shares the ensemble architecture with MOPO (`ProbabilisticDynamicsNet`, `DynamicsEnsemble`) — see `mopo.py` for those details. The key MOReL-specific additions are:
+
+**Step 1 — Calibrate epsilon from in-distribution data:**
+
+```python
+# After training the ensemble, set epsilon at the 80th percentile
+# of uncertainty on *actual dataset transitions*.
+# This ensures 80% of real data is labelled KNOWN.
+epsilon = ensemble.calibrate_epsilon(dataset, percentile=80.0)
+```
+
+`calibrate_epsilon()` queries the ensemble on `n_samples` real transitions and returns a quantile of the resulting uncertainty values. Setting `percentile=80` means the KNOWN region comfortably covers the dataset and extends into nearby well-modeled areas.
+
+**Step 2 — P-MDP rollouts with hard HALT:**
+
+```python
+# Inside MOReLAgent.generate_synthetic_data():
+for step in range(self.rollout_horizon):
+    action, _ = self.policy.sample(state[active])
+    next_state, uncertainty = self.ensemble.predict_with_uncertainty(
+        state[active], action)
+
+    # Hard boundary: if OOD, terminate with penalty
+    ood = uncertainty > self.epsilon          # (batch,) bool
+
+    reward = torch.where(
+        ood,
+        -self.kappa * torch.ones(ood.shape[0], device=device),
+        self._model_reward(state[active], action, next_state)
+    )
+    done = ood.float()
+
+    # Absorbing: halted rollouts stay at current state
+    next_state_out = torch.where(
+        ood.unsqueeze(-1), state[active], next_state)
+
+    # Mark halted rollouts as inactive — they stop here
+    active[active.nonzero(as_tuple=True)[0][ood]] = False
+
+        transitions.append((state, action, reward, next_state, done))
+        # Only continue non-terminated rollouts
+        state = torch.where(ood_mask.unsqueeze(-1), state, next_state)
+
+    return transitions
+```
+
+The `ood_mask` is the key difference from MOPO. Instead of subtracting a continuous penalty, OOD transitions are terminated immediately with `done=True` and reward $-\kappa$. The Q-learning target then sees zero future value after OOD transitions, which strongly discourages entering the unknown region.
+
+### Choosing $\epsilon$
+
+The threshold $\epsilon$ controls the known/unknown boundary and is the critical hyperparameter in MOReL:
+
+| $\epsilon$ | Effect |
+|---|---|
+| Very small | Tiny known region — agent confined near behavior policy (≈ BC) |
+| Moderate (default) | Includes well-modeled extrapolations — good balance |
+| Very large | Entire space is "known" — reverts to unconstrained MBRL |
+
+**Practical guidance**: set $\epsilon$ to the 70th–80th percentile of in-distribution uncertainty (i.e., uncertainty on actual dataset transitions). This ensures the known region covers the dataset comfortably and extends into nearby well-modeled areas.
+
+```python
+# Calibrate epsilon from in-distribution data
+with torch.no_grad():
+    s_cal = torch.FloatTensor(dataset['states'][:2000]).to(device)
+    a_cal = torch.FloatTensor(dataset['actions'][:2000]).to(device)
+    _, u_cal = ensemble.predict_with_uncertainty(s_cal, a_cal)
+epsilon = torch.quantile(u_cal, 0.80).item()
+print(f"Calibrated epsilon = {epsilon:.4f}")
+```
 
 ---
 
-## Part IV: When Physics Helps Most
+## MOPO vs MOReL vs Model-Free
 
-Not every offline RL problem benefits equally from physics. The value of physical knowledge depends on three factors:
+| | CQL | IQL | MOPO | MOReL |
+|---|---|---|---|---|
+| Uses model | No | No | Yes | Yes |
+| OOD handling | Push Q down | Never query OOD | Continuous penalty $-\lambda u$ | Hard boundary + $-\kappa$ |
+| Data augmentation | No | No | Yes | Yes |
+| Pessimism geometry | Soft (Q penalty) | Structural (V design) | Soft (reward penalty) | Hard (absorbing state) |
+| Can extrapolate | Limited | No | Yes (within confidence) | Yes (within known region) |
+| Theoretical guarantee | Lower bound on Q | Implicit via V | Lower bound on $J(\pi)$ | Distribution-free PAC bound |
+| Key hyperparameters | $\alpha$ | $\tau, \beta$ | $\lambda, h, N$ | $\epsilon, \kappa, h, N$ |
+| Compute cost | Medium | Low | High | High |
+| Best for | Dense datasets | Stable training | Sparse, smooth dynamics | Safety-critical, need hard guarantees |
 
-**Data coverage.** The sparser the dataset, the more physics helps. A dataset covering 20% of the operating envelope leaves 80% where only physics can guide the model.
+**When to choose MOPO**: the dynamics are smooth and learnable, dataset coverage is uneven but not catastrophically sparse, and you want to maximize performance within a reasonable compute budget.
 
-**Physics accuracy.** A first-principles model that captures 90% of the dynamics is highly valuable. An analytical model that captures only 30% may still cause problems if its errors are systematic (i.e., confidently wrong in a predictable way). Validate the physics model on a held-out subset before trusting it.
-
-**Constraint hardness.** Mass balance and energy conservation are exact (up to measurement error). Empirical correlations (viscosity-temperature-composition) are approximate. Use the former as hard constraints; use the latter as soft penalties or initial guesses for the neural residual.
-
-```
-                    Physics Knowledge Available
-                    None         Partial       Strong
-                   ┌────────────┬─────────────┬──────────────┐
-Data   Sparse      │  Pure BC   │ Reward pen. │ Hybrid model │
-Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
-       Dense       │ CQL / IQL  │ CQL + pen.  │ Hybrid + CQL │
-                   └────────────┴─────────────┴──────────────┘
-```
-
-The bottom-left cell (dense data, no physics) is the D4RL benchmark — where Chapters 3–7 shine. Industrial settings typically live in the top-right: sparse data, partial physics knowledge.
+**When to choose MOReL**: safety constraints are hard (the policy must not enter uncertain regions even transiently), or when you need the stronger distribution-free guarantee and can afford careful calibration of $\epsilon$.
 
 ---
 
-## Further Directions
+## Hyperparameter Guide
 
-**Koopman operator methods.** Nonlinear dynamics become linear in a suitable latent space — the Koopman eigenspace. If this space can be learned or approximated, the dynamics model simplifies enormously: linear prediction, linear uncertainty propagation, and tractable optimal control. Active research area; not yet standardized for offline RL.
+### MOPO: $\lambda$ (uncertainty penalty weight)
 
-**Gaussian Processes.** GPs offer exact uncertainty quantification and naturally incorporate physical structure through kernel design. They are computationally expensive for large datasets but highly effective when data is very scarce (hundreds of transitions rather than thousands).
+| $\lambda$ | Behavior |
+|---|---|
+| $\lambda = 0$ | No penalty — trust model completely (dangerous) |
+| $\lambda = 0.5$ | Light penalty — for high-quality models on simple systems |
+| $\lambda = 1.0$ | Default — reasonable pessimism |
+| $\lambda = 3.0$+ | Strong penalty — for noisy data or unreliable models |
+| $\lambda \to \infty$ | Reverts to model-free on real data only |
 
-**Physics-informed neural networks (PINNs).** Instead of a residual model, enforce physics equations as a regularization loss during neural network training. A PINN predicting the wrong sign for a known derivative can be penalized during training. Compatible with any architecture.
+**Diagnostic**: plot `mean(uncertainty)` in synthetic rollouts over training. If it increases, the policy drifts into model-uncertain regions — increase $\lambda$.
 
-**Structured state spaces.** If the physics dictates a specific state-space structure (e.g., a mass-spring-damper Lagrangian system), neural networks can be constrained to architectures that respect this structure (Hamiltonian or Lagrangian neural networks). Very effective when the structural assumption holds; brittle when it doesn't.
+### Both: $h$ (rollout horizon)
+
+- `h=1`: single-step predictions. Safest, but limited augmentation.
+- `h=5`: default. Good balance of augmentation vs error compounding.
+- `h=10+`: only if model one-step accuracy is very high.
+
+**Rule of thumb**: if the model has $\epsilon_1$ one-step error, after $h$ steps you accumulate roughly $h \cdot \epsilon_1$ error. Set $h$ so that $h \cdot \epsilon_1 < 0.1$ (10% accumulated error).
+
+### Both: $N$ (ensemble size)
+
+- `N=3`: minimum for meaningful uncertainty (not recommended in production).
+- `N=5`: default — good uncertainty estimates.
+- `N=7–10`: better estimates, proportional compute cost.
+
+---
+
+## Practical Tips
+
+**Normalize everything.** States, actions, rewards — all normalized before training the dynamics model. Dynamics networks approximate smooth functions; inputs in $[-1, 1]$ or $[0, 1]$ help enormously.
+
+**Residual prediction is non-negotiable.** Always predict $\Delta s = s' - s$. For slowly changing systems (most industrial processes), the residual is orders of magnitude smaller than the absolute state, making it much easier to learn.
+
+**Monitor ensemble disagreement.** The ratio `u(OOD) / u(in-distribution)` should be >> 1. If it is close to 1, the ensemble is not diverse enough — try different bootstrap ratios, random seeds, or add spectral normalization.
+
+**Regenerate synthetic data periodically.** As the policy improves, it visits different regions of state space. Rollouts generated by the previous policy become stale. Regenerate every 5–10 SAC epochs.
+
+**Use the model for gradient signal, not accurate prediction.** A 10% one-step prediction error is acceptable if the model correctly distinguishes good from bad actions. Global accuracy is not the goal.
+
+**For industrial applications**: if you have a physics-based simulator (even approximate), train the neural ensemble on residuals between the physics model and real data rather than from scratch. This hybrid approach often requires dramatically less offline data. Chapter 9 develops this idea into a full methodology.
+
+---
+
+## Limitations
+
+**Model errors compound.** Over $h$ steps, one-step errors accumulate. The uncertainty penalty (MOPO) or hard boundary (MOReL) mitigates this, but very long horizons remain risky.
+
+**High-dimensional observations.** Learning $T(s' | s, a)$ from pixels or high-dimensional sensors requires much more data than from compact state representations. For image-based domains, learn a compressed latent dynamics model first.
+
+**Compute cost scales with ensemble size.** Training and inference require $N \times$ the compute of a single model. For large state spaces or ensembles, this is significant.
+
+**Reward model.** In our implementation the reward function is known analytically. In practice, rewards may also need to be learned from data — adding another source of model error and another network to train and calibrate.
+
+**Ensemble diversity is fragile.** If all models converge to the same solution (common with small datasets or high model capacity), uncertainty estimates collapse to near zero — making both MOPO's penalty and MOReL's boundary useless. Bootstrap sampling helps but is not always sufficient.
 
 ---
 
 ## Summary
 
-| Approach | What changes | When to use |
+| Property | MOPO | MOReL |
 |---|---|---|
-| Reward shaping | Reward function | Any algorithm; physical bounds known |
-| Hybrid dynamics | Dynamics model | Partial physics known; sparse data |
-| Projection | Policy output | Box/linear constraints; safety-critical |
-| Lagrangian | Objective | Complex nonlinear constraints |
+| Data required | $(s, a, r, s')$ transitions | $(s, a, r, s')$ transitions |
+| Core mechanism | Ensemble uncertainty as soft reward penalty | Hard known/unknown partition via uncertainty threshold |
+| Pessimism | Continuous: $\tilde{r} = r - \lambda u$ | Discrete: absorbing failure state beyond $\epsilon$ |
+| Theoretical guarantee | Lower bound on $J(\pi)$ via penalized model | Distribution-free PAC bound |
+| Key hyperparameters | $\lambda, h, N$ | $\epsilon, \kappa, h, N$ |
+| Best for | Maximizing performance on smooth dynamics | Hard safety requirements, need formal guarantees |
+| Limitation | Soft penalty can be insufficient for very unreliable models | $\epsilon$ calibration critical; hard boundary can be overly conservative |
 
-Physics-informed methods are not a replacement for offline RL algorithms — they are a layer on top. Reward shaping plugs into CQL or IQL without modifying a line of algorithm code. The hybrid model replaces the ensemble in MOPO or MOReL while keeping everything else intact. The combination of a physically grounded dynamics model with a pessimistic offline RL algorithm (MOReL + hybrid ensemble) is the natural architecture for industrial settings where data is sparse but domain knowledge is rich.
+Both MOPO and MOReL represent a qualitative shift from model-free offline RL: instead of constraining the policy to stay near the data, we expand the data to cover more of the state-action space. The ensemble ensures this expansion is safe — the agent only trusts the model where it is reliable.
 
-Chapter 9 works through an industrial case study showing how these pieces fit together in practice.
+The natural next question: can we do better than learning dynamics from scratch? If we know the physics of the system — conservation laws, differential equations, material properties — we can build that knowledge directly into the model and dramatically reduce the data needed. That is the subject of Chapter 9: Physics-Informed Offline RL.
 
 ---
 
 ## References
 
-- Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* Expert Systems with Applications. [arXiv:2309.01909](https://arxiv.org/abs/2309.01909).
-- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1811.10561](https://arxiv.org/abs/1811.10561).
-- Liu, Y., & Wang, X. (2021). *Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.* [arXiv:2008.05598](https://arxiv.org/abs/2008.05598).
-- Lusch, B., Kutz, J.N., & Brunton, S.L. (2018). *Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.* Nature Communications. *(Koopman)*
-- García, J., & Fernández, F. (2015). *A Comprehensive Survey on Safe Reinforcement Learning.* JMLR. *(constraint methods)*
+- Yu, T., Thomas, G., Yu, L., Ermon, S., Zou, J., Levine, S., Finn, C., & Ma, T. (2020). *MOPO: Model-Based Offline Policy Optimization.* NeurIPS. [arXiv:2005.13239](https://arxiv.org/abs/2005.13239).
+- Kidambi, R., Rajeswaran, A., Netrapalli, P., & Kakade, S. (2020). *MOReL: Model-Based Offline Reinforcement Learning.* NeurIPS. [arXiv:2005.05951](https://arxiv.org/abs/2005.05951).
+- Janner, M., Fu, J., Zhang, M., & Levine, S. (2019). *When to Trust Your Model: Model-Based Policy Optimization.* NeurIPS. [arXiv:1906.08253](https://arxiv.org/abs/1906.08253). *(MBPO — online model-based RL foundation for MOPO)*
+- Chua, K., Calandra, R., McAllister, R., & Levine, S. (2018). *Deep Reinforcement Learning in a Handful of Trials using Probabilistic Dynamics Models.* NeurIPS. [arXiv:1805.12114](https://arxiv.org/abs/1805.12114). *(PETS — ensemble uncertainty; foundation for both MOPO and MOReL)*
+- Lakshminarayanan, B., Pritzel, A., & Blundell, C. (2017). *Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles.* NeurIPS. [arXiv:1612.01474](https://arxiv.org/abs/1612.01474). *(why ensembles work as uncertainty estimators)*
 - Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
+- Fu, J. et al. (2020). *D4RL: Datasets for Deep Data-Driven Reinforcement Learning.* [arXiv:2004.07219](https://arxiv.org/abs/2004.07219). *(standard benchmark; MOPO and MOReL both evaluated on D4RL)*

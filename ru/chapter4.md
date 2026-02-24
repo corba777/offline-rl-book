@@ -1,492 +1,401 @@
 ---
 layout: default
-title: "Глава 4: Неявное Q-обучение (IQL)"
+title: "Глава 4: Консервативное Q-обучение (CQL)"
 lang: ru
 en_url: /en/chapter4/
 prev_chapter:
   url: /ru/chapter3/
-  title: "Консервативное Q-обучение (CQL)"
+  title: "Оценка политик вне политики сбора данных (OPE)"
 next_chapter:
   url: /ru/chapter5/
-  title: "Ограничение политики и Actor-Critic (TD3+BC, AWAC)"
+  title: "Неявное Q-обучение (IQL)"
 permalink: "/offline-rl-book/ru/chapter4/"
 ---
 
-# Глава 4: Неявное Q-обучение (IQL)
+# Глава 4: Консервативное Q-обучение (CQL)
 
-> *«Лучшее действие в вашем датасете, может, и не лучшее из возможных — но лучшее из тех, которым можно доверять. IQL учится его находить, не выходя за пределы данных.»*
-
----
-
-## Что CQL сделал правильно — и в чём его слабость
-
-CQL решил проблему ошибки экстраполяции, явно штрафуя Q-значения для OOD-действий. Это работает, но у метода есть тонкая уязвимость: **обновление политики всё равно требует сэмплирования действий из текущей политики** для вычисления Q-значений в лоссе актора.
-
-Эти действия политики сами могут быть OOD — особенно в начале обучения, когда политика ещё не сошлась. CQL корректно их занижает, но градиентный сигнал всё равно проходит через вычисления Q на OOD-действиях, что может дестабилизировать обучение.
-
-**Implicit Q-Learning (IQL)** — Kostrikov et al., ICLR 2022 — идёт дальше: **никогда не запрашивать Q(s, a) для действий вне датасета**. Каждое обновление — Q, V и извлечение политики — использует только пары $(s, a)$ из данных.
-
-Это звучит невозможно. Как различить хорошие и плохие действия, если не сравнивать их? Ответ — expectile regression.
+> *«Не доверяй значениям, которых не видел. А если не видел — занижай их.»*
 
 ---
 
-## Ключевая идея
+## Проблема, переформулированная
 
-IQL вводит **функцию ценности состояния** $V(s)$ как промежуточный элемент. Главное наблюдение:
+В главе 2 мы увидели, что стандартное Q-обучение на офлайн данных порождает катастрофически оптимистичные Q-значения для действий вне распределения (OOD). Жадная политика эксплуатирует эти завышенные значения, выбирая действия, которых в датасете никогда не было — и терпит неудачу при развёртывании.
 
-$$V(s) \approx \mathbb{E}_{\tau}\left[ Q(s, a) \right]_{\text{верхний экспектиль}}$$
+Корень проблемы: обновление Беллмана использует $\max_{a'} Q(s', a')$, перебирая все действия, включая ненаблюдавшиеся. Для таких действий Q-функция обобщается оптимистично.
 
-Вместо того чтобы аппроксимировать $V(s) = \max_a Q(s, a)$ (что требует OOD-запросов), IQL подгоняет $V(s)$ к **верхнему $\tau$-экспектилю** значений $Q(s, a)$ по действиям из датасета. При $\tau > 0.5$ это смещает $V$ в сторону лучших действий в данных — не выходя за пределы датасета.
+**Conservative Q-Learning (CQL)** — Kumar et al., NeurIPS 2020 — исправляет это одной элегантной идеей: **добавить регуляризационный член, явно штрафующий Q-значения для действий вне датасета**.
 
-Трёхшаговый цикл обучения:
+Результат: Q-функция, которая по построению пессимистична для OOD-действий. Жадная политика, видя более низкие значения вне датасета, естественным образом остаётся близко к поведенческой политике — без явного ограничения.
 
-1. **V-обновление**: подогнать $V(s)$ к $\tau$-экспектилю $\min(Q_1, Q_2)(s, a)$ для датасетных $(s, a)$
-2. **Q-обновление**: стандартный TD-бэкап, но с $V(s')$ вместо $\max_{a'} Q(s', a')$
-3. **Извлечение политики**: взвешенное поведенческое клонирование — имитировать действия датасета с весами $\exp(\beta \cdot A(s,a))$, где $A = Q - V$
+---
 
-Нигде нет сэмплирования политики. Нигде нет OOD-запросов. Полностью in-sample.
+## Идея
+
+Стандартное TD-обучение минимизирует:
+
+$$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar\theta}(s', a') - Q_\theta(s, a) \right)^2 \right]$$
+
+CQL добавляет к этой цели два члена:
+
+$$\mathcal{L}_{CQL}(\theta) = \mathcal{L}_{TD}(\theta) + \alpha \cdot \underbrace{\left( \mathbb{E}_{s \sim \mathcal{D},\, a \sim \mu} \left[ Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right)}_{\text{консервативный штраф}}$$
+
+где:
+- $\mu$ — некоторое распределение над действиями (как правило, равномерное или текущая политика)
+- $\alpha > 0$ — гиперпараметр, управляющий силой консерватизма
+- Первое математическое ожидание **занижает Q-значения** для действий из $\mu$
+- Второе математическое ожидание **завышает Q-значения** для действий из датасета
+
+Иными словами: **минимизировать Q-значения везде, но максимизировать их в точках датасета**. Разрыв между двумя членами — то, что минимизирует CQL: действия из датасета выглядят лучше, чем OOD-действия.
 
 ---
 
 ## Формализация
 
-### Expectile Regression
+### Целевая функция CQL
 
-$\tau$-экспектиль распределения — это значение $m$, минимизирующее асимметричный квадратичный лосс:
+Точнее, CQL минимизирует следующую регуляризованную ошибку Беллмана:
 
-$$m^* = \arg\min_m \, \mathbb{E}\left[ L_\tau(X - m) \right]$$
+$$\min_\theta \, \alpha \left( \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right) + \frac{1}{2} \mathcal{L}_{TD}(\theta)$$
 
-где **expectile loss** (асимметричный L2):
+Первый член — **log-sum-exp** по всем действиям — гладкая аппроксимация $\max_a Q(s,a)$. Он опускает всю Q-поверхность вниз. Второй член поднимает Q-значения именно в точках датасета.
 
-$$L_\tau(u) = |\tau - \mathbf{1}[u < 0]| \cdot u^2 = \begin{cases} \tau \cdot u^2 & \text{если } u \geq 0 \\ (1-\tau) \cdot u^2 & \text{если } u < 0 \end{cases}$$
+Определим:
 
-При $\tau = 0.5$: стандартный MSE, оценка стремится к среднему.
-При $\tau \to 1.0$: оценка стремится к максимуму.
-При $\tau = 0.7$ (умолчание IQL): оценка между медианой и максимумом — смещена к большим значениям.
+$$\mathcal{R}_{CQL}(\theta) = \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right]$$
 
-Весь трюк: выбирая $\tau > 0.5$, мы делаем $V(s)$ аппроксимацией ценности **лучше-чем-среднего** действия в состоянии $s$ — используя только действия из датасета.
+Тогда: $\mathcal{L}_{CQL}(\theta) = \mathcal{L}_{TD}(\theta) + \alpha \cdot \mathcal{R}_{CQL}(\theta)$
 
-### Три лосса
+> **Замечание о множителе $\frac{1}{2}$.** В оригинальной статье CQL написано $\frac{1}{2}\mathcal{L}_{TD}$ — это соглашение о нормировке в рамках их вывода. На практике множитель поглощается скоростью обучения и $\alpha$, поэтому реализации (включая нашу) его опускают.
 
-**V-лосс** (expectile regression):
+### Почему Log-Sum-Exp?
 
-$$\mathcal{L}_V(\psi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ L_\tau\!\left(\min(Q_{\theta_1}, Q_{\theta_2})(s,a) - V_\psi(s)\right) \right]$$
+Член logsumexp — это аппроксимация максимума через softmax:
 
-Нет следующих состояний, нет политики — только пары $(s, a)$ из датасета.
+$$\log \sum_a \exp Q(s, a) = \max_a Q(s, a) + \log \sum_a \exp(Q(s,a) - \max_a Q(s,a))$$
 
-**Q-лосс** (TD с $V$ как ценностью следующего состояния):
+При температуре → 0 это сходится к $\max_a Q(s,a)$. При конечной температуре выражение дифференцируемо и штрафует всё распределение Q-значений, а не только максимум.
 
-$$\mathcal{L}_Q(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left(r + \gamma V_{\bar\psi}(s') - Q_\theta(s,a)\right)^2 \right]$$
+Для непрерывных пространств действий перебрать все $a$ невозможно. CQL аппроксимирует logsumexp через importance sampling:
 
-$\bar\psi$ — таргет-сеть V. Ключевое: $V_{\bar\psi}(s')$ заменяет $\max_{a'} Q(s', a')$ полностью.
+$$\log \sum_a \exp Q(s, a) \approx \log \mathbb{E}_{a \sim \mu(a|s)} \left[ \frac{\exp Q(s,a)}{\mu(a|s)} \right]$$
 
-**Лосс политики** (Advantage-Weighted Regression):
+где $\mu$ — предложенное распределение. На практике $\mu$ — либо равномерное над пространством действий, либо текущая политика $\pi_\theta$.
 
-$$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \exp\!\left(\beta \cdot \left(Q(s,a) - V(s)\right)\right) \cdot \| \pi_\phi(s) - a \|^2 \right]$$
+**Зачем вычитать $\log \mu(a|s)$ в коде?** При $\mu = \pi_\theta$ importance-sampling оценка принимает вид:
 
-где $A(s,a) = Q(s,a) - V(s)$ — **advantage** действия $a$ над средним действием в $s$. Экспоненциальные веса усиливают хорошие действия и гасят плохие — фактически извлекая лучшие действия из данных.
+$$\log \mathbb{E}_{a \sim \pi_\theta} \left[ \frac{\exp Q(s,a)}{\pi_\theta(a|s)} \right] \approx \log \frac{1}{N} \sum_{i=1}^N \frac{\exp Q(s, a_i)}{\pi_\theta(a_i|s)} = \text{logsumexp}_i \left[ Q(s, a_i) - \log \pi_\theta(a_i|s) \right] + \text{const}$$
 
-### Почему это работает: связь с пессимизмом
+Именно поэтому в коде вычисляется `q_policy - policy_log_probs` перед logsumexp: вычитание $\log \pi_\theta(a|s)$ реализует коррекцию importance weights. Без неё мы бы аппроксимировали $\mathbb{E}_{\pi_\theta}[Q]$ (простое среднее Монте-Карло), а не $\log \sum_a \exp Q$ (мягкий максимум, который требует CQL). Для случайных равномерных действий эта коррекция не нужна: их лог-плотность константна и сокращается внутри logsumexp.
 
-IQL достигает неявного пессимизма через $V$. Поскольку $V(s)$ обучается только на действиях из датасета, она отражает ценность этих действий — не произвольных OOD-действий. Q-обновление использует $V(s')$ как цель, поэтому TD-бэкап никогда не экстраполирует на невиданные действия.
+### Теоретическая гарантия
 
-Advantage $A(s,a) = Q(s,a) - V(s)$ измеряет, насколько действие $a$ лучше того, что поведенческая политика обычно делает в $s$. Высокий advantage — это «скрытые жемчужины» в данных: моменты, когда поведенческая политика случайно сделала что-то необычно хорошее.
+**Теорема (Kumar et al., 2020).** Пусть $\hat{Q}^\pi$ — Q-функция, обученная CQL, а $Q^\pi$ — истинная Q-функция политики $\pi$. Тогда:
+
+$$\hat{Q}^\pi(s, a) \leq Q^\pi(s, a) \quad \forall (s, a) \in \mathcal{D}$$
+
+при подходящих условиях на $\alpha$.
+
+Иными словами: **CQL является нижней оценкой истинной Q-функции в точках датасета**. Политика, обученная на этой пессимистичной Q-функции, гарантированно не эксплуатирует завышенные значения.
+
+Более практично, ожидаемая производительность политики удовлетворяет:
+
+$$J(\hat\pi) \geq J(\pi_\beta) - \frac{\alpha}{1-\gamma} \cdot \mathbb{E}_{s \sim d^{\pi_\beta}} \left[ D_{CQL}(\hat\pi, \pi_\beta)(s) \right]$$
+
+Граница говорит: CQL не хуже BC, с поправкой, пропорциональной отклонению политики от поведенческой.
 
 ---
 
 ## Реализация
 
-> 📄 Полный код: [`iql.py`](https://github.com/corba777/offline-rl-book/blob/main/code/iql.py)
+> 📄 Полный код: [`cql.py`](https://github.com/corba777/offline-rl-book/blob/main/code/cql.py)
 
 ### Сети
 
-IQL использует три сети: `ValueNetwork` (только состояние), `QNetwork` (состояние + действие) и `DeterministicPolicy`. Обратите внимание — IQL использует **детерминированную** политику. Стохастический актор из CQL не нужен, потому что извлечение политики делается через взвешенную регрессию, а не максимизацию энтропии:
+CQL обычно использует архитектуру в стиле SAC: два Q-networks (для снижения переоценки через double-Q), стохастический актор и регуляризацию энтропией.
 
 ```python
-class ValueNetwork(nn.Module):
-    """
-    V(s) — state value function.
-    IQL learns this via expectile regression, not Bellman backup.
-    No action input — this is the key architectural difference from Q(s,a).
-    """
-    def __init__(self, state_dim: int, hidden_dim: int = 256):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(state_dim, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
-        )
-
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        return self.net(state).squeeze(-1)
-
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from copy import deepcopy
 
 class QNetwork(nn.Module):
-    """Q(s,a) — action-value function (double-Q as in CQL)."""
-    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+    def __init__(self, state_dim, action_dim, hidden_dim=256):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim + action_dim, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),              nn.ReLU(),
             nn.Linear(hidden_dim, 1),
         )
+    def forward(self, state, action):
+        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)
 
-    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        return self.net(torch.cat([state, action], -1)).squeeze(-1)
 
-
-class DeterministicPolicy(nn.Module):
-    """
-    Simple deterministic MLP policy: s -> a in [-1, 1].
-
-    IQL extracts the policy via advantage-weighted regression (AWR):
-    minimize E[exp(beta * A(s,a)) * ||pi(s) - a||^2] over dataset actions.
-    No need for a stochastic policy — we weight dataset actions by their advantage.
-    """
-    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+class GaussianPolicy(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim=256):
         super().__init__()
-        self.net = nn.Sequential(
+        self.trunk = nn.Sequential(
             nn.Linear(state_dim, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, action_dim), nn.Tanh(),
         )
+        self.mean_head    = nn.Linear(hidden_dim, action_dim)
+        self.log_std_head = nn.Linear(hidden_dim, action_dim)
 
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        return self.net(state)
-
-    def act(self, state: torch.Tensor) -> np.ndarray:
-        with torch.no_grad():
-            return self.forward(state).cpu().numpy().squeeze()
-
-
-# ============================================================================
-# 4. IQL LOSSES
+    def sample(self, state):
+        h       = self.trunk(state)
+        mean    = self.mean_head(h)
+        log_std = self.log_std_head(h).clamp(-4, 2)
+        std     = log_std.exp()
+        eps     = torch.randn_like(mean)
+        raw     = mean + std * eps
+        action  = torch.tanh(raw)
+        log_prob = (
+            torch.distributions.Normal(mean, std).log_prob(raw)
+            - torch.log(1 - action.pow(2) + 1e-6)
+        ).sum(-1)
+        return action, log_prob
 ```
 
-### Expectile Loss
-
-Ключевой примитив — 7-строчная функция, заменяющая `max_a Q(s', a')`:
+### Потеря CQL
 
 ```python
-def expectile_loss(pred: torch.Tensor, target: torch.Tensor,
-                   tau: float) -> torch.Tensor:
+def cql_loss(Q1, Q2, Q1_target, Q2_target, policy,
+             states, actions, rewards, next_states, dones,
+             alpha_cql=1.0, gamma=0.99, n_action_samples=10):
     """
-    Asymmetric L2 loss (expectile regression).
-
-    For a scalar residual u = target - pred:
-        L_tau(u) = |tau - 1(u < 0)| * u^2
-
-    When u > 0 (pred < target, i.e., V underestimates Q):
-        weight = tau          (e.g. 0.7 — penalize underestimation more)
-    When u < 0 (pred > target, i.e., V overestimates Q):
-        weight = 1 - tau      (e.g. 0.3 — penalize overestimation less)
-
-    At tau=0.5 this is standard MSE.
-    At tau->1.0 this approximates the maximum (V -> max Q).
-    IQL uses tau in [0.5, 0.9] — asymmetric toward upper quantile.
-
-    This is the entire magic of IQL: instead of max_a Q(s',a'),
-    we fit V(s) to the upper expectile of Q(s, a_data).
+    CQL loss = стандартная TD-потеря + консервативный штраф.
+    alpha_cql: сила консерватизма. Больше = более пессимистично.
     """
-    u = target - pred
-    weight = torch.where(u > 0,
-                         torch.full_like(u, tau),
-                         torch.full_like(u, 1.0 - tau))
-    return (weight * u.pow(2)).mean()
-```
+    batch_size = states.shape[0]
 
-При `tau=0.7`: недооценка штрафуется в 2.3× сильнее переоценки, смещая оценку вверх — к лучшим действиям в датасете.
-
-### V-обновление
-
-```python
-def iql_value_loss(V: ValueNetwork,
-                   Q1: QNetwork, Q2: QNetwork,
-                   states: torch.Tensor,
-                   actions: torch.Tensor,
-                   tau: float = 0.7) -> Tuple[torch.Tensor, dict]:
-    """
-    V-network update via expectile regression.
-
-    Target: min(Q1(s,a), Q2(s,a)) for dataset (s,a) pairs.
-    V(s) is pushed toward the tau-expectile of this target.
-
-    No next states, no policy sampling — fully in-sample.
-    """
+    # ── 1. Стандартная TD-цель ────────────────────────────────────────────
     with torch.no_grad():
-        q_target = torch.min(Q1(states, actions), Q2(states, actions))
+        next_actions, next_log_probs = policy.sample(next_states)
+        q_next  = torch.min(Q1_target(next_states, next_actions),
+                            Q2_target(next_states, next_actions))
+        q_next -= 0.1 * next_log_probs    # SAC: энтропийный бонус
+        # ↑ 0.1 — фиксированный коэффициент энтропии. Автонастройку см. ниже.
+        td_target = rewards + gamma * (1 - dones) * q_next
 
-    v_pred = V(states)
-    loss   = expectile_loss(v_pred, q_target, tau)
+    td_loss = F.mse_loss(Q1(states, actions), td_target)
 
-    return loss, {
-        'v_loss':    loss.item(),
-        'v_mean':    v_pred.mean().item(),
-        'q_mean':    q_target.mean().item(),
-        'v_q_gap':   (q_target - v_pred).mean().item(),
-    }
+    # ── 2. CQL штраф ──────────────────────────────────────────────────────
+    # Случайные OOD-действия из равномерного распределения
+    random_actions = torch.FloatTensor(
+        batch_size * n_action_samples, actions.shape[-1]
+    ).uniform_(-1, 1).to(states.device)
+
+    # Действия текущей политики
+    states_rep = states.unsqueeze(1).repeat(1, n_action_samples, 1).view(
+        batch_size * n_action_samples, -1)
+    policy_actions, policy_log_probs = policy.sample(states_rep)
+
+    # Q-значения для случайных OOD-действий
+    q_rand   = Q1(states.unsqueeze(1).repeat(1, n_action_samples, 1)
+                  .view(batch_size * n_action_samples, -1),
+                  random_actions).view(batch_size, n_action_samples)
+
+    # Q-значения для policy-действий — с коррекцией importance weights.
+    # Вычитаем log π(a|s): сэмплируем a ~ π, но нужен E_{uniform}[exp Q].
+    q_policy_raw = Q1(states_rep, policy_actions).view(batch_size, n_action_samples)
+    lp = policy_log_probs.detach().view(batch_size, n_action_samples)
+    q_policy = q_policy_raw - lp     # importance weight: exp(Q)/π → exp(Q - log π)
+
+    # Q-значения для действий из датасета
+    q_data = Q1(states, actions)
+
+    # logsumexp по случайным + policy-действиям (с importance correction)
+    # Аппроксимирует log Σ_a exp Q(s,a) — член «опустить вниз»
+    q_ood      = torch.cat([q_rand, q_policy], dim=1)
+    logsumexp  = torch.logsumexp(q_ood, dim=1)
+
+    # Штраф: OOD вниз, датасет вверх
+    cql_penalty = (logsumexp - q_data).mean()
+
+    return td_loss + alpha_cql * cql_penalty, td_loss.item(), cql_penalty.item()
 ```
 
-Блок `torch.no_grad()` важен: градиенты текут только через `V`, не через `Q1` и `Q2`. Q-сети служат чисто как регрессионные цели.
-
-### Q-обновление
+### Автоматическая настройка alpha
 
 ```python
-def iql_q_loss(Q: QNetwork,
-               V_tgt: ValueNetwork,
-               states: torch.Tensor, actions: torch.Tensor,
-               rewards: torch.Tensor, next_states: torch.Tensor,
-               dones: torch.Tensor,
-               gamma: float = 0.99) -> Tuple[torch.Tensor, dict]:
-    """
-    Q-network update via standard TD backup — but using V(s') instead of max_a Q(s',a').
+# Настройка alpha через двойственный градиентный спуск
+log_alpha_cql = torch.zeros(1, requires_grad=True, device=device)
+alpha_opt     = optim.Adam([log_alpha_cql], lr=1e-4)
+target_penalty = -2.0   # τ: желаемое значение E_μ[Q] - E_D[Q]
 
-    TD target: r + gamma * V(s')
-
-    This is the key IQL insight: replace max_a Q(s',a') with V(s').
-    V(s') was trained to approximate the upper expectile of Q at s',
-    so it acts as a conservative upper bound on next-state value.
-    No policy sampling at all.
-    """
-    with torch.no_grad():
-        v_next    = V_tgt(next_states)
-        td_target = rewards + gamma * (1.0 - dones) * v_next
-
-    q_pred = Q(states, actions)
-    loss   = F.mse_loss(q_pred, td_target)
-
-    return loss, {
-        'q_loss':   loss.item(),
-        'q_pred':   q_pred.mean().item(),
-        'td_target': td_target.mean().item(),
-    }
+# В шаге обновления:
+alpha_cql  = log_alpha_cql.exp().item()
+alpha_loss = -log_alpha_cql * (cql_penalty - target_penalty)
+alpha_opt.zero_grad()
+alpha_loss.backward()
+alpha_opt.step()
 ```
 
-Сравните с Q-обновлением CQL: там `v_next` требовал `policy.sample(next_states)` и затем `Q_target(next_states, next_actions)`. Здесь — один прямой проход через `V_tgt`, без сэмплирования действий.
-
-### Извлечение политики через AWR
+**Замечание об энтропийном коэффициенте.** В коде используется фиксированное `0.1` для SAC-члена энтропии. В полноценном CQL этот коэффициент тоже настраивается автоматически — с целью поддерживать энтропию политики на уровне $\mathcal{H}^* = -\dim(\mathcal{A})$ (одна нат на измерение действия):
 
 ```python
-def iql_policy_loss(policy: DeterministicPolicy,
-                    Q1: QNetwork, Q2: QNetwork,
-                    V: ValueNetwork,
-                    states: torch.Tensor,
-                    actions: torch.Tensor,
-                    beta: float = 1.0,
-                    clip_exp: float = 100.0) -> Tuple[torch.Tensor, dict]:
-    """
-    Policy extraction via Advantage-Weighted Regression (AWR).
+# Автонастройка коэффициента энтропии (SAC-стиль)
+log_alpha_ent = torch.zeros(1, requires_grad=True, device=device)
+ent_opt       = optim.Adam([log_alpha_ent], lr=3e-4)
+target_entropy = -action_dim   # H* = -dim(A)
 
-    Objective: minimize E_{(s,a)~D} [ exp(beta * A(s,a)) * ||pi(s) - a||^2 ]
-
-    where A(s,a) = Q(s,a) - V(s) is the advantage of dataset action a.
-
-    This is a weighted imitation loss:
-    - actions with high advantage (better than average) get large weights
-    - actions with negative advantage get weights near zero
-    - beta controls how selective we are (higher = more selective)
-
-    The exp weights are clipped to avoid numerical instability.
-    No environment interaction, no OOD actions — pure in-sample regression.
-    """
-    with torch.no_grad():
-        q_val = torch.min(Q1(states, actions), Q2(states, actions))
-        v_val = V(states)
-        adv   = q_val - v_val                                 # advantage
-        # Normalize advantage for numerical stability, then exponentiate
-        adv_norm   = adv - adv.max()                         # subtract max
-        weights    = torch.exp(beta * adv_norm).clamp(max=clip_exp)
-        weights    = weights / weights.sum()                  # normalize
-
-    # Weighted MSE: push policy toward high-advantage dataset actions
-    pi_pred = policy(states)
-    loss    = (weights * F.mse_loss(pi_pred, actions, reduction='none').sum(-1)).mean()
-
-    return loss, {
-        'pi_loss':    loss.item(),
-        'adv_mean':   adv.mean().item(),
-        'adv_max':    adv.max().item(),
-        'weight_max': weights.max().item(),
-    }
-
-
-# ============================================================================
-# 5. IQL AGENT
-# ============================================================================
+# В шаге обновления политики:
+alpha_ent  = log_alpha_ent.exp().item()
+loss_pi    = (alpha_ent * log_probs - q_pi).mean()
+# ...
+ent_loss   = -(log_alpha_ent * (log_probs + target_entropy).detach()).mean()
+ent_opt.zero_grad()
+ent_loss.backward()
+ent_opt.step()
 ```
 
-Нормализация `adv - adv.max()` критична — без неё `exp(beta * adv)` переполняется при больших advantage.
+Фиксированное `0.1` работает для задачи управления тепловым процессом, но для других сред может потребоваться корректировка. При неопределённости рекомендуется автонастройка.
 
-### Полный шаг обновления
+$\alpha$ — важнейший гиперпараметр CQL. Он управляет компромиссом между консерватизмом и производительностью:
 
-```python
-        v_loss, v_info = iql_value_loss(self.V, self.Q1, self.Q2, s, a, self.tau)
-        self.v_opt.zero_grad()
-        v_loss.backward()
-        self.v_opt.step()
-        info.update(v_info)
-
-        # ── 2. Q update (TD with V as next-state value) ───────────────────
-        # Q(s,a) ← r + gamma * V_target(s')
-        q_loss1, q_info1 = iql_q_loss(self.Q1, self.V_tgt,
-                                       s, a, r, s2, d, self.gamma)
-        q_loss2, q_info2 = iql_q_loss(self.Q2, self.V_tgt,
-                                       s, a, r, s2, d, self.gamma)
-        self.q_opt.zero_grad()
-        (q_loss1 + q_loss2).backward()
-        nn.utils.clip_grad_norm_(list(self.Q1.parameters()) +
-                                 list(self.Q2.parameters()), 1.0)
-        self.q_opt.step()
-        info['q_loss'] = (q_info1['q_loss'] + q_info2['q_loss']) / 2
-
-        # ── 3. Policy update (advantage-weighted regression) ──────────────
-        # pi(s) ← argmin_a exp(beta * A(s,a)) * ||pi(s) - a||^2 over dataset
-        pi_loss, pi_info = iql_policy_loss(
-            self.policy, self.Q1, self.Q2, self.V, s, a, self.beta)
-        self.pi_opt.zero_grad()
-        pi_loss.backward()
-        self.pi_opt.step()
-        info.update(pi_info)
-
-        # ── 4. Soft target updates ────────────────────────────────────────
-        for p, pt in zip(self.V.parameters(), self.V_tgt.parameters()):
-            pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
-        for p, pt in zip(self.Q1.parameters(), self.Q1_tgt.parameters()):
-            pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
-        for p, pt in zip(self.Q2.parameters(), self.Q2_tgt.parameters()):
-            pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
-
-        return info
-
-
-# ============================================================================
-# 6. BC BASELINE
-# ============================================================================
-```
-
-Важно: в `iql_q_loss` используется `V_tgt` (таргет-сеть), а не `V`. Это предотвращает цикличную зависимость, при которой $V$ и $Q$ дестабилизируют друг друга.
+| $\alpha$ | Поведение |
+|---|---|
+| $\alpha = 0$ | Стандартный SAC — нет консерватизма, эксплуатация OOD |
+| $\alpha$ мало (0.1–1.0) | Мягкий консерватизм — допускает некоторое улучшение политики |
+| $\alpha$ велико (5–10) | Сильный консерватизм — политика близка к $\pi_\beta$ |
+| $\alpha \to \infty$ | Эквивалентно поведенческому клонированию |
 
 ---
 
-## Что делает tau
+## Интуиция: ландшафт Q-функции
 
-Функция `show_expectile_intuition()` в `iql.py` демонстрирует это конкретно. Для состояния с 5 датасетными действиями, имеющими Q-значения $[-0.8, -0.3, 0.1, 0.4, 0.9]$:
+Представьте Q-функцию как ландшафт над пространством состояние-действие. Стандартное Q-обучение формирует этот ландшафт только через точки данных — между ними ландшафт не ограничен и стремится расти из-за оптимистичного обобщения.
+
+CQL добавляет гравитацию: тянет весь ландшафт вниз, пока TD-потеря удерживает его в точках данных. Результат — ландшафт, высокий в точках датасета и низкий везде остальном.
+
+Политика, действующая жадно по этому ландшафту, предпочитает действия из датасета — не потому что её явно ограничили, а потому что ландшафт естественно направляет её туда.
 
 ```
-tau=0.1   V = -0.65    около минимума
-tau=0.3   V = -0.18    нижний квартиль
-tau=0.5   V =  0.06    медиана (стандартный MSE)
-tau=0.7   V =  0.38    верхний квартиль  ← умолчание IQL
-tau=0.9   V =  0.74    около максимума
+Стандартное Q-обучение:      CQL:
 
-Истинные Q-значения: [-0.8, -0.3, 0.1, 0.4, 0.9]
+  Q  ↑   *     *            Q  ↑   *     *
+     |  / \   / \              |  * \   / *
+     | /   \ /   \             | /   \ /   \
+     |/     *     \            |/     *     \
+     +----------→ a            +----------→ a
+     ↑ точки датасета           ↑ точки датасета (закреплены высоко)
+     ↑↑ OOD оптимизм            OOD занижены
 ```
 
-При `tau=0.7` $V(s)$ лежит выше большинства действий датасета, но ниже лучшего. Это значит, что $A(s,a) = Q(s,a) - V(s)$ положителен только для топ-действий — именно тех, которым политика должна подражать.
+*(В HTML-версии эта диаграмма отображается как SVG-рисунок.)*
 
 ---
 
-## IQL vs CQL: ключевые различия
+## Как выбрать α
 
-| | CQL | IQL |
+$\alpha$ — важнейший гиперпараметр CQL. Правильное значение зависит от качества датасета, масштаба наград и доверия к поведенческой политике.
+
+### Шаг 1 — Проверьте знак CQL-штрафа
+
+Перед настройкой убедитесь, что штраф положителен: $\mathbb{E}_\mu[Q] > \mathbb{E}_D[Q]$ должно выполняться после нескольких сотен обновлений. Если штраф отрицателен с самого начала — сэмплирование OOD-действий сломано.
+
+### Шаг 2 — Грид-поиск по логарифмической шкале
+
+```python
+for alpha in [0.1, 0.5, 1.0, 5.0, 10.0]:
+    agent = CQLAgent(..., alpha_cql=alpha)
+    train_agent(agent, loader, n_epochs=80)
+    res = evaluate(agent, env, ...)
+    print(f"alpha={alpha:.1f}  reward={res['reward_mean']:.2f}")
+```
+
+Пять прогонов дают грубую карту компромисса награда–консерватизм.
+
+### Шаг 3 — Читайте диагностику
+
+| Симптом | Диагноз | Действие |
 |---|---|---|
-| OOD-запросы | Штрафуются через logsumexp | Никогда не делаются |
-| Q-обновление | TD с сэмплированием политики в $s'$ | TD с $V(s')$ — без сэмплирования |
-| Обновление политики | Максимизация $Q(s, \pi(s))$ | Взвешенная регрессия на датасет |
-| Тип политики | Стохастическая (Гауссова) | Детерминированная |
-| Дополнительная сеть | Нет | $V(s)$ функция ценности |
-| Ключевые гиперпараметры | $\alpha$ | $\tau$ (экспектиль) + $\beta$ (температура AWR) |
-| Стабильность | Чувствителен к $\alpha$ | Обычно стабильнее |
+| Политика ≈ BC, нет улучшения | $\alpha$ слишком велик — Q подавлен везде | Уменьшить в 5–10× |
+| Q-значения расходятся | $\alpha$ слишком мал — OOD не контролируется | Увеличить в 2–5× |
+| CQL-штраф уходит в минус | $\alpha$ слишком мал | Увеличить $\alpha$ |
+| CQL-штраф >> TD-потеря | $\alpha$ слишком велик или проблема масштаба наград | Нормализовать награды; уменьшить $\alpha$ |
 
-Принципиальное различие: CQL **активно** пессимистичен — явно штрафует OOD-значения. IQL **пассивно** — просто никогда не спрашивает об OOD-значениях.
+### Типичные значения по типу данных
 
----
+| Тип датасета | Стартовый $\alpha$ | Обоснование |
+|---|---|---|
+| Только экспертные (почти оптимальные) | 0.1 – 0.5 | Поведенческая политика хороша; сильный консерватизм вредит |
+| Смешанное качество (эксперт + случайный) | 1.0 – 2.0 | Безопасный дефолт |
+| Случайные / шумные операторские данные | 2.0 – 5.0 | Высокий шум → больше OOD-риска → больше консерватизма |
+| Промышленные логи с несколькими режимами | 1.0 + авто-$\alpha$ | Лагранжиан адаптируется к разным режимам |
 
-## Выбор гиперпараметров
+### Когда использовать автонастройку
 
-**$\tau$ (экспектиль)**: управляет оптимизмом $V(s)$ относительно действий в датасете.
+Используйте `auto_alpha=True` если: (а) политика будет развёрнута в реальной системе и безопасность важнее производительности, или (б) датасет охватывает несколько режимов работы с разными масштабами наград. Задайте `target_cql` небольшим отрицательным значением (например, `-1.0`).
 
-- `tau=0.5`: $V \approx$ среднее Q — очень консервативно, похоже на BC
-- `tau=0.7`: умолчание, хорошо для датасетов среднего качества
-- `tau=0.9`: агрессивно; используйте когда в датасете явно есть хорошие и плохие действия
-- `tau>0.95`: может вызвать нестабильность
-
-**$\beta$ (температура AWR)**: управляет избирательностью извлечения политики.
-
-- `beta=0.1`: почти равномерные веса — политика ≈ BC
-- `beta=3.0`: умолчание, умеренная избирательность
-- `beta=10.0`: очень избирательно — политика имитирует только топ-действия в батче
-- Большой $\beta$ может привести к переобучению на нескольких переходах
-
-**Практическое правило**: если датасет высокого качества и плотный — используйте большие $\tau$ и $\beta$. Если шумный или разреженный — меньшие значения.
+Используйте фиксированный $\alpha$ если: проводите воспроизводимые офлайн-эксперименты, или уже нашли хорошее значение грид-поиском.
 
 ---
 
-## Запуск сравнения
+## CQL vs TD3+BC
 
-```python
-from iql import run_comparison
-run_comparison()
-```
+TD3+BC (Fujimoto & Gu, 2021) — более простая альтернатива, добавляющая BC-член прямо в потерю политики:
 
-Примерный вывод:
+$$\pi^* = \arg\max_\pi \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \lambda Q(s, \pi(s)) - (\pi(s) - a)^2 \right]$$
 
-```
-============================================================
-Method                       Reward        T err     f err
-------------------------------------------------------------
-Clean PID (oracle)          -22.14±3.41       —         —
-Noisy PID (behavior data)   -38.42±8.21       —         —
-BC                          -35.12±6.43   0.0821    0.0743
-IQL (τ=0.7, β=3.0)         -27.43±4.08   0.0534    0.0501
-IQL (τ=0.9, β=5.0)         -25.81±3.92   0.0489    0.0463
-============================================================
-IQL vs BC: +7.69 reward
-```
+| | CQL | TD3+BC |
+|---|---|---|
+| Где живёт пессимизм | Q-функция | Целевая функция политики |
+| OOD Q-значения | Явно занижаются | Не изменяются |
+| Теоретическая гарантия | Да (нижняя оценка) | Нет |
+| Гиперпараметры | $\alpha$ | $\lambda$ |
+| Сложность реализации | Средняя | Низкая |
+
+TD3+BC — хорошая отправная точка для детерминированных политик. CQL более строго обоснован и обычно сильнее на сложных задачах.
 
 ---
 
 ## Практические советы
 
-**IQL чувствителен к нормализации наград.** Нормализуйте награды к нулевому среднему или диапазону $[0, 1]$. Advantage $A = Q - V$ вычисляется в том же масштабе, и `exp(beta * A)` в лоссе политики взрывается при больших значениях.
+**Нормализуйте наблюдения.** CQL чувствителен к масштабу. Всегда нормализуйте состояния по статистикам датасета.
 
-**Мониторьте V-Q разрыв.** Логируйте `v_q_gap = E[Q(s,a) - V(s)]` по датасетным парам. Должно быть слегка положительным (V чуть ниже среднего Q). Если становится сильно отрицательным — $\tau$ слишком мало.
+**Начинайте с $\alpha = 1.0$.** Безопасное значение по умолчанию. Если политика слишком консервативна — уменьшайте. Если Q-значения расходятся — увеличивайте.
 
-**Используйте таргет-сеть для V в Q-обновлении.** В `iql_q_loss` используется `V_tgt`, а не `V`. Если использовать живую `V`, Q и V формируют цикличную зависимость и обучение часто расходится.
+**Используйте Double-Q.** Всегда используйте две Q-сети и берите минимум. Это снижает переоценку независимо от CQL — два механизма дополняют друг друга.
 
-**IQL быстрее сходится, чем CQL** на плотных датасетах — V-обновление очень стабильно (нет OOD-сэмплирования, нет logsumexp).
+**Мониторьте CQL-штраф.** Логируйте `E_μ[Q] - E_D[Q]` во время обучения. Он должен быть положительным и стабильным. Если уходит в минус — $\alpha$ слишком мало.
+
+**Совет для промышленных данных.** Если датасет содержит несколько режимов работы (остановленный/медленный/быстрый), рассмотрите обучение отдельных агентов CQL для каждого режима или добавление режима как признака состояния.
 
 ---
 
 ## Ограничения
 
-**Не может улучшить результат сверх лучших действий в датасете.** Политика IQL — взвешенное среднее действий датасета. Она не может открыть действия лучше тех, что поведенческая политика когда-либо пробовала.
+**Требует разметки наград.** В отличие от BC, CQL нужны кортежи $(s, a, r, s')$. Если датасет содержит только $(s, a, s')$ — необходимо определить функцию вознаграждения.
 
-**Два гиперпараметра для настройки.** $\tau$ и $\beta$ взаимодействуют. Большое $\tau$ → высокие advantages → нужно большее $\beta$ для их извлечения.
+**Чувствителен к масштабу наград.** Баланс между TD-потерей и CQL-штрафом зависит от величины наград. Если награды большие (например, в тысячах), TD-потеря доминирует и CQL теряет эффект. Нормализуйте награды в $[-1, 1]$ или $[0, 1]$.
 
-**Детерминированная политика** может плохо работать в мультимодальных средах с бимодальным распределением оптимальных действий.
+**Консервативен по построению.** CQL не превзойдёт поведенческую политику значительно в регионах с редкими данными. Он создан для безопасности, а не для агрессивной экстраполяции. Для задач, требующих существенного выхода за пределы датасета, более уместны модельные методы (Глава 5).
+
+**Непрерывные пространства действий требуют сэмплирования.** Аппроксимация logsumexp требует сэмплирования — как правило, 10 случайных + 10 политиковых действий на состояние. Это увеличивает вычислительные затраты по сравнению с BC или TD3+BC.
 
 ---
 
 ## Итоги
 
-| Свойство | IQL |
+| Свойство | CQL |
 |---|---|
-| Необходимые данные | $(s, a, r, s')$ с наградами |
-| Ключевая идея | Expectile regression для $V(s)$; TD с $V(s')$; AWR-политика |
-| OOD-запросы | Никогда — полностью in-sample |
-| Ключевые гиперпараметры | $\tau$ (экспектиль, 0.5–0.9) и $\beta$ (температура AWR) |
-| По сравнению с CQL | Стабильнее; нет OOD-сэмплирования; детерминированная политика |
-| Ограничение | Не может экстраполировать за пределы действий датасета |
+| Необходимые данные | Переходы $(s, a, r, s')$ с наградами |
+| Целевая функция | TD-потеря + CQL штраф (logsumexp − Q датасета) |
+| Обработка OOD | Явная: Q-значения занижаются для OOD-действий |
+| Теоретическая гарантия | Нижняя оценка истинной Q-функции в датасете |
+| Ключевой гиперпараметр | $\alpha$ (сила консерватизма) |
 
-IQL — наиболее чистое решение задачи офлайн RL среди безмодельных методов: пессимизм структурный, встроенный в архитектуру. Следующий шаг: научиться моделировать мир и генерировать синтетические данные. Это позволяет рассуждать о переходах, которых нет в датасете — ценой ошибки модели. Об этом — в главе 5.
+CQL закрывает разрыв между поведенческим клонированием и полным офлайн RL. Он использует информацию о награде для улучшения над поведенческой политикой, а пессимизм относительно OOD-действий предотвращает катастрофические отказы стандартного Q-обучения.
+
+Остающееся ограничение: CQL является **безмодельным**. Глава 4 (IQL) уточняет идею пессимизма по значениям. Глава 5 (MOPO) показывает, как обучение модели мира позволяет генерировать синтетические данные — расширяя эффективный датасет за пределы собранного.
 
 ---
 
 ## Литература
 
-- Kostrikov, I., Nair, A., & Levine, S. (2022). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169).
-- Peng, X., Kumar, A., Zhang, G., & Levine, S. (2019). *Advantage-Weighted Regression.* [arXiv:1910.00177](https://arxiv.org/abs/1910.00177).
-- Newey, W., & Powell, J. (1987). *Asymmetric Least Squares Estimation and Testing.* Econometrica.
-- Kumar, A. et al. (2020). *Conservative Q-Learning for Offline RL.* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
-- Levine, S. et al. (2020). *Offline RL: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
+- Kumar, A., Zhou, A., Tucker, G., & Levine, S. (2020). *Conservative Q-Learning for Offline Reinforcement Learning.* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
+- Fujimoto, S., & Gu, S. (2021). *A Minimalist Approach to Offline RL (TD3+BC).* NeurIPS. [arXiv:2106.06860](https://arxiv.org/abs/2106.06860).
+- Haarnoja, T. et al. (2018). *Soft Actor-Critic.* ICML. [arXiv:1801.01290](https://arxiv.org/abs/1801.01290).
+- Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).

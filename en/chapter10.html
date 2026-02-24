@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chapter 10: Explainability in Offline RL</title>
+  <title>Chapter 10: Industrial Applications</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -58,327 +58,434 @@
   </div>
 </header>
 <main>
-<h1>Chapter 10: Explainability in Offline RL</h1>
+<h1>Chapter 10: Industrial Applications</h1>
 <blockquote>
-<p><em>"A policy that achieves 80% Directional Accuracy but cannot explain why it chose each action is hard to trust and impossible to certify."</em></p>
+<p><em>"The gap between a working benchmark result and a working industrial deployment is not a gap in algorithms — it is a gap in understanding the data."</em></p>
 </blockquote>
 <hr />
-<h2>Why Explainability Matters in Industrial Offline RL</h2>
-<p>The algorithms in Chapters 1–9 produce policies that achieve high reward, respect physical constraints, and generalize to unseen operating regimes. What they do not produce is an answer to the question an operator will inevitably ask: <em>why did the agent command this setpoint at this moment?</em></p>
-<p>This is not merely a regulatory concern, though in many industries it is that too. It is a practical reliability question. A policy whose decisions are opaque cannot be diagnosed when it fails. An operator who does not understand the agent's reasoning cannot override it intelligently. A model that fits data well but for the wrong reasons will fail silently when the process changes.</p>
-<p>Explainability in Offline RL is harder than in standard supervised learning for three reasons specific to the offline setting.</p>
-<p><strong>There are three separate models to explain.</strong> A trained Offline RL agent contains a Q-function (the critic), a policy (the actor), and optionally a dynamics model. Each answers a different question, and their explanations do not always agree. The Q-function might rate an action highly because temperature is near its setpoint; the policy might choose that action because level is near its lower bound. Understanding the discrepancy is as important as understanding the agreement.</p>
-<p><strong>The Q-function's input is a concatenation of state and action.</strong> Unlike a classifier whose input is a single feature vector, the Q-function takes $(s, a)$ as input. SHAP values computed over this concatenated space tell you whether the high Q-value comes from the state (the situation was favorable) or the action (the specific action was appropriate for this situation).</p>
-<p><strong>The behavior policy's distribution is uneven.</strong> SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset — dense near the operating setpoint and sparse near disturbances. SHAP values answer: <em>"how does this instance differ from the typical operating point, and how does that difference affect the output?"</em></p>
+<h2>From Benchmarks to Industry</h2>
+<p>The preceding six chapters built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on <code>ThermalProcessEnv</code> — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.</p>
+<p>Real industrial processes differ from that environment in every dimension that matters.</p>
+<p><strong>More variables, more coupling.</strong> A realistic coating process has dozens of sensor readings. Even a simplified model has temperature, filler fraction, viscosity, bulk density, and a surge tank level — five variables with physical dependencies between all of them. The level is an integrating state that drifts without active control; viscosity is a nonlinear function of temperature and filler that the agent cannot observe independently of its inputs.</p>
+<p><strong>Non-uniform data coverage.</strong> Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.</p>
+<p><strong>Lag and delay.</strong> Material fed into a coating line takes 30–90 minutes to appear at the quality measurement point. Within the dynamic model, this manifests as a transport delay: the agent's action at time $t$ affects the output at time $t + k$. A pure first-order model ignoring the delay will have systematic prediction errors whenever the feed rate changes.</p>
+<p><strong>Hard physical constraints.</strong> Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.</p>
+<p>This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–8. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.</p>
 <blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8.py"><code>chapter8.py</code></a></p>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter7.py"><code>chapter7.py</code></a></p>
 </blockquote>
 <hr />
-<h2>SHAP Background</h2>
-<p>SHAP (SHapley Additive exPlanations, Lundberg &amp; Lee, 2017) decomposes the output of a model $f$ into additive contributions from each input feature:</p>
-<p><div class="math-display">$$f(x) = \phi_0 + \sum_{i=1}^{n} \phi_i(x)$$</div></p>
-<p>where $\phi_0 = \mathbb{E}[f(X)]$ is the expected model output over the background distribution, and $\phi_i(x)$ is the contribution of feature $i$ to the prediction for instance $x$.</p>
-<p>The SHAP values ${\phi_i}$ are the unique decomposition satisfying:
-- <strong>Efficiency</strong>: $\sum_i \phi_i = f(x) - \phi_0$ — values sum to total prediction minus baseline
-- <strong>Symmetry</strong>: features with equal marginal contributions receive equal SHAP values
-- <strong>Dummy</strong>: a feature with zero marginal contribution receives $\phi_i = 0$</p>
-<p><strong>KernelExplainer</strong> computes SHAP values without architecture knowledge. It fits a weighted linear model to masked predictions:</p>
-<p><div class="math-display">$$\phi = \arg\min_{\phi} \sum_{z \in \{0,1\}^n} \pi(z)\left[f(h(x, z)) - \phi_0 - \sum_i z_i \phi_i\right]^2$$</div></p>
-<p>where $z$ is a binary mask, $h(x, z)$ replaces masked features with background samples, and $\pi(z)$ weights coalitions by the Shapley kernel. This works on any black-box function — Q-networks, policy networks, ensemble dynamics — with no architecture assumptions.</p>
-<p>We use KernelExplainer throughout for consistency: all three explanations use the same method, making them directly comparable.</p>
-<h3>Toy example: what SHAP shows</h3>
-<p>A minimal example fixes intuition. Consider a toy Q-function with three inputs: $Q(s_1, s_2, a) = 2 s_1 - s_2 + 0.5 a$. So state_1 pushes Q up, state_2 pushes it down, and the action has a smaller positive effect. We draw a background from "typical" operation (values in $[0.3, 0.7]$) and explain a set of instances. SHAP attributes each prediction to the three features.</p>
-<p><strong>Which feature matters most?</strong> The bar chart below shows mean $|\phi_i|$ over the explained instances. State_1 and state_2 dominate (they have larger coefficients), and SHAP recovers that.</p>
-<p><img alt="Toy Q: mean |SHAP| per feature" src="../figures/ch8/toy_shap_bar.png" /></p>
-<p><strong>Why is this one instance’s Q high?</strong> The waterfall plot takes a single instance (e.g. high $s_1$, low $s_2$) and shows how each feature’s SHAP value moves the output from the baseline $\phi_0 = \mathbb{E}[Q]$ to the final $Q(x)$. Positive bars (state_1, action) push Q up; the negative bar (state_2) pushes it down.</p>
-<p><img alt="Toy Q: waterfall for one instance" src="../figures/ch8/toy_shap_waterfall.png" /></p>
-<p><strong>Spread across instances.</strong> A beeswarm plot shows one dot per instance per feature; the x-axis is SHAP value and the color is the feature’s value (blue = low, red = high). You see that high state_1 tends to go with positive SHAP (red dots on the right) and high state_2 with negative SHAP — the model’s monotone dependence is visible.</p>
-<p><img alt="Toy Q: beeswarm of SHAP values" src="../figures/ch8/toy_shap_beeswarm.png" /></p>
-<p><strong>Toy policy: which state feature drives the action?</strong> Next, take a toy policy $\pi(s_1, s_2) = \text{clip}(0.5 + 0.4 s_1 - 0.3 s_2)$ with a single action. State_1 pushes the action up, state_2 pushes it down. Policy SHAP attributes the scalar action to the two state inputs. The bar chart shows which state variable the policy "looks at" most; the waterfall for one state shows how each feature's contribution moves the output from the average action $\mathbb{E}[\pi]$ to $\pi(s)$. In the real coating setup (Level 2) we have two action dimensions (heat_input, flow_input); we explain each separately and get one such bar and waterfall per action.</p>
-<p><img alt="Toy policy: mean |SHAP| per state feature" src="../figures/ch8/toy_policy_bar.png" /></p>
-<p><img alt="Toy policy: waterfall for one state" src="../figures/ch8/toy_policy_waterfall.png" /></p>
-<p><strong>Toy dynamics: which input drives the predicted next state?</strong> Finally, a toy dynamics model with two next-state dimensions: $\hat{s}_1' = 0.7 s_1 + 0.2 a$ and $\hat{s}_2' = 0.6 s_2 + 0.15 a$. So the first output is driven by current $s_1$ and action $a$; the second by $s_2$ and $a$. We explain each output separately (as in Level 3). The two-panel bar chart shows mean $|\phi_i|$ for the three inputs $(s_1, s_2, a)$ when predicting $\hat{s}_1'$ and $\hat{s}_2'$ — SHAP recovers that $s_1$ and $a$ matter for next_s1, and $s_2$ and $a$ for next_s2. The waterfall for one $(s, a)$ instance shows how each input's SHAP adds up from the baseline prediction to $\hat{s}_1'$.</p>
-<p><img alt="Toy dynamics: which inputs drive next_s1 and next_s2?" src="../figures/ch8/toy_dynamics_bar.png" /></p>
-<p><img alt="Toy dynamics: waterfall for one (s,a) → next_s1" src="../figures/ch8/toy_dynamics_waterfall.png" /></p>
-<p>All of these figures are produced by running <code>python code/chapter8_toy_figures.py</code> (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.</p>
+<h2>The Coating Process</h2>
+<h3>Environment</h3>
+<p>The <code>CoatingProcessEnv</code> models a continuous thermal coating line with five state variables and two control inputs.</p>
+<p><strong>State</strong> $s \in \mathbb{R}^5$ (all normalized to $[0,1]$):</p>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Variable</th>
+<th>Physical meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$s_0$</td>
+<td><code>temperature</code></td>
+<td>Process temperature in the coating zone</td>
+</tr>
+<tr>
+<td>$s_1$</td>
+<td><code>filler_fraction</code></td>
+<td>Fraction of filler material in the blend</td>
+</tr>
+<tr>
+<td>$s_2$</td>
+<td><code>viscosity</code></td>
+<td>Blend viscosity — nonlinear function of $T$ and filler</td>
+</tr>
+<tr>
+<td>$s_3$</td>
+<td><code>density</code></td>
+<td>Bulk material density</td>
+</tr>
+<tr>
+<td>$s_4$</td>
+<td><code>level</code></td>
+<td>Surge tank fill level — integrating dynamics</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Actions</strong> $a \in [-1,1]^2$:</p>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Action</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$a_0$</td>
+<td><code>heat_input</code></td>
+<td>Heater setpoint delta</td>
+</tr>
+<tr>
+<td>$a_1$</td>
+<td><code>flow_input</code></td>
+<td>Filler feed rate delta</td>
+</tr>
+</tbody>
+</table>
+<p><strong>True dynamics</strong> (unknown to the agent):</p>
+<p><div class="math-display">$$T_{t+1} = \left(1 - \frac{\Delta t}{\tau_T}\right)T_t + \frac{\Delta t}{\tau_T} K_T u_T + \underbrace{0.03 \cdot f_t \cdot u_T}_{\text{cross-coupling}} + \epsilon_T$$</div></p>
+<p><div class="math-display">$$f_{t+1} = \left(1 - \frac{\Delta t}{\tau_f}\right)f_t + \frac{\Delta t}{\tau_f} K_f \cdot \underbrace{u_{f,t-2}}_{\text{delay}} + \epsilon_f$$</div></p>
+<p><div class="math-display">$$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \epsilon_v$$</div></p>
+<p><div class="math-display">$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_f}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_T}_{\text{outflow}}\right) + \epsilon_L$$</div></p>
+<p>Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$.</p>
+<p>Three things are deliberately hidden from the agent's physics model:
+1. The cross-coupling term $0.03 f_t u_T$ in the temperature equation
+2. The two-step transport delay in the filler equation
+3. The quadratic term $0.12 f(1-T)$ in the viscosity relationship</p>
+<p>These represent the gap between first-principles engineering knowledge and reality.</p>
+<p><strong>Reward</strong> function targets temperature, filler fraction, and level stability:</p>
+<p><div class="math-display">$$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$</div></p>
+<p>with setpoints $T^<em> = 0.60$, $f^</em> = 0.50$, $L^* = 0.50$.</p>
+<p><strong>Hard constraints</strong> (violation = irreversible equipment damage or shutdown):</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Lower</th>
+<th>Upper</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>temperature</td>
+<td>0.35</td>
+<td>0.85</td>
+</tr>
+<tr>
+<td>filler fraction</td>
+<td>0.20</td>
+<td>0.75</td>
+</tr>
+<tr>
+<td>viscosity</td>
+<td>0.10</td>
+<td>0.90</td>
+</tr>
+<tr>
+<td>density</td>
+<td>0.30</td>
+<td>0.80</td>
+</tr>
+<tr>
+<td>level</td>
+<td>0.15</td>
+<td>0.85</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">CoatingProcessEnv</span><span class="p">:</span>
+    <span class="n">STATE_DIM</span>  <span class="o">=</span> <span class="mi">5</span>
+    <span class="n">ACTION_DIM</span> <span class="o">=</span> <span class="mi">2</span>
+
+    <span class="n">T_TARGET</span>     <span class="o">=</span> <span class="mf">0.60</span>
+    <span class="n">F_TARGET</span>     <span class="o">=</span> <span class="mf">0.50</span>
+    <span class="n">LEVEL_TARGET</span> <span class="o">=</span> <span class="mf">0.50</span>
+
+    <span class="n">BOUNDS</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="mf">0.35</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">),</span>  <span class="c1"># temperature</span>
+        <span class="p">(</span><span class="mf">0.20</span><span class="p">,</span> <span class="mf">0.75</span><span class="p">),</span>  <span class="c1"># filler_fraction</span>
+        <span class="p">(</span><span class="mf">0.10</span><span class="p">,</span> <span class="mf">0.90</span><span class="p">),</span>  <span class="c1"># viscosity</span>
+        <span class="p">(</span><span class="mf">0.30</span><span class="p">,</span> <span class="mf">0.80</span><span class="p">),</span>  <span class="c1"># density</span>
+        <span class="p">(</span><span class="mf">0.15</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">),</span>  <span class="c1"># level</span>
+    <span class="p">]</span>
+
+    <span class="n">TAU_T</span><span class="p">,</span> <span class="n">TAU_F</span> <span class="o">=</span> <span class="mf">12.0</span><span class="p">,</span> <span class="mf">8.0</span>
+    <span class="n">K_T</span><span class="p">,</span>   <span class="n">K_F</span>   <span class="o">=</span> <span class="mf">0.85</span><span class="p">,</span> <span class="mf">0.90</span>
+    <span class="n">DT</span>           <span class="o">=</span> <span class="mf">1.0</span>
+</code></pre></div>
+
+<h3>Why the Level Variable is the Hardest</h3>
+<p>The first four state variables are <strong>self-regulating</strong>: if the heater is turned off, temperature eventually returns to ambient. The level variable is <strong>integrating</strong>: it has no natural setpoint. Left alone, it drifts in the direction of net flow imbalance. Controlling an integrating state requires the agent to predict the sign and magnitude of its own long-term effect — which is exactly what offline RL struggles with when data is sparse near the constraint boundaries.</p>
+<p>This is not a contrived difficulty. Surge tanks, buffer silos, and intermediate storage vessels are integrating elements in nearly every continuous manufacturing process.</p>
 <hr />
-<h2>Three Levels of Explanation</h2>
-<h3>Level 1: Q-function SHAP — Why Does the Agent Value This Action?</h3>
-<p>The Q-function $Q(s, a)$ takes the concatenated $(s, a)$ vector as input and outputs a scalar value estimate. SHAP on this input answers which features — current state variables or the chosen action — contribute most to the Q-value.</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">QFunctionWrapper</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Wrap QNetwork as numpy-in / numpy-out for SHAP KernelExplainer.</span>
-
-<span class="sd">    Input:  X ∈ R^{n × (state_dim + action_dim)}  — [state | action]</span>
-<span class="sd">    Output: q ∈ R^n                                — Q-value per sample</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">x_t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">X</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-            <span class="n">s</span>   <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">]</span>
-            <span class="n">a</span>   <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">:]</span>
-            <span class="n">q</span>   <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">q</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">q</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-</code></pre></div>
-
-<p>Feature vector: <code>[temperature, filler_frac, viscosity, density, level, heat_input, flow_input]</code>.</p>
-<p>State feature SHAP answers: "was this situation favorable?"
-Action feature SHAP answers: "was this action appropriately chosen for this state?"</p>
-<p><strong>Expected pattern for a well-trained CQL agent:</strong> state features near their setpoints → positive SHAP (favorable situation → high Q). If action SHAP values are near zero regardless of action magnitude, the Q-function ignores the action — a sign of Q-function collapse.</p>
-<h3>Level 2: Policy SHAP — Why Does the Agent Choose This Action?</h3>
-<p>We explain each action dimension separately (SHAP requires scalar output):</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">PolicySingleOutputWrapper</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    action_idx = 0 → heat_input</span>
-<span class="sd">    action_idx = 1 → flow_input</span>
-
-<span class="sd">    Explains deterministic mean action tanh(μ_θ(s)) — not sampled,</span>
-<span class="sd">    so SHAP estimates are stable across calls.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">S</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">s_t</span>     <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">S</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-            <span class="n">mean</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">_dist</span><span class="p">(</span><span class="n">s_t</span><span class="p">)</span>
-            <span class="n">action</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tanh</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">action</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">action_idx</span><span class="p">]</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-</code></pre></div>
-
-<p><strong>Expected pattern:</strong> <code>heat_input</code> driven primarily by <code>temperature</code> deviation; <code>flow_input</code> by <code>filler_frac</code> deviation. If <code>level</code> has high SHAP for <code>flow_input</code>, the policy learned that flow rate affects level — physically correct (level depends on inflow) and a sign that the agent has internalized the integrating dynamics.</p>
-<h3>Level 3: Dynamics SHAP — Why Does the Model Predict This Next State?</h3>
-<p>We explain three output dimensions: <code>next_temperature</code> (0), <code>next_filler_frac</code> (1), <code>next_level</code> (4):</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">DynamicsSingleOutputWrapper</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Explains ensemble mean prediction for one next-state dimension.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">s</span>     <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">]</span>
-            <span class="n">a</span>     <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">:]</span>
-            <span class="n">s_next</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">s_next</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_idx</span><span class="p">]</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-</code></pre></div>
-
-<p><strong>Physics sanity check:</strong> <code>heat_input</code> must have positive mean SHAP for <code>next_temperature</code>; <code>flow_input</code> for <code>next_filler_frac</code>. These follow from first-order dynamics and hold for any physically reasonable model. If violated, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.</p>
-<hr />
-<h2>The Explainer Class</h2>
-<p><code>OfflineRLExplainer</code> manages background construction and SHAP computation for all three levels:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">OfflineRLExplainer</span><span class="p">:</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">,</span> <span class="n">ensemble</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span>
-                 <span class="n">s_mean</span><span class="p">,</span> <span class="n">s_std</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">n_background</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
-        <span class="c1"># Background = representative sample from offline dataset</span>
-        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span>
-            <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">]),</span> <span class="n">size</span><span class="o">=</span><span class="n">n_background</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span>  <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bg_sa</span>      <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
-            <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-</code></pre></div>
-
-<p>The background defines $\phi_0$ — the average model output. Using the offline dataset means SHAP values answer: <em>"how does this transition differ from a typical observed transition?"</em></p>
-<div class="codehilite"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">explainer</span><span class="o">.</span><span class="n">explain_all</span><span class="p">(</span>
-    <span class="n">n_explain</span>    <span class="o">=</span> <span class="mi">150</span><span class="p">,</span>   <span class="c1"># instances to explain</span>
-    <span class="n">n_background</span> <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>    <span class="c1"># background dataset size</span>
-    <span class="n">n_samples</span>    <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>    <span class="c1"># SHAP coalitions per instance</span>
+<h2>The Dataset: Operating Regimes</h2>
+<p>Industrial data is not uniformly distributed. <code>collect_industrial_dataset</code> simulates three operating regimes that appear in real historical logs:</p>
+<p><strong>Normal operation (60% of episodes):</strong> The process runs near its setpoints. The behavior policy is a proportional controller with moderate exploration noise. This is the bulk of the data — the region where all algorithms will perform reasonably.</p>
+<p><strong>Setpoint transitions (25%):</strong> Episodes start away from the nominal operating point. Higher noise, shifted initial states. These transitions stress-test the agent's ability to drive the process back to setpoint rather than just maintaining it.</p>
+<p><strong>Disturbances (15%):</strong> Unusual initial conditions — specifically, level disturbances where the surge tank starts far below normal. These are the episodes where constraint violations are most likely and where the physics model is most valuable.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">dataset</span> <span class="o">=</span> <span class="n">collect_industrial_dataset</span><span class="p">(</span>
+    <span class="n">n_episodes</span><span class="o">=</span><span class="mi">400</span><span class="p">,</span>
+    <span class="n">episode_len</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="n">noise_scale</span><span class="o">=</span><span class="mf">0.30</span><span class="p">,</span>
+    <span class="n">regime_split</span><span class="o">=</span><span class="p">(</span><span class="mf">0.60</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.15</span><span class="p">),</span>
 <span class="p">)</span>
-<span class="c1"># results keys: &#39;states&#39;, &#39;actions&#39;, &#39;q_shap&#39;,</span>
-<span class="c1">#               &#39;policy_shap&#39;, &#39;dynamics_shap&#39;, &#39;q_base&#39;</span>
 </code></pre></div>
 
-<p><code>n_samples</code> controls approximation quality. At 80, standard error is ~0.005 on normalized outputs — sufficient for feature ranking. At 500 the estimates are publication-quality but 6× slower.</p>
+<p>This distribution creates the characteristic industrial imbalance: the trained agents will encounter disturbance scenarios rarely during evaluation but must handle them correctly. An agent that learned only from normal-operation data will be systematically undertrained for the 15% of situations that matter most.</p>
 <hr />
-<h2>Visualization</h2>
-<h3>Summary Plot (Q-function)</h3>
-<p>Beeswarm plot: each dot is one instance, colored by feature value (blue=low, red=high), x-axis is SHAP value.</p>
-<div class="codehilite"><pre><span></span><code><span class="n">plot_q_summary</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
-               <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_q_summary.png&#39;</span><span class="p">)</span>
-</code></pre></div>
+<h2>Evaluation: Industrial Metrics</h2>
+<p>Standard RL metrics — episode return, normalized score — are insufficient for industrial evaluation. <code>IndustrialEvaluator</code> computes five metrics that matter in practice.</p>
+<h3>Directional Accuracy (DA)</h3>
+<p><div class="math-display">$$\text{DA}_x = \frac{1}{T}\sum_{t=1}^T \mathbf{1}\!\left[\Delta x_t \cdot (x^* - x_{t-1}) \geq 0\right]$$</div></p>
+<p>DA measures whether the controlled variable moved <em>toward</em> its setpoint at each step, regardless of how far it moved. A policy that always moves in the right direction but slowly has DA = 1.0. A policy that systematically pushes variables the wrong way has DA &lt; 0.5 (worse than random).</p>
+<p>DA is often more informative than RMSE in industrial settings because:
+- A slow policy with DA ≈ 1.0 can be sped up by tuning the action scaling
+- A fast policy with DA ≈ 0.4 requires fundamental retraining
+- Operators can visually verify DA from trend plots without numerical analysis</p>
+<h3>RMSE and Constraint Violation Rate</h3>
+<p>RMSE from setpoint is computed per variable:</p>
+<p><div class="math-display">$$\text{RMSE}_x = \sqrt{\frac{1}{T}\sum_t (x_t - x^*)^2}$$</div></p>
+<p>Constraint violation rate is the fraction of time steps where any state variable falls outside its hard bounds. Severity measures the mean violation magnitude <em>given</em> that a violation occurred:</p>
+<p><div class="math-display">$$\text{severity} = \frac{\sum_t \max(0,\, g(s_t))}{\sum_t \mathbf{1}[g(s_t) > 0]}$$</div></p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">IndustrialEvaluator</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Computes: reward_mean, reward_std, T_rmse, f_rmse, level_rmse,</span>
+<span class="sd">              da_T, da_f, da_mean, constraint_viol_rate,</span>
+<span class="sd">              constraint_viol_severity</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
-<p>Reading patterns:
-- <strong>Wide horizontal spread</strong> → feature has variable impact
-- <strong>Red-right / blue-left consistently</strong> → monotone relationship
-- <strong>Mixed colors</strong> → nonlinear or interaction-dependent</p>
-<h3>Bar Charts (Policy and Dynamics)</h3>
-<p>Mean |SHAP| per feature — answers "which features matter most?"</p>
-<div class="codehilite"><pre><span></span><code><span class="n">plot_policy_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;policy_shap&#39;</span><span class="p">],</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
-                <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_policy_bar.png&#39;</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">evaluate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+        <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_episodes</span><span class="p">):</span>
+            <span class="n">obs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">reset</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="mi">8000</span> <span class="o">+</span> <span class="n">ep</span><span class="p">)</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="n">done</span><span class="p">:</span>
+                <span class="n">prev_T</span><span class="p">,</span> <span class="n">prev_f</span> <span class="o">=</span> <span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">s_t</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span>
+                    <span class="p">(</span><span class="n">obs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_mean</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_std</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">act</span>  <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">act</span><span class="p">(</span><span class="n">s_t</span><span class="p">,</span> <span class="n">deterministic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="n">obs</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">done</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">act</span><span class="p">)</span>
 
-<span class="n">plot_dynamics_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;dynamics_shap&#39;</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
-                  <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_dynamics_bar.png&#39;</span><span class="p">)</span>
-</code></pre></div>
+                <span class="c1"># Directional accuracy</span>
+                <span class="n">da_T</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">T_TARGET</span><span class="o">-</span><span class="n">prev_T</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+                <span class="n">da_f</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">obs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">env</span><span class="o">.</span><span class="n">F_TARGET</span><span class="o">-</span><span class="n">prev_f</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
 
-<h3>Force Plot: Single Instance</h3>
-<p>The most operationally useful visualization. For a single time step, shows each feature's contribution as a waterfall from baseline to final Q-value:</p>
-<div class="codehilite"><pre><span></span><code><span class="n">best</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">q_vals</span><span class="p">))</span>   <span class="c1"># highest-Q instance</span>
-<span class="n">plot_force_single</span><span class="p">(</span>
-    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][</span><span class="n">best</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
-    <span class="n">q_value</span><span class="o">=</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">],</span> <span class="n">q_base</span><span class="o">=</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_base&#39;</span><span class="p">],</span>
-    <span class="n">instance_label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;Highest-Q instance (Q=</span><span class="si">{</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">]</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">)&#39;</span><span class="p">,</span>
-    <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch8_force_best.png&#39;</span><span class="p">)</span>
-</code></pre></div>
-
-<p>An operator can use this to answer: "why did the agent rate this moment as high-value?" If the answer is "temperature near setpoint, level stable" — sensible. If "viscosity unusually low" when the setpoint is on temperature — a spurious correlation to investigate.</p>
-<h3>Dependence Plot: Interactions</h3>
-<p>SHAP of feature A vs its raw value, colored by feature B — reveals interaction effects:</p>
-<div class="codehilite"><pre><span></span><code><span class="n">plot_shap_dependence</span><span class="p">(</span>
-    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][:,</span> <span class="p">:</span><span class="nb">len</span><span class="p">(</span><span class="n">STATE_NAMES</span><span class="p">)],</span>
-    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">],</span>
-    <span class="n">feature_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>       <span class="c1"># temperature</span>
-    <span class="n">interaction_idx</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>   <span class="c1"># colored by filler_frac</span>
-    <span class="n">feature_names</span><span class="o">=</span><span class="n">STATE_NAMES</span><span class="p">,</span>
-    <span class="n">title</span><span class="o">=</span><span class="s1">&#39;Q-SHAP: temperature effect (colored by filler_frac)&#39;</span><span class="p">)</span>
-</code></pre></div>
-
-<p>If temperature SHAP values split systematically by filler color, there is an interaction: the Q-function's response to temperature depends on filler level. For a physics-informed agent this is expected — viscosity is a nonlinear function of both.</p>
-<hr />
-<h2>Consistency Check</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">metrics</span> <span class="o">=</span> <span class="n">check_explanation_consistency</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
-<span class="n">print_consistency_report</span><span class="p">(</span><span class="n">metrics</span><span class="p">)</span>
-</code></pre></div>
-
-<p>Expected output:</p>
-<div class="codehilite"><pre><span></span><code>  Q ↔ policy rank correlation  : 0.71  ✓ aligned
-  heat_input → next_temperature: SHAP=+0.0412  ✓ positive (correct)
-  flow_input → next_filler     : SHAP=+0.0387  ✓ positive (correct)
-</code></pre></div>
-
-<p><strong>Q-policy Spearman $\rho$:</strong> ranks state features by mean |SHAP| in Q-function and policy. $\rho &gt; 0.6$ means the agent's critic and actor attend to the same features. $\rho &lt; 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.</p>
-<p><strong>Physics sign tests:</strong> <code>heat_input</code> → <code>next_temperature</code> SHAP must be positive; <code>flow_input</code> → <code>next_filler_frac</code> SHAP must be positive. Failure indicates the dynamics model learned a physically inverted relationship in some data region — common when coverage near boundaries is very sparse.</p>
-<hr />
-<h2>SHAP in Production: Practical Considerations</h2>
-<p><strong>Computational cost.</strong> KernelExplainer makes $n_\text{explain} \times n_\text{samples} \times n_\text{background}$ model evaluations. For 150 × 80 × 80 = 960,000 calls this takes minutes on CPU. Practical strategy: run offline before deployment on a held-out validation set; re-run monthly on recent operating data to detect distribution shift.</p>
-<p><strong>Background dataset choice</strong> is the most important hyperparameter. Full dataset background answers "difference from typical operation." Constraint-region background answers "what distinguishes near-violations from typical near-violations?" — useful for diagnosing why the agent approaches boundaries.</p>
-<p><strong>Physical units.</strong> States are normalized. To communicate with operators:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Convert SHAP back to physical units</span>
-<span class="n">shap_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][:,</span> <span class="p">:</span><span class="n">S</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span>
-<span class="c1"># SHAP of 0.04 on normalized temperature = 0.04 × σ_T physical degrees</span>
+                <span class="c1"># Constraint tracking</span>
+                <span class="n">viol</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;constraint_violation&#39;</span><span class="p">]</span>   <span class="c1"># sum of boundary overruns</span>
 </code></pre></div>
 
 <hr />
-<h2>What SHAP Cannot Tell You</h2>
-<p><strong>SHAP ≠ causal effect.</strong> High SHAP for <code>viscosity</code> means the model uses viscosity as a predictor, not that viscosity causally affects Q-value. If viscosity is correlated with temperature (it is), SHAP may split credit between them in ways that don't match physics.</p>
-<p><strong>SHAP values depend on the background.</strong> A feature can have high SHAP against one background and low against another. Hold the background fixed when comparing across runs.</p>
-<p><strong>Temporal structure is lost.</strong> KernelExplainer explains each instance independently. For integrating states like level, the agent's reasoning depends on trajectory history. Single-step SHAP cannot capture this dependency.</p>
-<p><strong>SHAP explains the model, not whether the model is correct.</strong> If the Q-function overestimates in some region (a known offline RL failure mode), SHAP will faithfully explain the overestimation. Consistency checks can detect some failure modes, but SHAP is not a substitute for evaluation metrics from Chapter 9.</p>
-<hr />
-<h2>Beyond SHAP: Causal AI in Offline RL</h2>
-<p>SHAP is a well-established tool for <em>attribution</em> — which inputs the model uses for a prediction. A different line of work asks: can we make Offline RL agents reason in terms of <em>cause and effect</em>, so they generalize better and avoid spurious correlations?</p>
-<p><strong>Why causality matters in Offline RL.</strong> Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones — e.g. in autonomous driving, "rain → wipers on" and "rain → braking" are correlated, but only one is a direct cause of the other.</p>
-<p><strong>Causal RL in practice.</strong> Recent work includes:</p>
-<ul>
-<li><strong>Causal world models.</strong> Instead of a single black-box $\hat{s}' = f(s, a)$, algorithms like FOCUS learn <em>causal structure</em> over state variables (which state factors cause which next-state factors). Theory shows that such structure can improve generalization bounds in offline model-based RL; experiments show more robust behavior when the environment or data distribution changes.</li>
-<li><strong>Deconfounding.</strong> When data is confounded (e.g. a hidden variable drives both action and outcome), do-calculus and latent causal transition models allow combining offline observational data with limited online interventional data safely.</li>
-<li><strong>Surveys and taxonomy.</strong> Causal RL is often categorized into: causal representation learning, counterfactual policy optimization, <em>offline</em> causal RL, causal transfer, and causal explainability. The last connects directly to this chapter: explanations that reflect cause–effect structure are easier to trust and to debug.</li>
-</ul>
-<p><strong>Resources.</strong> The survey by Deng et al. (2023) gives a unified view of causal RL and includes a section on offline/batch settings. The FOCUS paper (Zhang et al.) is a concrete example of causal-structured world models for offline model-based RL. For the link between off-policy evaluation and causal inference (treatment effect estimation), see the batch RL / causal inference literature (e.g. the connection between importance sampling and inverse propensity scoring). References are listed below.</p>
-<p><strong>Toy code example.</strong> A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ — correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an <em>intervention</em> we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: <code>python code/chapter8_causal_toy.py</code>. Core idea:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># True dynamics (unknown to learner): next_s1 = 0.8*s1 + 0.2*a</span>
-<span class="c1"># Nuisance z = s1 + noise — correlated with s1, not a cause of next_s1</span>
-<span class="c1"># Correlation model: fit next_s1 from (s2, z, a)</span>
-<span class="c1"># Causal model:       fit next_s1 from (s1, a)</span>
-<span class="c1"># Intervention: s1=0.2, z=0.9, a=0.5 → true next_s1=0.26</span>
-<span class="c1">#   Correlation model (sees z=0.9, no s1) → predicts ~0.7 (wrong)</span>
-<span class="c1">#   Causal model (sees s1=0.2, a=0.5)    → predicts 0.26 (correct)</span>
+<h2>The Physics Model</h2>
+<p>The known physics for the coating process is encoded in <code>coating_physics_fn</code>. It implements the first-order responses and the mass balance exactly, but omits the cross-coupling, transport delay, and viscosity nonlinearity:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">coating_physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                        <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="n">T</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">L</span> <span class="o">=</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">4</span><span class="p">]</span>
+    <span class="n">heat_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
+    <span class="n">flow_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
+
+    <span class="n">T_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">T</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_T</span> <span class="o">*</span> <span class="n">heat_in</span>
+    <span class="n">f_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">f</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_F</span> <span class="o">*</span> <span class="n">flow_in</span>
+
+    <span class="c1"># Linearized viscosity (true is nonlinear)</span>
+    <span class="n">v_new</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.75</span> <span class="o">-</span> <span class="mf">0.45</span><span class="o">*</span><span class="n">T_new</span> <span class="o">+</span> <span class="mf">0.38</span><span class="o">*</span><span class="n">f_new</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">d_new</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.55</span> <span class="o">+</span> <span class="mf">0.25</span><span class="o">*</span><span class="n">f_new</span> <span class="o">-</span> <span class="mf">0.10</span><span class="o">*</span><span class="n">T_new</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="c1"># Mass balance — good approximation of true level dynamics</span>
+    <span class="n">inflow</span>  <span class="o">=</span> <span class="n">flow_in</span> <span class="o">*</span> <span class="mf">0.4</span>
+    <span class="n">outflow</span> <span class="o">=</span> <span class="n">L</span> <span class="o">*</span> <span class="mf">0.35</span> <span class="o">+</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">heat_in</span>
+    <span class="n">L_new</span>   <span class="o">=</span> <span class="p">(</span><span class="n">L</span> <span class="o">+</span> <span class="n">DT</span> <span class="o">*</span> <span class="p">(</span><span class="n">inflow</span> <span class="o">-</span> <span class="n">outflow</span><span class="p">))</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">T_new</span><span class="p">,</span> <span class="n">f_new</span><span class="p">,</span> <span class="n">v_new</span><span class="p">,</span> <span class="n">d_new</span><span class="p">,</span> <span class="n">L_new</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 </code></pre></div>
 
-<blockquote>
-<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter8_causal_toy.py"><code>chapter8_causal_toy.py</code></a></p>
-</blockquote>
+<p>Before training the hybrid ensemble, it is essential to run <code>diagnose_physics_coverage</code> to verify that the physics model is actually useful:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">ensemble</span><span class="o">.</span><span class="n">diagnose_physics_coverage</span><span class="p">(</span><span class="n">norm_dataset</span><span class="p">)</span>
+
+<span class="c1"># Expected output:</span>
+<span class="c1">#   Physics model coverage (fraction of variance explained):</span>
+<span class="c1">#   state dim 0 (temperature):     91.3%  ██████████████████░░</span>
+<span class="c1">#   state dim 1 (filler_fraction): 83.7%  ████████████████░░░░</span>
+<span class="c1">#   state dim 2 (viscosity):       64.2%  ████████████░░░░░░░░</span>
+<span class="c1">#   state dim 3 (density):         79.8%  ████████████████░░░░</span>
+<span class="c1">#   state dim 4 (level):           93.1%  ██████████████████░░</span>
+<span class="c1">#   Overall: 82.4%</span>
+</code></pre></div>
+
+<p>Coverage above 80% overall means the residual network needs to learn a 20%-amplitude correction — roughly one quarter the network capacity of a pure black-box model at the same prediction accuracy.</p>
+<hr />
+<h2>Algorithm 1: Behavioral Cloning</h2>
+<p>BC is the baseline: clone the behavior policy directly. Its failure mode on industrial data is predictable — compounding error during setpoint transitions and disturbances, where the agent encounters states it never saw during training.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">bc</span> <span class="o">=</span> <span class="n">CQLBCAgent</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="n">train_bc</span><span class="p">(</span><span class="n">bc</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+</code></pre></div>
+
+<p>BC's DA will be high in normal-operation episodes (the behavior policy was a competent proportional controller) and low during disturbance recovery. Constraint violations are rare in normal operation and frequent in disturbances — exactly the scenarios BC was least trained for.</p>
+<hr />
+<h2>Algorithm 2: CQL</h2>
+<p>CQL (Chapter 4) adds conservatism via the penalty on out-of-distribution Q-values. On industrial data it consistently outperforms BC in disturbance scenarios because the pessimistic Q-function prevents the policy from taking actions that look good under the learned Q but are rare in the dataset.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">cql</span> <span class="o">=</span> <span class="n">CQLAgent</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">,</span> <span class="n">alpha_cql</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="n">train_cql_agent</span><span class="p">(</span><span class="n">cql</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+</code></pre></div>
+
+<p>CQL's remaining weakness: it has no mechanism to avoid physically inconsistent actions. A setpoint command that CQL's Q-function rates highly may still violate a mass balance or push the level toward a constraint boundary.</p>
+<hr />
+<h2>Algorithm 3: CQL + Physics Reward Shaping</h2>
+<p><code>PhysicsInformedCQL</code> wraps <code>CQLAgent</code> with <code>PhysicsRewardWrapper</code> (Chapter 9). The modification to the training loop is exactly one line: replace the batch reward <code>r</code> with <code>r - penalty</code> before calling <code>CQLAgent.update</code>.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span> <span class="o">=</span> <span class="n">make_coating_constraints</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">PhysicsInformedCQL</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">):</span>
+        <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">]</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">penalty</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+                <span class="n">lam</span> <span class="o">*</span> <span class="n">g</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cql</span><span class="o">.</span><span class="n">update</span><span class="p">((</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span> <span class="o">-</span> <span class="n">penalty</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+</code></pre></div>
+
+<p>The <code>lambdas</code> are calibrated via <code>calibrate_lambda</code> (Theorem 6.1): set $\lambda$ so that the Theorem 6.1 optimality gap is at most 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.</p>
+<p>Three constraints are active:
+1. <strong>Operating bounds</strong> — all five state variables within hard limits
+2. <strong>Temperature first-order consistency</strong> — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
+3. <strong>Filler fraction first-order consistency</strong> — same for filler</p>
+<p>The first-order consistency constraints do not punish the agent for choosing unusual setpoints — they punish the dynamics model for predicting physically impossible transitions, which indirectly constrains the policy to stay in regions where dynamics are predictable.</p>
+<hr />
+<h2>Algorithm 4: HybridMOReL</h2>
+<p><code>HybridMOReL</code> combines the model-based approach from Chapter 8 with the hybrid dynamics model from Chapter 9. The structure is a two-phase training loop.</p>
+<p><strong>Phase 1 — Dynamics training:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="n">hm</span> <span class="o">=</span> <span class="n">HybridMOReL</span><span class="p">(</span>
+    <span class="n">state_dim</span>   <span class="o">=</span> <span class="n">STATE_DIM</span><span class="p">,</span>
+    <span class="n">action_dim</span>  <span class="o">=</span> <span class="n">ACTION_DIM</span><span class="p">,</span>
+    <span class="n">physics_fn</span>  <span class="o">=</span> <span class="n">coating_physics_fn</span><span class="p">,</span>
+    <span class="n">n_ensemble</span>  <span class="o">=</span> <span class="mi">4</span><span class="p">,</span>
+    <span class="n">hidden_dim</span>  <span class="o">=</span> <span class="mi">128</span><span class="p">,</span>
+    <span class="n">halt_thresh</span> <span class="o">=</span> <span class="mf">0.15</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">hm</span><span class="o">.</span><span class="n">train_dynamics</span><span class="p">(</span><span class="n">norm_dataset</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+<span class="c1"># Output:</span>
+<span class="c1">#   Physics coverage: 82.4% — strong</span>
+<span class="c1">#   Training hybrid ensemble: 4 models × 30 epochs</span>
+<span class="c1">#   ✓ HybridEnsemble installed in MOReL</span>
+</code></pre></div>
+
+<p>After training, the hybrid ensemble is installed in the MOReL agent by swapping <code>morel_agent.ensemble</code>. The MOReL rollout generator (<code>generate_synthetic_data</code>) continues to call <code>ensemble.predict_with_uncertainty</code> — it does not know or care whether the ensemble is pure black-box or hybrid.</p>
+<p><strong>Phase 2 — Policy training via MOReL:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="n">train_morel</span><span class="p">(</span>
+    <span class="n">agent</span>               <span class="o">=</span> <span class="n">hm</span><span class="o">.</span><span class="n">morel_agent</span><span class="p">,</span>
+    <span class="n">dataset</span>             <span class="o">=</span> <span class="n">norm_dataset</span><span class="p">,</span>
+    <span class="n">env</span>                 <span class="o">=</span> <span class="n">env</span><span class="p">,</span>         <span class="c1"># real env for evaluation only</span>
+    <span class="n">n_outer_iters</span>       <span class="o">=</span> <span class="mi">15</span><span class="p">,</span>
+    <span class="n">sac_steps_per_iter</span>  <span class="o">=</span> <span class="mi">300</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>MOReL's P-MDP construction applies the HALT penalty whenever ensemble uncertainty exceeds <code>halt_thresh</code>. With the hybrid ensemble, uncertainty estimates are better calibrated: in OOD regions where the residual network has no training data, the physics term keeps the prediction physically plausible rather than arbitrary. This reduces spurious HALT events caused by the pure black-box ensemble producing nonsensical predictions in physically reachable but data-sparse states.</p>
+<hr />
+<h2>Results</h2>
+<p>Running the full benchmark:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">run_industrial_benchmark</span><span class="p">(</span>
+    <span class="n">device</span>       <span class="o">=</span> <span class="s1">&#39;cpu&#39;</span><span class="p">,</span>
+    <span class="n">n_train_ep</span>   <span class="o">=</span> <span class="mi">400</span><span class="p">,</span>
+    <span class="n">n_bc_epochs</span>  <span class="o">=</span> <span class="mi">60</span><span class="p">,</span>
+    <span class="n">n_cql_epochs</span> <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>
+    <span class="n">n_morel_iters</span><span class="o">=</span> <span class="mi">15</span><span class="p">,</span>
+    <span class="n">n_eval_ep</span>    <span class="o">=</span> <span class="mi">20</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>Typical output (exact numbers depend on random seed):</p>
+<div class="codehilite"><pre><span></span><code>══════════════════════════════════════════════════════════════
+  CHAPTER 7 — INDUSTRIAL BENCHMARK RESULTS
+══════════════════════════════════════════════════════════════
+Metric                BC      CQL   CQL+Phys  HybridMOReL
+──────────────────────────────────────────────────────────────
+Reward (mean)       -18.4   -14.2    -13.8   ▶  -12.1
+DA (mean)            61.3%   71.8%   73.4%  ▶   79.2%
+DA temperature       64.1%   73.5%   75.1%  ▶   81.3%
+DA filler            58.4%   70.1%   71.6%  ▶   77.1%
+T RMSE               0.0921  0.0712  0.0698  ▶  0.0581
+f RMSE               0.1043  0.0834  0.0811  ▶  0.0693
+Level RMSE           0.0874  0.0748  0.0701  ▶  0.0612
+Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+══════════════════════════════════════════════════════════════
+</code></pre></div>
+
+<h3>Reading the Results</h3>
+<p><strong>BC</strong> performs adequately in normal operation but fails during disturbances. Its DA is just above 60% — better than random, but below the 80% industrial threshold. Constraint violations occur because BC never saw the level variable near its bounds during training.</p>
+<p><strong>CQL</strong> improves across all metrics. Conservatism in the Q-function prevents the worst extrapolation failures. But violation rate remains at 2.8% — CQL has no mechanism to specifically avoid constraint boundaries.</p>
+<p><strong>CQL+Physics</strong> reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions. The violation severity also drops even more than the rate, meaning that when violations do occur they are shallower.</p>
+<p><strong>HybridMOReL</strong> achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.</p>
+<h3>The Complementary Structure</h3>
+<p>These results reveal a complementary structure worth understanding.</p>
+<p><strong>CQL+Physics</strong> is the violation minimizer: it explicitly penalizes constraint approaches and achieves the lowest violation rate. But it uses only real data — its synthetic experience is zero.</p>
+<p><strong>HybridMOReL</strong> is the performance maximizer: model-based rollouts push the policy to higher reward and DA, but without explicit constraint penalties the violation rate is slightly elevated.</p>
+<p>In a real deployment, the natural combination is <strong>HybridMOReL + physics reward shaping</strong> — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to <code>train_hybrid_morel_agent</code>: pass the <code>PhysicsRewardWrapper</code> into the rollout generator. Chapter 9 showed exactly how to do this.</p>
+<hr />
+<h2>Engineering Decisions Revisited</h2>
+<p>Working through this case study surfaces several decisions that do not appear in benchmark papers.</p>
+<h3>The Transport Delay Problem</h3>
+<p>The filler equation has a two-step delay: the agent's flow input at time $t$ affects the filler fraction at time $t+2$, not $t+1$. The physics model ignores this delay — it predicts an immediate first-order response.</p>
+<p>This means the hybrid ensemble's residual must learn the delay effect from data. With enough transitions, it can. The tell-tale sign of a delay mismatch is a systematic residual that is positive when flow_input recently increased and negative when it recently decreased. If <code>diagnose_physics_coverage</code> shows low coverage for the filler dimension (below 60%), the likely cause is an unmodeled delay.</p>
+<p>The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model account for them. The engineering knowledge required is only the approximate delay length — the exact value can be learned from the residual.</p>
+<h3>Constraint Calibration</h3>
+<p><code>make_coating_constraints</code> uses <code>calibrate_lambda</code> for the bounds constraint and sets $\lambda = 2.0$ manually for the first-order consistency constraints. The manual values are reasonable starting points but should be verified:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Check constraint violation rates on the training dataset</span>
+<span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">constraints</span><span class="p">,</span> <span class="n">lambdas</span><span class="p">):</span>
+    <span class="n">violations</span> <span class="o">=</span> <span class="n">g</span><span class="p">(</span><span class="n">s_train</span><span class="p">,</span> <span class="n">a_train</span><span class="p">,</span> <span class="n">s2_train</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  λ=</span><span class="si">{</span><span class="n">lam</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> | violations: </span><span class="si">{</span><span class="p">(</span><span class="n">violations</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">float</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2"> &quot;</span>
+          <span class="sa">f</span><span class="s2">&quot;| mean_magnitude: </span><span class="si">{</span><span class="n">violations</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>If a constraint is violated on more than 20% of training transitions, either the tolerance is too tight or the physics model is inaccurate for that variable. In both cases, increasing the tolerance or loosening the manual $\lambda$ is better than tightening the constraint — a constraint that fires too often becomes a second reward signal rather than a physics correction.</p>
+<h3>Normalizing the 5D State</h3>
+<p>Five variables with different physical scales and variances require per-dimension normalization. The provided <code>normalize_dataset</code> normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — centering the reward would remove the sign information that distinguishes good states from bad.</p>
 <hr />
 <h2>Summary</h2>
-<p>Three complementary SHAP explanations for a trained Offline RL agent:</p>
+<p>This chapter translated the tools from Chapters 1–8 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
+<p>The comparison across four algorithms reveals a clean hierarchy:</p>
 <table>
 <thead>
 <tr>
-<th>Level</th>
-<th>Model</th>
-<th>Question</th>
-<th>Input space</th>
+<th>Algorithm</th>
+<th>Relies on</th>
+<th>Strength</th>
+<th>Weakness</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Q-function SHAP</td>
-<td>Critic $Q(s,a)$</td>
-<td>Why is this action valued here?</td>
-<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+<td>BC</td>
+<td>Data imitation</td>
+<td>Simple, interpretable</td>
+<td>Compounding error; constraint-blind</td>
 </tr>
 <tr>
-<td>Policy SHAP</td>
-<td>Actor $\pi(s)$</td>
-<td>Why was this action chosen?</td>
-<td>$s \in \mathbb{R}^S$</td>
+<td>CQL</td>
+<td>Conservative Q-values</td>
+<td>Better OOD generalization</td>
+<td>No physical constraint mechanism</td>
 </tr>
 <tr>
-<td>Dynamics SHAP</td>
-<td>$\hat{f}(s,a)$</td>
-<td>Why is this next state predicted?</td>
-<td>$(s, a) \in \mathbb{R}^{S+A}$</td>
+<td>CQL+Physics</td>
+<td>CQL + penalty</td>
+<td>Lowest violation rate</td>
+<td>Uses only real data</td>
+</tr>
+<tr>
+<td>HybridMOReL</td>
+<td>Model-based + hybrid</td>
+<td>Best reward and DA</td>
+<td>Higher violation rate without explicit penalty</td>
 </tr>
 </tbody>
 </table>
-<p>The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.</p>
-<p>Chapter 11 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
-<hr />
-<h2>Appendix 8.A: Choosing Between SHAP Variants</h2>
-<table>
-<thead>
-<tr>
-<th>Explainer</th>
-<th>Best for</th>
-<th>Speed</th>
-<th>Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>KernelExplainer</code></td>
-<td>Any black-box</td>
-<td>Slow</td>
-<td>Used throughout — consistent across all model types</td>
-</tr>
-<tr>
-<td><code>DeepExplainer</code></td>
-<td>PyTorch / TF nets</td>
-<td>Fast</td>
-<td>Uses backprop; less accurate near tanh saturation</td>
-</tr>
-<tr>
-<td><code>GradientExplainer</code></td>
-<td>Differentiable nets</td>
-<td>Medium</td>
-<td>Gradient × input; fast but noisy</td>
-</tr>
-<tr>
-<td><code>TreeExplainer</code></td>
-<td>XGBoost, RF</td>
-<td>Very fast</td>
-<td>Exact SHAP; irrelevant for neural policies</td>
-</tr>
-<tr>
-<td><code>LinearExplainer</code></td>
-<td>Linear models</td>
-<td>Instant</td>
-<td>Exact; use if policy is distilled to a linear surrogate</td>
-</tr>
-</tbody>
-</table>
-<p>For fast per-step operator explanations in a deployed system: distill the policy to a shallow <code>DecisionTreeRegressor</code> and use <code>TreeExplainer</code>. The distillation loses some accuracy but makes each decision explainable in $&lt; 1$ms.</p>
+<p>The practical recommendation for industrial deployment: <strong>start with CQL+Physics</strong> (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, <strong>add the hybrid ensemble</strong> as a source of diverse synthetic experience.</p>
+<p>Chapter 11 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.</p>
 <hr />
 <h2>References</h2>
 <ul>
-<li>Lundberg, S.M., &amp; Lee, S.I. (2017). <em>A Unified Approach to Interpreting Model Predictions.</em> NeurIPS. <a href="https://arxiv.org/abs/1705.07874">arXiv:1705.07874</a>.</li>
-<li>Lundberg, S.M., Erion, G., Chen, H. et al. (2020). <em>From Local Explanations to Global Understanding with Explainable AI for Trees.</em> Nature Machine Intelligence. <a href="https://arxiv.org/abs/1905.04610">arXiv:1905.04610</a>.</li>
-<li>Shapley, L.S. (1953). <em>A Value for n-Person Games.</em> In Contributions to the Theory of Games.</li>
-<li>Ribeiro, M.T., Singh, S., &amp; Guestrin, C. (2016). <em>"Why Should I Trust You?": Explaining the Predictions of Any Classifier.</em> KDD. <a href="https://arxiv.org/abs/1602.04938">arXiv:1602.04938</a>.</li>
-<li>Molnar, C. (2022). <em><a href="https://interpretable-ml.github.io/">Interpretable Machine Learning</a>.</em> 2nd ed.</li>
-<li>Doshi-Velez, F., &amp; Kim, B. (2017). <em>Towards a Rigorous Science of Interpretable Machine Learning.</em> <a href="https://arxiv.org/abs/1702.08608">arXiv:1702.08608</a>.</li>
-<li>Deng, Z., Jiang, J., Long, G., &amp; Zhang, C. (2023). <em>Causal Reinforcement Learning: A Survey.</em> TMLR. <a href="https://arxiv.org/abs/2307.01452">arXiv:2307.01452</a>.</li>
-<li>Zhang, Y., et al. (2022). <em>Offline Model-Based Reinforcement Learning with Causal Structure.</em> Front. Comput. Sci. <a href="https://arxiv.org/abs/2206.01474">arXiv:2206.01474</a> (FOCUS).</li>
-<li>Buesing, L., et al. (2020). <em>Woulda, Coulda, Shoulda: Counterfactually-Guided Policy Search.</em> ICLR. <a href="https://arxiv.org/abs/2006.02579">arXiv:2006.02579</a> — connection between batch RL and causal inference.</li>
+<li>All references from Chapters 1–8 apply to the algorithms used here.</li>
+<li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(PID baseline, first-order process models)</em></li>
+<li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(industrial process control, transport delay)</em></li>
+<li>Rawlings, J.B., Mayne, D.Q., &amp; Diehl, M. (2017). <em>Model Predictive Control.</em> Nob Hill. <em>(MPC for comparison context)</em></li>
 </ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/en/chapter9.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Industrial Applications</span></a>
-    <a href="/offline-rl-book/en/chapter11.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Conclusion and Future Directions</span></a>
+<a href="/offline-rl-book/en/chapter9.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Physics-Informed Offline RL</span></a>
+    <a href="/offline-rl-book/en/chapter11.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Explainability in Offline RL</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Глава 6: Decision Transformers</title>
+  <title>Глава 6: Ограничение политики и Actor-Critic (TD3+BC, AWAC)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -58,114 +58,123 @@
   </div>
 </header>
 <main>
-<h1>Глава 6: Decision Transformers</h1>
+<h1>Глава 6: Ограничение политики и Actor-Critic (TD3+BC, AWAC)</h1>
 <blockquote>
-<p><em>«Что если мы вообще не вычисляем Bellman-бэкап? Спросим: при данной истории и данном желаемом return — какое действие выбрал бы хороший агент?»</em></p>
+<p><em>«Держись того, что видел — но используй критика, чтобы опереться на лучшее из этого.»</em></p>
 </blockquote>
 <hr />
-<h2>Другая парадигма</h2>
-<p>В главах 2–5 общим был костяк: <strong>функция ценности</strong> (Q или V) и <strong>политика</strong>, обучение с Bellman-бэкапами или policy gradient. Проблема — экстраполяционная ошибка; мы решали её пессимизмом (CQL, IQL) или ограничениями политики (TD3+BC, AWAC).</p>
-<p><strong>Decision Transformer (DT)</strong> (Chen et al., NeurIPS 2021) смотрит иначе: <strong>offline RL как моделирование последовательностей</strong>. По префиксу траектории (прошлые состояния, действия и сумма будущих наград) модель предсказывает следующее действие. <strong>Нет Q-функции</strong>, <strong>нет Bellman-бэкапа</strong>, <strong>нет policy gradient</strong>. «Политика» — условное распределение действий по контексту; обучение — <strong>supervised learning</strong> по последовательностям из датасета.</p>
-<p>Так экстраполяционная ошибка обходится структурно: модель никогда не вычисляет $\max_{a'} Q(s', a')$ по OOD-действиям, потому что Q нет. Она только предсказывает действия по входам, встречавшимся в данных.</p>
+<h2>Где заканчивается пессимизм по значениям</h2>
+<p>В главах 3 и 4 мы боролись с ошибкой экстраполяции, делая <strong>функцию ценности</strong> пессимистичной: CQL штрафует Q-значения за OOD-действия; IQL вообще не обращается к OOD, используя экспектильную регрессию и advantage-weighted регрессию.</p>
+<p>Другой подход — оставить критика (Q или V) по сути без изменений и <strong>ограничить или регуляризовать актора</strong> так, чтобы обученная политика оставалась близка к поведенческой. Агент по-прежнему улучшается за счёт данных — критик указывает, какие действия в датасете были лучше — но политика не может уходить далеко в OOD-области.</p>
+<p>Это семейство <strong>policy-constraint</strong> (или <strong>actor-regularized</strong>) offline RL. Методы являются <strong>actor-critic</strong>: обучаются и критик, и политика, но в целевую функцию политики явно входит член, притягивающий её к данным. Два распространённых метода: <strong>TD3+BC</strong> (минималистичный, детерминированный) и <strong>AWAC</strong> (advantage-weighted, in-sample обновления актора).</p>
 <hr />
-<h2>Идея</h2>
-<p>Модель учит условное распределение:</p>
-<p><div class="math-display">$$\pi(a_t \mid s_{1:t}, a_{1:t-1}, R_{1:t})$$</div></p>
-<p>где $R_t$ — <strong>return-to-go</strong> в момент $t$: сумма наград с $t$ до конца траектории. На <strong>тесте</strong> задаём целевой return $R^*$ (например, высокий перцентиль по датасету) и подаём его модели; она выдаёт действия, которые в данных соответствовали такому return.</p>
-<p><strong>Почему нет экстраполяции:</strong> модель не оценивает действия вне похожего контекста — только предсказывает следующее действие по (история состояний, история действий, return-to-go), всё это есть в данных.</p>
+<h2>TD3+BC: минималистичный подход с регуляризацией политики</h2>
+<p><strong>TD3+BC</strong> (Fujimoto &amp; Gu, NeurIPS 2021) добавляет к loss актора один член: loss поведенческого клонирования, штрафующий отклонение от действий в датасете. Идея: актор должен максимизировать Q и оставаться близко к действиям из данных.</p>
+<h3>Идея</h3>
+<p>Целевая функция актора:</p>
+<p><div class="math-display">$$\pi^* = \arg\max_\pi \; \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \lambda \, Q(s, \pi(s)) - \bigl(\pi(s) - a\bigr)^2 \right]$$</div></p>
+<p>Первый член — использовать критика; второй — имитировать данные. Гиперпараметр $\lambda$ задаёт баланс. На практике Q нормализуют по батчу, чтобы оба члена были одного масштаба.</p>
+<h3>Формализация</h3>
+<p><strong>Критик (Q):</strong> как в TD3 — два Q-сети, target-сети, TD loss. <strong>Актор:</strong> детерминированная политика $\pi_\phi(s)$; loss выше. Теоретической гарантии (в отличие от CQL) нет — эмпирический, простой в реализации метод.</p>
 <hr />
-<h2>Формализация</h2>
-<p><strong>Представление:</strong> траектория — последовательность $(s_1, a_1, r_1, R_1, \ldots, s_T, a_T, r_T, R_T)$. Контекст длины $K$: для шага $t$ вход — $(R_{t-K+1}, s_{t-K+1}, a_{t-K+1}, \ldots, R_t, s_t)$; цель — $a_t$.</p>
-<p><strong>Архитектура:</strong> GPT-подобный трансформер с каузальной маской; три потока (return-to-go, состояние, действие) эмбеддятся и проходят через блоки внимания.</p>
-<p><strong>Обучение:</strong> минимизация NLL действий по данным:</p>
-<p><div class="math-display">$$\mathcal{L} = -\mathbb{E}_{\tau \sim \mathcal{D}} \left[ \sum_{t=1}^{T} \log \pi_\theta(a_t \mid R_{1:t}, s_{1:t}, a_{1:t-1}) \right]$$</div></p>
-<p>На тесте: инициализируем $R_1 = R^*$, на каждом шаге по текущему контексту получаем $a_t$, обновляем return-to-go и повторяем.</p>
+<h2>AWAC: Advantage-Weighted Actor-Critic</h2>
+<p><strong>AWAC</strong> (Nair et al., 2020) обновляет актора <strong>только по данным</strong>: политика подгоняется с весами по преимуществу (advantage), без сэмплирования из текущей политики.</p>
+<p><div class="math-display">$$\mathcal{L}_\pi(\phi) = -\mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \exp\!\left( \frac{1}{\beta} \bigl( Q(s,a) - V(s) \bigr) \right) \cdot \log \pi_\phi(a | s) \right]$$</div></p>
+<p>$A(s,a) = Q(s,a) - V(s)$ — преимущество действия $a$ в состоянии $s$. Экспоненциальный вес усиливает хорошие действия; $\beta$ — температура. OOD-запросов к актору нет.</p>
 <hr />
 <h2>Реализация</h2>
 <blockquote>
-<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/decision_transformer.py"><code>decision_transformer.py</code></a></p>
+<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/td3bc.py"><code>td3bc.py</code></a></p>
 </blockquote>
-<h3>Эмбеддинги и модель</h3>
-<p>Чанки собираются в <code>ChunkDataset</code>; для каждой (траектория, шаг $t$) формируются массивы длины <code>context_len</code> по return-to-go, состояниям и действиям (действия до $t-1$; предсказываем $a_t$). Модель склеивает $(R, s, a)$ по шагам в один токен, эмбеддит одним линейным слоем, добавляет позиционное кодирование и прогоняет каузальный трансформер:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">DecisionTransformer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    GPT-style model. Input: context_len tokens, each (R, s, a) concatenated and embedded.</span>
-<span class="sd">    Output: predicted action for the last timestep.</span>
-<span class="sd">    Causal mask: each position sees only past.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">n_heads</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">n_layers</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">context_len</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
+<h3>TD3+BC: сети и loss актора</h3>
+<p>TD3+BC использует ту же архитектуру, что и TD3: детерминированный актор, две Q-сети, target-сети.</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">Actor</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Deterministic policy s -&gt; a in [-1, 1]. Same as IQL DeterministicPolicy.&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">256</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">context_len</span> <span class="o">=</span> <span class="n">context_len</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">token_dim</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">embed</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">pos_embed</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">context_len</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">))</span>
-        <span class="n">encoder_layer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">TransformerEncoderLayer</span><span class="p">(</span>
-            <span class="n">d_model</span><span class="o">=</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">nhead</span><span class="o">=</span><span class="n">n_heads</span><span class="p">,</span> <span class="n">dim_feedforward</span><span class="o">=</span><span class="n">hidden_dim</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span>
-            <span class="n">dropout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">activation</span><span class="o">=</span><span class="s1">&#39;relu&#39;</span><span class="p">,</span> <span class="n">batch_first</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">norm_first</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-        <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">transformer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">TransformerEncoder</span><span class="p">(</span><span class="n">encoder_layer</span><span class="p">,</span> <span class="n">num_layers</span><span class="o">=</span><span class="n">n_layers</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">action_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">Tanh</span><span class="p">(),</span>
         <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
 
-    <span class="k">def</span> <span class="nf">_causal_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;-inf&#39;</span><span class="p">),</span> <span class="n">diagonal</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">R_chunk</span><span class="p">,</span> <span class="n">S_chunk</span><span class="p">,</span> <span class="n">A_chunk</span><span class="p">):</span>
-        <span class="n">B</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">R_chunk</span><span class="o">.</span><span class="n">shape</span>
-        <span class="n">tokens</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">R_chunk</span><span class="p">,</span> <span class="n">S_chunk</span><span class="p">,</span> <span class="n">A_chunk</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
-        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos_embed</span><span class="p">[:,</span> <span class="p">:</span><span class="n">L</span><span class="p">]</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_causal_mask</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformer</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">)</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">action_head</span><span class="p">(</span><span class="n">x</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">td3bc_actor_loss</span><span class="p">(</span><span class="n">actor</span><span class="p">,</span> <span class="n">Q1</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">lambda_</span><span class="o">=</span><span class="mf">0.25</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.</span>
+<span class="sd">    Q is normalized by (q - q.mean()) / (q.std() + eps) over the batch</span>
+<span class="sd">    so the Q-term and BC-term have comparable scale.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pi</span> <span class="o">=</span> <span class="n">actor</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
+    <span class="n">q</span> <span class="o">=</span> <span class="n">Q1</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">pi</span><span class="p">)</span>
+    <span class="n">q_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">q</span> <span class="o">-</span> <span class="n">q</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span> <span class="o">/</span> <span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">std</span><span class="p">()</span> <span class="o">+</span> <span class="mf">1e-6</span><span class="p">)</span>
+    <span class="n">bc_loss</span> <span class="o">=</span> <span class="p">((</span><span class="n">pi</span> <span class="o">-</span> <span class="n">actions</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+    <span class="k">return</span> <span class="o">-</span><span class="n">q_norm</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">*</span> <span class="n">lambda_</span> <span class="o">+</span> <span class="n">bc_loss</span>
 </code></pre></div>
 
-<p>Цикл обучения: батч из <code>ChunkDataset</code>, forward, loss = MSE(predicted_a, target_a).</p>
-<p><strong>Ключевые гиперпараметры:</strong> нормализация return по макс. return в датасете, длина контекста, целевой $R^*$ на тесте (например, высокий перцентиль).</p>
+<p>Оба члена (Q и BC) вносят вклад в градиент; в <code>td3bc.py</code> используется нормализация Q по батчу и фиксированный $\lambda$.</p>
+<h3>AWAC-style loss политики (advantage-weighted)</h3>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">awac_actor_loss</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">Q</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Advantage-Weighted Regression: log pi(a|s) weighted by exp(A(s,a)/beta).</span>
+<span class="sd">    A(s,a) = Q(s,a) - V(s). Requires stochastic policy that outputs log_prob.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">A</span> <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span> <span class="o">-</span> <span class="n">V</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="p">(</span><span class="n">A</span> <span class="o">/</span> <span class="n">beta</span><span class="p">)</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="p">(</span><span class="n">weights</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">+</span> <span class="mf">1e-6</span><span class="p">)</span>  <span class="c1"># stabilize</span>
+    <span class="n">log_prob</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
+    <span class="k">return</span> <span class="o">-</span><span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="n">log_prob</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+</code></pre></div>
+
+<p>Для детерминированной политики (как в TD3) можно использовать гауссов с малой дисперсией вокруг $\pi(s)$ как суррогат log_prob или перейти на стохастическую голову.</p>
 <hr />
 <h2>Ограничения</h2>
-<p>Нет явного credit assignment (нет TD). Стандартный DT не «сшивает» куски траекторий. Чувствительность к выбору $R^*$ на тесте. Теоретической гарантии нет.</p>
+<p>Гарантии нижней границы нет. Чувствительность к $\lambda$ / $\beta$. Детерминированная политика (TD3+BC) не может быть мультимодальной.</p>
 <hr />
 <h2>Итог</h2>
 <table>
 <thead>
 <tr>
-<th>Свойство</th>
-<th>Decision Transformer</th>
+<th>Метод</th>
+<th>Где ограничение</th>
+<th>OOD актор?</th>
+<th>Теория</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Данные</td>
-<td>Траектории с return-to-go</td>
+<td>TD3+BC</td>
+<td>Loss актора (BC-штраф)</td>
+<td>Да</td>
+<td>Нет</td>
 </tr>
 <tr>
-<td>Обучение</td>
-<td>Supervised (NLL действий по контексту + RTG)</td>
-</tr>
-<tr>
-<td>OOD</td>
-<td>Структурно: нет Q и $\max_a$</td>
-</tr>
-<tr>
-<td>Гиперпараметры</td>
-<td>Длина контекста, целевой $R^*$, нормализация return</td>
+<td>AWAC</td>
+<td>Loss актора (веса по advantage)</td>
+<td>Нет</td>
+<td>Нет</td>
 </tr>
 </tbody>
 </table>
-<p>Decision Transformers — альтернатива value-based offline RL: один supervised-объектив, без Bellman. Удобны при длинных траекториях и инфраструктуре под sequence modeling. Для непрерывного управления с сильными гарантиями по-прежнему стандарт — CQL, IQL и модельные методы (глава 7).</p>
-<p>Глава 7 — <strong>модельный</strong> offline RL: обучение динамики и генерация синтетических данных с штрафами за неопределённость (MOPO, MOReL).</p>
+<p>Методы с ограничением политики дают простой способ улучшаться над поведенческой политикой, оставаясь близко к данным. TD3+BC — самый простой в реализации; для максимальной устойчивости по-прежнему предпочтительны CQL и IQL.</p>
+<p>Глава 6 переходит к другой парадигме: <strong>Decision Transformers</strong> — offline RL как моделирование последовательностей без Bellman-бэкапа.</p>
 <hr />
 <h2>Литература</h2>
 <ul>
-<li>Chen, L. et al. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
-<li>Yamagata, T. et al. (2023). <em>Q-learning Decision Transformer.</em> ICML. <a href="https://arxiv.org/abs/2209.03993">arXiv:2209.03993</a>.</li>
-<li>Zheng, Q. et al. (2022). <em>Online Decision Transformer.</em> ICML. <a href="https://arxiv.org/abs/2202.05607">arXiv:2202.05607</a>.</li>
+<li>Fujimoto, S., &amp; Gu, S.S. (2021). <em>A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
+<li>Nair, A. et al. (2020). <em>AWAC: Accelerating Online Reinforcement Learning with Offline Datasets.</em> <a href="https://arxiv.org/abs/2006.09359">arXiv:2006.09359</a>.</li>
+<li>Kumar, A. et al. (2020). <em>Conservative Q-Learning for Offline Reinforcement Learning (CQL).</em> NeurIPS. <a href="https://arxiv.org/abs/2006.04779">arXiv:2006.04779</a>.</li>
+<li>Kostrikov, I. et al. (2022). <em>Offline Reinforcement Learning with Implicit Q-Learning (IQL).</em> ICLR. <a href="https://arxiv.org/abs/2110.06169">arXiv:2110.06169</a>.</li>
 </ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/ru/chapter5.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Ограничение политики и Actor-Critic (TD3+BC, AWAC)</span></a>
-    <a href="/offline-rl-book/ru/chapter7.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Модельный Offline RL (MOPO, MOReL)</span></a>
+<a href="/offline-rl-book/ru/chapter5.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Неявное Q-обучение (IQL)</span></a>
+    <a href="/offline-rl-book/ru/chapter7.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Decision Transformers</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

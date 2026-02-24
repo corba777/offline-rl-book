@@ -1,179 +1,208 @@
 ---
 layout: default
-title: "Chapter 6: Decision Transformers"
+title: "Chapter 6: Policy-Constraint and Actor-Critic (TD3+BC, AWAC)"
 lang: en
 ru_url: /ru/chapter6/
 prev_chapter:
   url: /en/chapter5/
-  title: "Policy-Constraint and Actor-Critic (TD3+BC, AWAC)"
+  title: "Implicit Q-Learning (IQL)"
 next_chapter:
   url: /en/chapter7/
-  title: "Model-Based Offline RL (MOPO, MOReL)"
+  title: "Decision Transformers"
 permalink: "/offline-rl-book/en/chapter6/"
 ---
 
-# Chapter 6: Decision Transformers
+# Chapter 6: Policy-Constraint and Actor-Critic (TD3+BC, AWAC)
 
-> *"What if we never computed a Bellman backup? Just ask: given this history and this desired return, what action would a good agent take?"*
-
----
-
-## A Different Paradigm
-
-Chapters 2–5 all shared the same backbone: a **value function** (Q or V) and a **policy**, trained with Bellman backups or policy gradients. The central challenge was extrapolation error — the value function is wrong for OOD actions — and we addressed it with pessimism (CQL, IQL) or policy constraints (TD3+BC, AWAC).
-
-**Decision Transformer (DT)** — Chen et al., NeurIPS 2021 — takes a different view. It treats **offline RL as sequence modeling**: given a trajectory prefix (past states, actions, and a summary of future return), predict the next action. There is **no Q-function**, **no Bellman backup**, and **no policy gradient**. The "policy" is the conditional distribution of actions given context; training is **supervised learning** on sequences from the dataset.
-
-This sidesteps extrapolation error in a structural way: the model never evaluates $\max_{a'} Q(s', a')$ over OOD actions, because there is no Q. It only ever predicts actions conditioned on inputs that appear in the data (state and return-to-go sequences). The tradeoff is that long-horizon credit assignment is learned implicitly from the data, not from TD; and the choice of conditioning (e.g. return-to-go) matters a lot.
+> *"Stay close to what you've seen — but use the critic to lean toward the best of it."*
 
 ---
 
-## The Idea
+## Where Value-Pessimism Leaves Off
 
-In standard RL we learn $Q(s,a)$ or $\pi(a|s)$ and improve them with backups or gradients. In DT we learn a **conditional sequence model**:
+Chapters 4 and 5 addressed extrapolation error by making the **value function** pessimistic: CQL penalizes Q-values for OOD actions; IQL avoids OOD queries entirely by using expectile regression and advantage-weighted regression.
 
-$$\pi(a_t \mid s_{1:t}, a_{1:t-1}, R_{1:t})$$
+A different design is to leave the critic (Q or V) largely unchanged and instead **constrain or regularize the actor** so that the learned policy stays close to the behavior policy. The agent still improves over the data — the critic identifies which actions in the dataset were better — but the policy is not allowed to drift arbitrarily far into OOD regions.
 
-where $R_t$ is the **return-to-go** at time $t$: the sum of rewards from $t$ onward in the trajectory, $R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$. So the model is conditioned on:
-
-1. **Past states** $s_1, \ldots, s_t$
-2. **Past actions** $a_1, \ldots, a_{t-1}$
-3. **Return-to-go** $R_1, \ldots, R_t$ (the desired or observed cumulative future reward from each step)
-
-At **test time**, we choose a **target return** $R^*$ (e.g. the 90th percentile of returns in the dataset) and feed the model the same trajectory prefix plus $R^*$ as the current return-to-go. The model then generates actions that, in training data, were associated with that high return. No value function, no $\max_a$ — just autoregressive action prediction.
-
-**Why this avoids extrapolation error:** The model is never asked to evaluate an action it hasn't seen in a similar context. It only predicts the next action given (state history, action history, return-to-go). All of these are observed in the dataset. The "policy" is implicit: high return-to-go → actions that led to high return in the data.
+This family is **policy-constraint** (or **actor-regularized**) offline RL. It is **actor-critic**: we train both a critic and a policy, but the policy objective explicitly includes a term that pulls it toward the data. Two widely used methods in this family are **TD3+BC** (minimalist, deterministic) and **AWAC** (advantage-weighted, in-sample actor updates).
 
 ---
 
-## Formalization
+## TD3+BC: A Minimalist Policy-Regularized Approach
 
-### Sequence Representation
+**TD3+BC** — Fujimoto & Gu, NeurIPS 2021 — adds a single term to the actor loss: a behavioral cloning loss that penalizes deviation from dataset actions. The idea is simple: the actor should maximize Q-value *and* stay close to the actions in the dataset.
 
-Each trajectory in the dataset is a sequence of length $T$:
+### The Idea
 
-$$\tau = (s_1, a_1, r_1, R_1, s_2, a_2, r_2, R_2, \ldots, s_T, a_T, r_T, R_T)$$
+TD3 (Twin Delayed DDPG) is an off-policy actor-critic algorithm for continuous control. The actor is trained to maximize $Q(s, \pi(s))$. In the offline setting, $\pi(s)$ can be OOD, so $Q(s, \pi(s))$ is unreliable.
 
-with $R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$. We can also use **reward-to-go** (undiscounted sum) or normalize $R_t$ (e.g. by the max return in the dataset) for stability.
+TD3+BC modifies the actor objective to:
 
-The model receives **chunks** of length $K$ (context length): for each timestep $t$, the input is
+$$\pi^* = \arg\max_\pi \; \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \lambda \, Q(s, \pi(s)) - \bigl(\pi(s) - a\bigr)^2 \right]$$
 
-$$(R_{t-K+1}, s_{t-K+1}, a_{t-K+1}, \ldots, R_t, s_t, \_ )$$
+- The first term: **exploit the critic** — choose actions that get high Q (as in TD3).
+- The second term: **imitate the data** — penalize the squared error between $\pi(s)$ and the dataset action $a$ at state $s$.
 
-and the target is $a_t$. So we have three streams: return-to-go, state, action. Each token is embedded; the action at the last position is masked (we predict it).
+The hyperparameter $\lambda$ balances the two. Small $\lambda$ → policy is almost pure BC. Large $\lambda$ → policy chases Q and may go OOD. In practice, $\lambda$ is set by normalizing Q so that the two terms have comparable scale.
 
-### Architecture
+### Normalization of Q
 
-DT uses a **GPT-style transformer** with causal masking:
+If raw Q-values are large (e.g. in the hundreds), the gradient from the Q-term dominates and the BC term has little effect. TD3+BC normalizes the Q-values in the batch before forming the actor loss:
 
-1. **Embeddings:** Each $(R_t, s_t, a_t)$ is projected to a common dimension $d$. For $a_t$ we can use a linear layer (continuous) or an MLP; $s_t$ and $R_t$ are typically linear.
-2. **Positional encoding:** Timestep indices (or learned positions) are added so the model knows the order.
-3. **Causal self-attention:** The model attends only to past tokens (no future leak). So at position $t$, the model sees $R_{1:t}, s_{1:t}, a_{1:t-1}$ and predicts $a_t$.
-4. **Output head:** The last hidden state (at the position of $a_t$) is passed through an MLP that outputs the action (e.g. mean of a Gaussian, or tanh for bounded action).
+$$\tilde{Q}(s, a) = \frac{Q(s, a) - \mathbb{E}_{(s,a) \sim \mathcal{D}}[Q(s,a)]}{\sigma_{\mathcal{D}}(Q) + 10^{-6}}$$
 
-### Training Objective
+Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\pi(s) - a)^2 \bigr]$. With this normalization, a typical choice is $\lambda \in [0.1, 2.0]$; the paper uses $\alpha / \|\nabla_a Q(s,a)\|$ with $\alpha = 2.5$ for the scaling, which is equivalent in spirit.
 
-**Supervised learning:** Minimize the negative log-likelihood of the dataset actions under the model:
+### Formalization
 
-$$\mathcal{L} = -\mathbb{E}_{\tau \sim \mathcal{D}} \left[ \sum_{t=1}^{T} \log \pi_\theta(a_t \mid R_{1:t}, s_{1:t}, a_{1:t-1}) \right]$$
+**Critic (Q):** Standard TD3. Two Q-networks $Q_1, Q_2$; target networks; TD loss with $\min(Q_1', Q_2')$ at next state and delayed policy updates.
 
-For continuous actions, the model usually outputs a Gaussian mean (and optionally log-std); the loss is MSE on the mean (or full Gaussian NLL). No rewards in the loss — only states, actions, and return-to-go. The return-to-go is a **label** that tells the model "in this context, we want behavior that achieved this return." So the same state sequence can appear with different $R_t$ in different chunks (from different trajectories), and the model learns to map (context, desired return) → action.
+**Actor:** Deterministic policy $\pi_\phi(s)$. Loss:
 
-### At Test Time
+$$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ -\lambda \, \frac{\tilde{Q}(s, \pi_\phi(s))}{\sum_{(s,a)} |Q(s,a)| / |\mathcal{B}|} + \bigl(\pi_\phi(s) - a\bigr)^2 \right]$$
 
-1. Initialize $R_1 = R^*$ (target return, e.g. high percentile of dataset returns).
-2. Observe $s_1$; feed $(R_1, s_1, \_)$ to the model; get $a_1$.
-3. Execute $a_1$, get $s_2, r_1$. Set $R_2 = R_1 - r_1$ (or $R_2 = (R_1 - r_1) / \gamma$ depending on convention).
-4. Feed $(R_1, s_1, a_1, R_2, s_2, \_)$; get $a_2$. Repeat.
+The paper uses a slightly different normalizer (average of $|Q|$ over the batch) so that the coefficient in front of $Q$ is $\alpha / \bigl( \frac{1}{|\mathcal{B}|} \sum_i |Q(s_i, a_i)| \bigr)$ with $\alpha = 2.5$. This keeps the Q-term and BC-term on similar scale across batches.
 
-So we **condition on the desired return** and let the model autoregressively generate actions. The return-to-go is updated each step to reflect how much "return budget" is left.
+**No theoretical guarantee** — unlike CQL, TD3+BC does not provide a lower bound on the true Q-function. It is an empirical, minimalist fix that works well in practice and is very easy to implement.
 
 ---
 
-## Implementation Sketch
+## AWAC: Advantage-Weighted Actor-Critic
 
-> 📄 Full code: [`decision_transformer.py`](https://github.com/corba777/offline-rl-book/blob/main/code/decision_transformer.py)
+**AWAC** (Advantage-Weighted Actor-Critic) — Nair et al., 2020 — keeps the policy update **fully in-sample**: the actor is improved by reweighting dataset actions by their advantage, without sampling from the current policy.
 
-### Token Embedding and Model
+### The Idea
 
-Chunks are built in `ChunkDataset`: for each (trajectory, timestep $t$) we form padded arrays of length `context_len` for return-to-go, states, and actions (actions up to $t-1$; we predict $a_t$). The model concatenates $(R, s, a)$ per timestep into a single token, embeds with one linear layer, adds positional embedding, and runs a causal transformer:
+Instead of training the actor to maximize $Q(s, \pi(s))$ (which requires evaluating $\pi(s)$, potentially OOD), AWAC trains the actor to **imitate dataset actions, weighted by how much better they were than average**:
+
+$$\mathcal{L}_\pi(\phi) = -\mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \exp\!\left( \frac{1}{\beta} \bigl( Q(s,a) - V(s) \bigr) \right) \cdot \log \pi_\phi(a | s) \right]$$
+
+Here $V(s)$ is the state value function (e.g. $\mathbb{E}_{a \sim \pi_\beta}[Q(s,a)]$ or a learned V-network). The **advantage** $A(s,a) = Q(s,a) - V(s)$ measures how much better action $a$ is than the average at state $s$. The exponential weight $\exp(A(s,a)/\beta)$ upweights good actions and downweights bad ones; $\beta$ is a temperature that controls how sharply we focus on the best actions.
+
+So: **no OOD actor queries**. The critic (Q, and optionally V) is trained with standard TD; the actor is trained with weighted maximum likelihood on the dataset. This is similar in spirit to IQL's policy extraction, but AWAC was proposed earlier and uses a different critic setup (e.g. on-policy or off-policy TD with optional V).
+
+### Relation to IQL
+
+IQL (Chapter 5) also uses advantage-weighted regression for the policy and avoids OOD queries. IQL goes further by replacing $\max_{a'} Q(s', a')$ with expectile regression on $V(s')$. AWAC can be seen as a predecessor: same idea of weighting dataset actions by advantage, with a simpler (and potentially less safe) critic. For a unified implementation, the policy loss of IQL and AWAC are the same up to how $Q$ and $V$ are learned.
+
+---
+
+## Implementation
+
+> 📄 Full code: [`td3bc.py`](https://github.com/corba777/offline-rl-book/blob/main/code/td3bc.py)
+
+### TD3+BC: Networks and Actor Loss
+
+TD3+BC uses the same architecture as TD3: deterministic actor, two Q-networks, target networks.
 
 ```python
-class DecisionTransformer(nn.Module):
-    """
-    GPT-style model. Input: context_len tokens, each (R, s, a) concatenated and embedded.
-    Output: predicted action for the last timestep.
-    Causal mask: each position sees only past.
-    """
-    def __init__(self, state_dim, action_dim, hidden_dim=128, n_heads=4, n_layers=2, context_len=20):
+class Actor(nn.Module):
+    """Deterministic policy s -> a in [-1, 1]. Same as IQL DeterministicPolicy."""
+    def __init__(self, state_dim, action_dim, hidden_dim=256):
         super().__init__()
-        self.context_len = context_len
-        self.token_dim = 1 + state_dim + action_dim
-        self.embed = nn.Linear(self.token_dim, hidden_dim)
-        self.pos_embed = nn.Parameter(torch.zeros(1, context_len, hidden_dim))
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=hidden_dim, nhead=n_heads, dim_feedforward=hidden_dim * 4,
-            dropout=0.1, activation='relu', batch_first=True, norm_first=False,
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
-        self.action_head = nn.Sequential(
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, action_dim), nn.Tanh(),
         )
+    def forward(self, state):
+        return self.net(state)
+    def act(self, state):
+        with torch.no_grad():
+            return self.forward(state).cpu().numpy().squeeze()
 
-    def _causal_mask(self, L, device):
-        return torch.triu(torch.ones(L, L, device=device) * float('-inf'), diagonal=1)
 
-    def forward(self, R_chunk, S_chunk, A_chunk):
-        B, L, _ = R_chunk.shape
-        tokens = torch.cat([R_chunk, S_chunk, A_chunk], dim=-1)
-        x = self.embed(tokens) + self.pos_embed[:, :L]
-        mask = self._causal_mask(L, x.device)
-        x = self.transformer(x, mask=mask)
-        return self.action_head(x[:, -1])
+def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
+    """
+    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.
+    Q is normalized by (q - q.mean()) / (q.std() + eps) over the batch
+    so the Q-term and BC-term have comparable scale.
+    """
+    pi = actor(states)
+    q = Q1(states, pi)
+    q_norm = (q - q.mean()) / (q.std() + 1e-6)
+    bc_loss = ((pi - actions) ** 2).mean()
+    return -q_norm.mean() * lambda_ + bc_loss
 ```
 
-Training loop: sample a batch from `ChunkDataset`; forward pass; loss = MSE(predicted_a, target_a).
+The key is that both terms contribute meaningfully to the gradient; the implementation in `td3bc.py` uses batch normalization of Q (mean/std) and fixed $\lambda$.
 
-### Key Design Choices
+### AWAC-Style Policy Loss (Advantage-Weighted)
 
-- **Return normalization:** Scale $R_t$ by the max return in the dataset so that inputs are in a bounded range (e.g. $[0, 1]$).
-- **Context length:** Longer context (e.g. 20–50) lets the model use more history; shorter is faster and may suffice for near-Markov tasks.
-- **Target return $R^*$:** At test time, use a high percentile (e.g. 90th) of returns in the dataset. If you set $R^*$ higher than any trajectory in the data, the model may extrapolate poorly.
+```python
+def awac_actor_loss(policy, Q, V, states, actions, beta=1.0):
+    """
+    Advantage-Weighted Regression: log pi(a|s) weighted by exp(A(s,a)/beta).
+    A(s,a) = Q(s,a) - V(s). Requires stochastic policy that outputs log_prob.
+    """
+    with torch.no_grad():
+        A = Q(states, actions) - V(states)
+        weights = (A / beta).exp()
+        weights = weights / (weights.mean() + 1e-6)  # stabilize
+    log_prob = policy.log_prob(states, actions)
+    return -(weights * log_prob).mean()
+```
+
+For a deterministic policy (as in TD3), you would use a Gaussian with small fixed variance around $\pi(s)$ to get a surrogate log_prob, or switch to a stochastic policy head.
+
+---
+
+## Hyperparameters and Practical Tips
+
+**TD3+BC**
+
+| Hyperparameter | Typical range | Notes |
+|---|---|---|
+| $\lambda$ (or $\alpha$) | 0.1 – 2.0 | Higher → more weight on Q, less on BC |
+| Critic lr | 3e-4 | Same as TD3 |
+| Actor lr | 3e-4 | Same as TD3 |
+| Batch size | 256 | Standard for offline |
+
+Start with $\lambda = 0.25$ or use the paper's adaptive scaling. If the policy is too conservative (behaves like BC), increase $\lambda$. If the policy becomes unstable or OOD, decrease it.
+
+**AWAC**
+
+| Hyperparameter | Typical range | Notes |
+|---|---|---|
+| $\beta$ | 0.1 – 10 | Lower → sharper focus on best actions |
+| V / Q | — | Can learn V from data or use Q(s, a) mean |
+
+**When to use which**
+
+- **TD3+BC**: Simplest policy-constraint method; good first baseline; deterministic policy; no theoretical guarantee.
+- **AWAC**: In-sample actor; good when you want to avoid any OOD policy sampling; similar to IQL's policy extraction.
+- **CQL / IQL**: Stronger theory and often better performance on hard benchmarks; use when you need maximum robustness.
 
 ---
 
 ## Limitations
 
-**No explicit credit assignment.** DT learns "what action came next in good trajectories" but does not use Bellman backups. Long-horizon causality is only in the data; the model may not generalize as well as value-based methods when the dataset is small or noisy.
+**No lower-bound guarantee.** Unlike CQL, policy-constraint methods do not provide a formal guarantee that the learned Q is a lower bound or that the policy is safe. They rely on the regularizer to keep the policy near the data; if the critic is wrong, the policy can still be led astray.
 
-**Stitching.** Standard DT does not explicitly "stitch" sub-optimal trajectory segments. Value-based methods can combine a good prefix from one trajectory with a good suffix from another via the value function; DT generates autoregressively from a single context. Variants like **Q-learning DT (QDT)** add TD learning to improve credit assignment.
+**Sensitive to $\lambda$ / $\beta$.** The balance between exploiting the critic and staying close to the data is task-dependent. Poor tuning can yield either a near-BC policy (no improvement) or an overconfident one (OOD failure).
 
-**Conditioning sensitivity.** Performance depends on the choice of $R^*$ at test time. If $R^*$ is too low, the model behaves conservatively; if too high, it may hallucinate. Return normalization and percentile-based $R^*$ help but are hyperparameters.
-
-**No theoretical guarantee.** DT does not provide a lower bound or safety guarantee. It is a powerful and flexible sequence model that avoids extrapolation by construction but does not have the same formal guarantees as CQL or MOPO.
+**Deterministic policy (TD3+BC).** A deterministic policy cannot represent multimodal behavior. For highly multi-modal behavior policies, a stochastic method (AWAC, IQL, CQL) may be better.
 
 ---
 
 ## Summary
 
-| Property | Decision Transformer |
-|---|---|
-| Data required | Trajectories $(s_1, a_1, r_1, \ldots, s_T, a_T, r_T)$ with return-to-go |
-| Training | Supervised learning (maximize log prob of actions given context + RTG) |
-| OOD handling | Structural: no Q, no $\max_a$; only conditional prediction on in-data contexts |
-| Credit assignment | Implicit in the sequence (no TD) |
-| Key hyperparameters | Context length, target return $R^*$, return normalization |
-| Implementation | Transformer (GPT-style, causal mask) |
+| Method | Where constraint lives | OOD actor? | Theory |
+|---|---|---|---|
+| TD3+BC | Actor loss (BC penalty) | Yes (actor outputs fed to Q) | No |
+| AWAC | Actor loss (advantage weights) | No | No |
+| CQL (Ch3) | Q-function | Yes (penalized) | Lower bound |
+| IQL (Ch4) | V + policy extraction | No | Implicit pessimism |
 
-Decision Transformers offer a clean alternative to value-based offline RL: no Bellman backup, no extrapolation over actions, and a single supervised objective. They are well-suited to settings where you have long trajectories, multi-task or diverse data, and existing sequence-model infrastructure. For continuous control with a single task and strong performance guarantees, CQL and IQL (Chapters 3–4) and model-based methods (Chapter 7) remain the default choice.
+Policy-constraint and actor-critic methods offer a simple way to improve over the behavior policy while staying close to the data. TD3+BC is the lightest to implement; AWAC (and IQL) avoid OOD actor queries entirely. For industrial applications where simplicity matters, TD3+BC is a good first try; for maximum safety and performance, CQL and IQL remain the preferred choice.
 
-Chapter 7 turns to **model-based** offline RL: learning a dynamics model and using it to generate synthetic data with uncertainty-aware penalties (MOPO, MOReL).
+Chapter 7 turns to a different paradigm entirely: **Decision Transformers**, which treat offline RL as sequence modeling and dispense with the Bellman backup.
 
 ---
 
 ## References
 
-- Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., & Laskin, M. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
-- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993).
-- Zheng, Q., Zhang, A., & Grover, A. (2022). *Online Decision Transformer.* ICML. [arXiv:2202.05607](https://arxiv.org/abs/2202.05607).
+- Fujimoto, S., & Gu, S.S. (2021). *A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).* NeurIPS. [arXiv:2106.06860](https://arxiv.org/abs/2106.06860).
+- Nair, A., Gupta, A., Dalal, M., & Levine, S. (2020). *AWAC: Accelerating Online Reinforcement Learning with Offline Datasets.* [arXiv:2006.09359](https://arxiv.org/abs/2006.09359).
+- Kumar, A. et al. (2020). *Conservative Q-Learning for Offline Reinforcement Learning (CQL).* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
+- Kostrikov, I. et al. (2022). *Offline Reinforcement Learning with Implicit Q-Learning (IQL).* ICLR. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169).

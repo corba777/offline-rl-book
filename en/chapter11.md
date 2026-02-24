@@ -1,254 +1,378 @@
 ---
 layout: default
-title: "Chapter 11: Conclusion and Future Directions"
+title: "Chapter 11: Explainability in Offline RL"
 lang: en
 ru_url: /ru/chapter11/
 prev_chapter:
   url: /en/chapter10/
-  title: "Explainability in Offline RL"
-next_chapter: null
+  title: "Industrial Applications"
+next_chapter:
+  url: /en/chapter12/
+  title: "Conclusion and Future Directions"
 permalink: "/offline-rl-book/en/chapter11/"
 ---
 
-# Chapter 11: Conclusion and Future Directions
+# Chapter 11: Explainability in Offline RL
 
-> *"The goal of offline RL is not to replace online learning — it is to make the knowledge locked in historical data actionable without putting anything at risk."*
-
----
-
-## What This Book Built
-
-Seven chapters ago we started with a question: can a sequential decision-making agent learn entirely from a fixed log of past behavior, without ever interacting with the environment? The answer is yes — with caveats that turn out to be at least as interesting as the algorithms themselves.
-
-The caveats are not engineering details. They are structural features of the offline learning problem: the extrapolation gap between what the data covers and what the policy needs to evaluate, the distribution shift between the behavior policy and any better policy, and the fundamental impossibility of testing a policy in the very regions where it is most likely to fail. Every algorithm in this book is a different answer to the same underlying challenge.
-
-**Behavioral cloning** (Chapter 1) answers it by ignoring it: clone the behavior policy and stay exactly where the data is. This works when the behavior policy is good and fails catastrophically when it is not — the compounding error problem. BC is not a bad algorithm; it is an honest one that makes no promises beyond the data it saw.
-
-**Conservative Q-Learning and IQL** (Chapters 3–4) answer it by pessimism in value space: penalize Q-values for actions not supported by the data, or design the value backup to avoid ever querying OOD actions. Both achieve the same goal — keep the policy's effective support inside the data distribution — through different algebraic routes.
-
-**MOPO and MOReL** (Chapter 7) answer it by expanding the data: learn a model of the world, generate synthetic experience, but penalize or hard-terminate transitions where the model is uncertain. Model-based methods trade compute for sample diversity — when the dynamics model is accurate, they outperform model-free methods significantly.
-
-**Physics-informed methods** (Chapter 8) answer it by borrowing structure: replace the unknown parts of the model with known physics, constrain the reward signal to respect physical laws, and enforce hard constraints via Lagrangian duality. This approach is only possible when engineering knowledge exists — but when it does, it is the most data-efficient of all.
-
-**The industrial case study** (Chapter 9) showed these tools composing in a setting where the stakes are real: a five-variable process with integrating dynamics, transport delay, non-uniform data coverage, and hard equipment constraints. No single algorithm dominated. The practical recommendation — CQL+Physics for minimal constraint violations, HybridMOReL when higher reward is needed — reflects not a winner but a complementary structure between model-free constraint enforcement and model-based diversity.
+> *"A policy that achieves 80% Directional Accuracy but cannot explain why it chose each action is hard to trust and impossible to certify."*
 
 ---
 
-## What Offline RL Cannot Yet Guarantee
+## Why Explainability Matters in Industrial Offline RL
 
-Honesty requires naming what this field has not solved.
+The algorithms in Chapters 1–10 produce policies that achieve high reward, respect physical constraints, and generalize to unseen operating regimes. What they do not produce is an answer to the question an operator will inevitably ask: *why did the agent command this setpoint at this moment?*
 
-**Distribution shift at deployment.** Every offline RL algorithm trains a policy $\pi$ assuming the deployed environment matches the training environment. When the process changes — equipment wears, feed composition shifts, ambient conditions differ — the offline-trained policy has no mechanism to detect or adapt. The theoretical guarantees from Chapters 3–8 hold only as long as the test distribution resembles the training distribution. In practice, this is a calendar question: how long until the gap becomes dangerous?
+This is not merely a regulatory concern, though in many industries it is that too. It is a practical reliability question. A policy whose decisions are opaque cannot be diagnosed when it fails. An operator who does not understand the agent's reasoning cannot override it intelligently. A model that fits data well but for the wrong reasons will fail silently when the process changes.
 
-**Reward specification.** Every algorithm in this book assumed the reward function is given. In many industrial settings it is not. Operators have intuitions about what good control looks like, but translating those intuitions into a scalar reward function that correctly weights competing objectives — product quality, energy efficiency, throughput, safety — is a non-trivial engineering task. A misspecified reward produces a policy that optimizes the wrong thing, often in ways that are only apparent after deployment.
+Explainability in Offline RL is harder than in standard supervised learning for three reasons specific to the offline setting.
 
-**Uncertainty quantification.** Ensemble-based uncertainty (Chapters 7–8) measures epistemic uncertainty about the dynamics model. It does not measure uncertainty about the reward, the constraint specification, or the value of the offline policy itself. A policy with high ensemble-estimated uncertainty in its rollouts may still be perfectly safe if the physical constraints are conservative enough. Conversely, a policy with low uncertainty may violate constraints that were never represented in the training data. Calibrated uncertainty about the whole pipeline remains an open problem.
+**There are three separate models to explain.** A trained Offline RL agent contains a Q-function (the critic), a policy (the actor), and optionally a dynamics model. Each answers a different question, and their explanations do not always agree. The Q-function might rate an action highly because temperature is near its setpoint; the policy might choose that action because level is near its lower bound. Understanding the discrepancy is as important as understanding the agreement.
 
-**Interpretability.** The neural network policies trained in Chapters 1–9 are black boxes. An operator who needs to understand *why* the policy commanded a particular setpoint at a particular moment cannot interrogate the weights. This limits deployment in regulated industries where decisions must be explainable and auditable.
+**The Q-function's input is a concatenation of state and action.** Unlike a classifier whose input is a single feature vector, the Q-function takes $(s, a)$ as input. SHAP values computed over this concatenated space tell you whether the high Q-value comes from the state (the situation was favorable) or the action (the specific action was appropriate for this situation).
 
-**Sim-to-real gap for physics models.** The hybrid dynamics models in Chapter 8 assume the physics model and the real process share the same structure, differing only in residuals. When the physics model is structurally wrong — wrong order, wrong coupling topology, wrong conservation laws — the residual network must learn a correction that the physics term actively fights. Detecting and handling structural model mismatch is not yet systematic.
+**The behavior policy's distribution is uneven.** SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset — dense near the operating setpoint and sparse near disturbances. SHAP values answer: *"how does this instance differ from the typical operating point, and how does that difference affect the output?"*
+
+> 📄 Full code: [`chapter8.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter8.py)
 
 ---
 
-## Emerging Directions
+## SHAP Background
 
-The field is moving fast. The directions below are not exhaustive, but they represent the most active threads as of the time of writing.
+SHAP (SHapley Additive exPlanations, Lundberg & Lee, 2017) decomposes the output of a model $f$ into additive contributions from each input feature:
 
-### Decision Transformers and Sequence Models
+$$f(x) = \phi_0 + \sum_{i=1}^{n} \phi_i(x)$$
 
-**Decision Transformer** (Chen et al., NeurIPS 2021) reframes offline RL as a sequence modeling problem. Rather than learning a Q-function or policy gradient, it trains a causal Transformer to predict the next action given the past trajectory and a desired return-to-go:
+where $\phi_0 = \mathbb{E}[f(X)]$ is the expected model output over the background distribution, and $\phi_i(x)$ is the contribution of feature $i$ to the prediction for instance $x$.
 
-$$a_t = \pi_\theta\!\left(R_t,\, s_t,\, a_{t-1},\, \ldots,\, R_1,\, s_1,\, a_1\right)$$
+The SHAP values $\{\phi_i\}$ are the unique decomposition satisfying:
+- **Efficiency**: $\sum_i \phi_i = f(x) - \phi_0$ — values sum to total prediction minus baseline
+- **Symmetry**: features with equal marginal contributions receive equal SHAP values
+- **Dummy**: a feature with zero marginal contribution receives $\phi_i = 0$
 
-At inference time you condition on a high target return — "I want cumulative reward $\geq R^*$" — and the model generates actions to achieve it.
+**KernelExplainer** computes SHAP values without architecture knowledge. It fits a weighted linear model to masked predictions:
 
-This approach is conceptually elegant: the entire offline RL pipeline reduces to supervised learning on sequences. No Bellman backups, no Q-functions, no explicit pessimism. The model simply learns from the data what sequences of actions lead to high returns and imitates that pattern conditioned on a high target.
+$$\phi = \arg\min_{\phi} \sum_{z \in \{0,1\}^n} \pi(z)\left[f(h(x, z)) - \phi_0 - \sum_i z_i \phi_i\right]^2$$
 
-The practical implications are significant. Transformers scale with data and model size in ways that Q-function methods do not. A Decision Transformer trained on a large, diverse dataset generalizes across tasks and environments in a way that a task-specific CQL agent cannot. This is the connection to large language models: the same architecture that learns to predict text from internet data can learn to predict actions from trajectory data.
+where $z$ is a binary mask, $h(x, z)$ replaces masked features with background samples, and $\pi(z)$ weights coalitions by the Shapley kernel. This works on any black-box function — Q-networks, policy networks, ensemble dynamics — with no architecture assumptions.
 
-**Trajectory Transformer** (Janner et al., NeurIPS 2021) pushes this further: model the entire trajectory $(s_1, a_1, r_1, s_2, a_2, r_2, \ldots)$ as a sequence, then use beam search over this sequence to find high-reward trajectories at inference time. This gives planning-like behavior without explicit dynamics learning.
+We use KernelExplainer throughout for consistency: all three explanations use the same method, making them directly comparable.
 
-The limitation of sequence models is the same as BC's: they do not extrapolate beyond the return distribution in the training data. If the training dataset has maximum return $R_{max}$, conditioning on $R > R_{max}$ produces distribution-shifted inputs that the model was never trained on. Several papers (including **QDT** — Yamagata et al., 2023) address this by combining sequence modeling with Q-value guidance.
+### Toy example: what SHAP shows
 
-### Diffusion Models for Offline RL
+A minimal example fixes intuition. Consider a toy Q-function with three inputs: $Q(s_1, s_2, a) = 2 s_1 - s_2 + 0.5 a$. So state_1 pushes Q up, state_2 pushes it down, and the action has a smaller positive effect. We draw a background from "typical" operation (values in $[0.3, 0.7]$) and explain a set of instances. SHAP attributes each prediction to the three features.
 
-**Diffusion probabilistic models** have emerged as one of the most powerful generative model families, and their application to sequential decision making is an active and productive direction.
+**Which feature matters most?** The bar chart below shows mean $|\phi_i|$ over the explained instances. State_1 and state_2 dominate (they have larger coefficients), and SHAP recovers that.
 
-The core observation: learning a policy $\pi(a|s)$ is a conditional generation problem. Diffusion models excel at conditional generation. Why not learn the policy as a diffusion model?
+![Toy Q: mean |SHAP| per feature](../figures/ch8/toy_shap_bar.png)
 
-### Imitation Learning vs. Offline RL: A Necessary Distinction
+**Why is this one instance’s Q high?** The waterfall plot takes a single instance (e.g. high $s_1$, low $s_2$) and shows how each feature’s SHAP value moves the output from the baseline $\phi_0 = \mathbb{E}[Q]$ to the final $Q(x)$. Positive bars (state_1, action) push Q up; the negative bar (state_2) pushes it down.
 
-Before examining diffusion models, it is worth clarifying a conceptual boundary that practitioners frequently blur: the difference between **imitation learning (IL)** and **offline RL**.
+![Toy Q: waterfall for one instance](../figures/ch8/toy_shap_waterfall.png)
 
-Both learn from a fixed dataset of past behavior without online interaction. The difference is in what the dataset contains and what the learner optimizes:
+**Spread across instances.** A beeswarm plot shows one dot per instance per feature; the x-axis is SHAP value and the color is the feature’s value (blue = low, red = high). You see that high state_1 tends to go with positive SHAP (red dots on the right) and high state_2 with negative SHAP — the model’s monotone dependence is visible.
 
-| | Imitation Learning | Offline RL |
-|---|---|---|
-| Dataset requires | Expert demonstrations only | Any logged transitions $(s, a, r, s')$ |
-| Reward signal | Not needed — actions are the label | Required — drives optimization |
-| Goal | Reproduce the behavior policy | Improve *beyond* the behavior policy |
-| Failure mode | Compounding error (covariate shift) | Distribution shift + extrapolation error |
-| Key algorithms | Behavioral Cloning, DAgger, GAIL | CQL, IQL, MOPO, MOReL |
+![Toy Q: beeswarm of SHAP values](../figures/ch8/toy_shap_beeswarm.png)
 
-Behavioral cloning (Chapter 1) is the simplest IL algorithm: given expert state-action pairs $(s, a^*)$, train a policy to predict $a^*$ from $s$ by supervised learning. No reward is needed. The cost is compounding error: at test time, the policy visits states slightly different from the training distribution, makes slightly worse predictions, and the errors accumulate over time.
+**Toy policy: which state feature drives the action?** Next, take a toy policy $\pi(s_1, s_2) = \text{clip}(0.5 + 0.4 s_1 - 0.3 s_2)$ with a single action. State_1 pushes the action up, state_2 pushes it down. Policy SHAP attributes the scalar action to the two state inputs. The bar chart shows which state variable the policy "looks at" most; the waterfall for one state shows how each feature's contribution moves the output from the average action $\mathbb{E}[\pi]$ to $\pi(s)$. In the real coating setup (Level 2) we have two action dimensions (heat_input, flow_input); we explain each separately and get one such bar and waterfall per action.
 
-Offline RL addresses this not by better behavior cloning, but by optimizing for reward — it can in principle surpass the behavior policy by stitching together suboptimal trajectories in ways the original operators never did. This stitching capability requires a reward signal that IL does not have.
+![Toy policy: mean |SHAP| per state feature](../figures/ch8/toy_policy_bar.png)
 
-**When to use which:** if you have expert demonstrations and care about replicating the behavior exactly (surgical robots, precise manipulation, teaching from a single demonstrator), IL is simpler and often sufficient. If you have heterogeneous historical logs — multiple operators with different strategies, suboptimal episodes, partial demonstrations — offline RL can extract a policy better than any individual demonstrator.
+![Toy policy: waterfall for one state](../figures/ch8/toy_policy_waterfall.png)
 
-In practice, the two approaches converge: offline RL with a behavior cloning regularizer (as in IQL and CQL+BC) uses IL as a constraint to stay close to the data distribution while optimizing reward.
+**Toy dynamics: which input drives the predicted next state?** Finally, a toy dynamics model with two next-state dimensions: $\hat{s}_1' = 0.7 s_1 + 0.2 a$ and $\hat{s}_2' = 0.6 s_2 + 0.15 a$. So the first output is driven by current $s_1$ and action $a$; the second by $s_2$ and $a$. We explain each output separately (as in Level 3). The two-panel bar chart shows mean $|\phi_i|$ for the three inputs $(s_1, s_2, a)$ when predicting $\hat{s}_1'$ and $\hat{s}_2'$ — SHAP recovers that $s_1$ and $a$ matter for next_s1, and $s_2$ and $a$ for next_s2. The waterfall for one $(s, a)$ instance shows how each input's SHAP adds up from the baseline prediction to $\hat{s}_1'$.
 
-### The Multimodal Action Problem
+![Toy dynamics: which inputs drive next_s1 and next_s2?](../figures/ch8/toy_dynamics_bar.png)
 
-The most important failure mode of behavioral cloning — and the key motivation for Diffusion Policy — is the **multimodal action problem**. Consider training a robot to push a T-shaped block to a target zone. Expert demonstrations show some operators pushing from the left, others from the right. Both are correct.
+![Toy dynamics: waterfall for one (s,a) → next_s1](../figures/ch8/toy_dynamics_waterfall.png)
 
-A Gaussian policy $\pi_\theta(a|s)$ fits a unimodal distribution over actions. Faced with two valid but opposite strategies, it predicts their mean — push straight into the flat edge of the T-block. The robot fails not because it lacks skill, but because the policy architecture cannot represent two valid answers to the same question.
-
-$$\text{Gaussian collapses: } \hat{a} = \mathbb{E}[a | s] = \frac{a_{\text{left}} + a_{\text{right}}}{2} \notin \{a_{\text{left}}, a_{\text{right}}\}$$
-
-This is not a pathological edge case. In industrial processes, multiple operators develop different control strategies for the same upset condition. A model that averages them may produce a strategy no operator ever used — and for good reason.
-
-Diffusion models solve this by modeling the full conditional distribution $p(a|s)$ rather than its mean.
-
-### Diffusion Policy: Architecture and Temporal Horizons
-
-**Diffusion Policy** (Chi et al., RSS 2023) applies the denoising diffusion framework to action generation. At inference time, the policy starts from pure Gaussian noise in action space and iteratively denoises it conditioned on the current observation:
-
-$$A^{k-1}_t = \alpha \left( A^k_t - \gamma\, \epsilon_\theta(O_t, A^k_t, k) + \mathcal{N}(0, \sigma^2 I) \right)$$
-
-Training is supervised: take a clean action sequence $A^0_t$ from the dataset, corrupt it to $A^k_t$ by adding noise at level $k$, and train the network $\epsilon_\theta$ to predict the added noise:
-
-$$\mathcal{L} = \mathbb{E}_{k, A^0_t, \epsilon}\left[\|\epsilon - \epsilon_\theta(O_t, A^k_t, k)\|^2\right]$$
-
-Three temporal design choices distinguish Diffusion Policy from single-step policies:
-
-**Observation horizon $T_o$:** how many past observations the policy receives. With $T_o = 2$, the robot sees the current and previous frame — giving velocity information without explicit state estimation.
-
-**Prediction horizon $T_p$:** how many future action steps the diffusion model outputs in a single denoising pass. Typically $T_p = 16$. Predicting a chunk of the future rather than one step at a time creates temporally coherent action sequences and avoids high-frequency jitter.
-
-**Action horizon $T_a$:** how many of the $T_p$ predicted actions are actually executed before replanning. Typically $T_a = 8$. The policy executes the first half of its plan, re-observes, and generates a new plan. This receding-horizon structure provides robustness: errors in the later part of the prediction are corrected by replanning rather than accumulating.
-
-For the denoising backbone, the paper proposes two architectures: a 1D temporal convolutional network with FiLM conditioning (scales and shifts hidden activations by learned functions of the observation) as the default workhorse, and a Transformer decoder with cross-attention to observations for tasks with complex temporal structure.
-
-**Diffuser** (Janner et al., ICML 2022) takes the trajectory-level view: model the entire $(s_1, a_1, r_1, s_2, \ldots)$ jointly as a diffusion process, then steer generation toward high-reward trajectories using classifier guidance:
-
-$$\text{trajectory} \sim p_\theta(\tau) \cdot \exp(\beta \cdot J(\tau))$$
-
-This is planning without an explicit dynamics model — the diffusion model encodes dynamics implicitly in its learned trajectory distribution.
-
-**Decision Diffuser** (Ajay et al., ICLR 2023) separates return conditioning from trajectory generation, enabling test-time composition: multiple reward functions can be combined by multiplying their conditioning signals during denoising. For industrial applications where the reward trades off energy, quality, and throughput, this allows weight adjustment at deployment without retraining.
-
-The computational cost of iterative denoising — typically 10–100 forward passes per action — is the main obstacle for fast industrial control loops. Recent work on consistency models and flow matching reduces this to one or a few steps, making diffusion-class policies practically deployable in real-time settings.
-
-### Diffusion for Offline RL: Toward Scalable Policy Classes
-
-The combination of diffusion and Transformer architectures is an active direction, driven by a concrete observation: the denoising network inside a diffusion model does not have to be a U-Net. **Diffusion Transformers (DiT)** (Peebles & Xie, ICCV 2023) replaced the U-Net backbone with a standard Transformer in image generation and demonstrated favorable scaling — larger models trained on more data improve predictably. The natural question for offline RL is whether the same substitution works for policy and planning networks.
-
-Several lines of work are converging on this:
-
-**Diffusion Q-Learning (DQL)** (Wang et al., ICLR 2023) uses a diffusion model as the policy class inside an actor-critic framework for offline RL. The diffusion policy generates high-quality actions from the data distribution while a Q-function provides guidance toward high-reward regions. On D4RL benchmarks, diffusion-class policies consistently outperform Gaussian policy baselines.
-
-**DTQL** (Chen et al., NeurIPS 2024) addresses the inference cost problem: iterative denoising is too slow for fast control loops. DTQL trains a dual-policy system — a diffusion model for behavior cloning that defines a trust region, and a fast one-step policy for actual deployment. This separation decouples expressiveness from inference speed, a practically important design for industrial applications.
-
-**Reasoning with Latent Diffusion** (Venkatraman et al., ICLR 2024) applies diffusion in the latent space of a world model rather than in action space — combining model-based planning with diffusion's multimodal expressiveness.
-
-The architectural trend is clear even if a single dominant "DiT for offline RL" paper does not yet exist: Transformer backbones are replacing U-Nets inside diffusion policies, and diffusion policies are replacing Gaussian policies as the expressive policy class of choice for offline RL. Whether this combination scales the way language models do — where a single large model trained on diverse data transfers to new tasks with minimal fine-tuning — is the open empirical question that the next few years will answer.
-
-### Offline-to-Online: Bridging the Gap
-
-A purely offline policy is static by definition. Real deployments need adaptation: the process changes, new operating modes are introduced, constraints are revised. **Offline-to-online RL** initializes from an offline-trained policy and continues training with limited online interaction.
-
-The challenge: naively fine-tuning an offline policy online causes catastrophic forgetting of the conservative behavior that made the offline policy safe. Methods like **IQL with online fine-tuning** (Kostrikov et al., 2021) and **Cal-QL** (Nakamoto et al., 2023) maintain the offline pessimism during early online training and gradually relax it as the online data accumulates. This is exactly the right structure for industrial deployment: use the offline policy as a safe starting point, then improve it through supervised interaction with explicit safety constraints.
-
-### Safe Offline RL and Formal Verification
-
-The Lagrangian approach of Chapter 8 provides constraint satisfaction in expectation — it minimizes expected violations but does not guarantee zero violations. For safety-critical applications, this is insufficient.
-
-**Conservative Safety Critics** (Le Cleac'h et al., 2023) and **CVPO** (Liu et al., 2022) provide stronger guarantees by training a separate safety Q-function that bounds the probability of constraint violation, not just its expected magnitude. The policy is constrained to keep the safety Q-function value above a threshold, providing a probabilistic safety certificate.
-
-Formal verification of neural network policies — proving that a policy satisfies a constraint for *all* states in a given set — remains computationally intractable for large networks. But for the low-dimensional state spaces typical of industrial process control (5–20 variables), recent work on Lyapunov-based verification (Berkenkamp et al., 2017; Chang et al., 2019) makes formal safety certificates increasingly feasible.
-
-### Large Language Models as Reward Designers
-
-The reward specification problem — arguably the hardest unsolved problem in applied offline RL — may be approachable through large language models. Rather than asking an engineer to write a reward function from scratch, one can ask an LLM to translate a natural language description of good control behavior into a mathematical reward function, verify it against example trajectories, and iteratively refine it based on policy performance.
-
-**EUREKA** (Ma et al., 2023) demonstrates this loop: GPT-4 generates reward functions for robotic manipulation tasks, evaluates them on rollouts, and self-improves them over iterations, achieving superhuman performance on tasks where human-designed rewards were suboptimal. Adapting this approach to industrial process control — where the desired behavior is articulable but hard to formalize — is a natural and near-term direction.
+All of these figures are produced by running `python code/chapter8_toy_figures.py` (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.
 
 ---
 
-## A Practical Roadmap for Industrial Deployment
+## Three Levels of Explanation
 
-Based on the material in this book, a pragmatic deployment sequence for a new industrial application:
+### Level 1: Q-function SHAP — Why Does the Agent Value This Action?
 
-**Step 1 — Start with CQL+Physics.** Collect the existing historical log, define the operating constraints from engineering knowledge, calibrate the physics penalty weights via Theorem 6.1, and train. This gives a safe baseline with minimal constraint violations and no dynamics model. Expected timeline: 2–4 weeks for a team with access to the process data.
+The Q-function $Q(s, a)$ takes the concatenated $(s, a)$ vector as input and outputs a scalar value estimate. SHAP on this input answers which features — current state variables or the chosen action — contribute most to the Q-value.
 
-**Step 2 — Diagnose with DA and violation rate.** Use the `IndustrialEvaluator` metrics from Chapter 9. If DA > 0.80 and violation rate < 2%, the baseline policy is industrially deployable. If not, identify which variables are failing and whether the issue is data coverage, physics model accuracy, or constraint calibration.
+```python
+class QFunctionWrapper:
+    """
+    Wrap QNetwork as numpy-in / numpy-out for SHAP KernelExplainer.
 
-**Step 3 — Add hybrid dynamics if needed.** If reward performance is insufficient (the policy is safe but suboptimal), add `HybridEnsemble` for model-based diversity. Run `diagnose_physics_coverage` first — if overall coverage is below 70%, the physics model needs refinement before hybridization helps.
+    Input:  X ∈ R^{n × (state_dim + action_dim)}  — [state | action]
+    Output: q ∈ R^n                                — Q-value per sample
+    """
+    def __call__(self, X: np.ndarray) -> np.ndarray:
+        with torch.no_grad():
+            x_t = torch.FloatTensor(X).to(self.device)
+            s   = x_t[:, :self.s_dim]
+            a   = x_t[:, self.s_dim:]
+            q   = self.q(s, a)
+        return q.cpu().numpy()
+```
 
-**Step 4 — Offline-to-online fine-tuning.** After an initial deployment period (1–4 weeks), collect online interaction data and fine-tune with the IQL offline-to-online procedure. Maintain the physics constraints throughout — they are not an artifact of offline training but a representation of physical reality.
+Feature vector: `[temperature, filler_frac, viscosity, density, level, heat_input, flow_input]`.
 
-**Step 5 — Monitor distribution shift.** Track the distribution of observed states over time. If the fraction of observations outside the training distribution exceeds 5–10%, retrain on the combined historical + deployment data. This is not a failure mode — it is the expected lifecycle of an industrial ML model.
+State feature SHAP answers: "was this situation favorable?"
+Action feature SHAP answers: "was this action appropriately chosen for this state?"
+
+**Expected pattern for a well-trained CQL agent:** state features near their setpoints → positive SHAP (favorable situation → high Q). If action SHAP values are near zero regardless of action magnitude, the Q-function ignores the action — a sign of Q-function collapse.
+
+### Level 2: Policy SHAP — Why Does the Agent Choose This Action?
+
+We explain each action dimension separately (SHAP requires scalar output):
+
+```python
+class PolicySingleOutputWrapper:
+    """
+    action_idx = 0 → heat_input
+    action_idx = 1 → flow_input
+
+    Explains deterministic mean action tanh(μ_θ(s)) — not sampled,
+    so SHAP estimates are stable across calls.
+    """
+    def __call__(self, S: np.ndarray) -> np.ndarray:
+        with torch.no_grad():
+            s_t     = torch.FloatTensor(S).to(self.device)
+            mean, _ = self.policy._dist(s_t)
+            action  = torch.tanh(mean)
+        return action[:, self.action_idx].cpu().numpy()
+```
+
+**Expected pattern:** `heat_input` driven primarily by `temperature` deviation; `flow_input` by `filler_frac` deviation. If `level` has high SHAP for `flow_input`, the policy learned that flow rate affects level — physically correct (level depends on inflow) and a sign that the agent has internalized the integrating dynamics.
+
+### Level 3: Dynamics SHAP — Why Does the Model Predict This Next State?
+
+We explain three output dimensions: `next_temperature` (0), `next_filler_frac` (1), `next_level` (4):
+
+```python
+class DynamicsSingleOutputWrapper:
+    """
+    Explains ensemble mean prediction for one next-state dimension.
+    """
+    def __call__(self, X: np.ndarray) -> np.ndarray:
+        with torch.no_grad():
+            s     = x_t[:, :self.s_dim]
+            a     = x_t[:, self.s_dim:]
+            s_next, _ = self.ensemble.predict_with_uncertainty(s, a)
+        return s_next[:, self.state_idx].cpu().numpy()
+```
+
+**Physics sanity check:** `heat_input` must have positive mean SHAP for `next_temperature`; `flow_input` for `next_filler_frac`. These follow from first-order dynamics and hold for any physically reasonable model. If violated, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.
 
 ---
 
-## Closing Remarks
+## The Explainer Class
 
-Offline RL is not a solved problem. The algorithms in this book are powerful tools with well-understood failure modes, not black boxes to be applied without thought. The most important thing a practitioner can do is understand those failure modes well enough to recognize when they are occurring.
+`OfflineRLExplainer` manages background construction and SHAP computation for all three levels:
 
-The questions worth sitting with:
+```python
+class OfflineRLExplainer:
+    def __init__(self, agent, ensemble, dataset,
+                 s_mean, s_std, device='cpu', n_background=100):
+        # Background = representative sample from offline dataset
+        idx = np.random.default_rng(42).choice(
+            len(dataset['states']), size=n_background, replace=False)
+        self.bg_states  = dataset['states'][idx]
+        self.bg_actions = dataset['actions'][idx]
+        self.bg_sa      = np.concatenate(
+            [self.bg_states, self.bg_actions], axis=1)
+```
 
-*What did the behavior policy never do?* The regions of state-action space absent from the dataset are the regions where every offline RL algorithm is speculating. Knowing them is more valuable than any algorithmic improvement.
+The background defines $\phi_0$ — the average model output. Using the offline dataset means SHAP values answer: *"how does this transition differ from a typical observed transition?"*
 
-*What does the physics model get wrong?* The residual tells you. Run `diagnose_physics_coverage` before every training run. A physics model with 60% coverage on a key variable is providing more noise than signal for that variable.
+```python
+results = explainer.explain_all(
+    n_explain    = 150,   # instances to explain
+    n_background = 80,    # background dataset size
+    n_samples    = 80,    # SHAP coalitions per instance
+)
+# results keys: 'states', 'actions', 'q_shap',
+#               'policy_shap', 'dynamics_shap', 'q_base'
+```
 
-*What would violating a constraint actually mean?* The answer determines whether CQL+Physics (minimize expected violations) or a formal safety approach (guarantee zero violations with high probability) is appropriate.
+`n_samples` controls approximation quality. At 80, standard error is ~0.005 on normalized outputs — sufficient for feature ranking. At 500 the estimates are publication-quality but 6× slower.
 
-The field will continue to develop — diffusion transformers will scale, offline-to-online methods will mature, LLM-based reward design will reduce the specification burden. But the fundamental structure of the problem — learning from fixed data, generalizing cautiously, respecting physics — will remain. The tools in this book are not a snapshot of a passing trend. They are the vocabulary in which the next decade of work will be written.
+---
+
+## Visualization
+
+### Summary Plot (Q-function)
+
+Beeswarm plot: each dot is one instance, colored by feature value (blue=low, red=high), x-axis is SHAP value.
+
+```python
+plot_q_summary(results['q_shap'], SA_NAMES,
+               save_path='ch8_q_summary.png')
+```
+
+Reading patterns:
+- **Wide horizontal spread** → feature has variable impact
+- **Red-right / blue-left consistently** → monotone relationship
+- **Mixed colors** → nonlinear or interaction-dependent
+
+### Bar Charts (Policy and Dynamics)
+
+Mean |SHAP| per feature — answers "which features matter most?"
+
+```python
+plot_policy_bar(results['policy_shap'], STATE_NAMES,
+                save_path='ch8_policy_bar.png')
+
+plot_dynamics_bar(results['dynamics_shap'], SA_NAMES, STATE_NAMES,
+                  save_path='ch8_dynamics_bar.png')
+```
+
+### Force Plot: Single Instance
+
+The most operationally useful visualization. For a single time step, shows each feature's contribution as a waterfall from baseline to final Q-value:
+
+```python
+best = int(np.argmax(q_vals))   # highest-Q instance
+plot_force_single(
+    results['q_shap'][best], SA_NAMES,
+    q_value=q_vals[best], q_base=results['q_base'],
+    instance_label=f'Highest-Q instance (Q={q_vals[best]:.3f})',
+    save_path='ch8_force_best.png')
+```
+
+An operator can use this to answer: "why did the agent rate this moment as high-value?" If the answer is "temperature near setpoint, level stable" — sensible. If "viscosity unusually low" when the setpoint is on temperature — a spurious correlation to investigate.
+
+### Dependence Plot: Interactions
+
+SHAP of feature A vs its raw value, colored by feature B — reveals interaction effects:
+
+```python
+plot_shap_dependence(
+    results['q_shap'][:, :len(STATE_NAMES)],
+    results['states'],
+    feature_idx=0,       # temperature
+    interaction_idx=1,   # colored by filler_frac
+    feature_names=STATE_NAMES,
+    title='Q-SHAP: temperature effect (colored by filler_frac)')
+```
+
+If temperature SHAP values split systematically by filler color, there is an interaction: the Q-function's response to temperature depends on filler level. For a physics-informed agent this is expected — viscosity is a nonlinear function of both.
+
+---
+
+## Consistency Check
+
+```python
+metrics = check_explanation_consistency(results)
+print_consistency_report(metrics)
+```
+
+Expected output:
+```
+  Q ↔ policy rank correlation  : 0.71  ✓ aligned
+  heat_input → next_temperature: SHAP=+0.0412  ✓ positive (correct)
+  flow_input → next_filler     : SHAP=+0.0387  ✓ positive (correct)
+```
+
+**Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in Q-function and policy. $\rho > 0.6$ means the agent's critic and actor attend to the same features. $\rho < 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.
+
+**Physics sign tests:** `heat_input` → `next_temperature` SHAP must be positive; `flow_input` → `next_filler_frac` SHAP must be positive. Failure indicates the dynamics model learned a physically inverted relationship in some data region — common when coverage near boundaries is very sparse.
+
+---
+
+## SHAP in Production: Practical Considerations
+
+**Computational cost.** KernelExplainer makes $n\_\text{explain} \times n\_\text{samples} \times n\_\text{background}$ model evaluations. For 150 × 80 × 80 = 960,000 calls this takes minutes on CPU. Practical strategy: run offline before deployment on a held-out validation set; re-run monthly on recent operating data to detect distribution shift.
+
+**Background dataset choice** is the most important hyperparameter. Full dataset background answers "difference from typical operation." Constraint-region background answers "what distinguishes near-violations from typical near-violations?" — useful for diagnosing why the agent approaches boundaries.
+
+**Physical units.** States are normalized. To communicate with operators:
+
+```python
+# Convert SHAP back to physical units
+shap_physical = results['q_shap'][:, :S] * s_std
+# SHAP of 0.04 on normalized temperature = 0.04 × σ_T physical degrees
+```
+
+---
+
+## What SHAP Cannot Tell You
+
+**SHAP ≠ causal effect.** High SHAP for `viscosity` means the model uses viscosity as a predictor, not that viscosity causally affects Q-value. If viscosity is correlated with temperature (it is), SHAP may split credit between them in ways that don't match physics.
+
+**SHAP values depend on the background.** A feature can have high SHAP against one background and low against another. Hold the background fixed when comparing across runs.
+
+**Temporal structure is lost.** KernelExplainer explains each instance independently. For integrating states like level, the agent's reasoning depends on trajectory history. Single-step SHAP cannot capture this dependency.
+
+**SHAP explains the model, not whether the model is correct.** If the Q-function overestimates in some region (a known offline RL failure mode), SHAP will faithfully explain the overestimation. Consistency checks can detect some failure modes, but SHAP is not a substitute for evaluation metrics from Chapter 10.
+
+---
+
+## Beyond SHAP: Causal AI in Offline RL
+
+SHAP is a well-established tool for *attribution* — which inputs the model uses for a prediction. A different line of work asks: can we make Offline RL agents reason in terms of *cause and effect*, so they generalize better and avoid spurious correlations?
+
+**Why causality matters in Offline RL.** Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones — e.g. in autonomous driving, "rain → wipers on" and "rain → braking" are correlated, but only one is a direct cause of the other.
+
+**Causal RL in practice.** Recent work includes:
+
+- **Causal world models.** Instead of a single black-box $\hat{s}' = f(s, a)$, algorithms like FOCUS learn *causal structure* over state variables (which state factors cause which next-state factors). Theory shows that such structure can improve generalization bounds in offline model-based RL; experiments show more robust behavior when the environment or data distribution changes.
+- **Deconfounding.** When data is confounded (e.g. a hidden variable drives both action and outcome), do-calculus and latent causal transition models allow combining offline observational data with limited online interventional data safely.
+- **Surveys and taxonomy.** Causal RL is often categorized into: causal representation learning, counterfactual policy optimization, *offline* causal RL, causal transfer, and causal explainability. The last connects directly to this chapter: explanations that reflect cause–effect structure are easier to trust and to debug.
+
+**Resources.** The survey by Deng et al. (2023) gives a unified view of causal RL and includes a section on offline/batch settings. The FOCUS paper (Zhang et al.) is a concrete example of causal-structured world models for offline model-based RL. For the link between off-policy evaluation and causal inference (treatment effect estimation), see the batch RL / causal inference literature (e.g. the connection between importance sampling and inverse propensity scoring). References are listed below.
+
+**Toy code example.** A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next\_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ — correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an *intervention* we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: `python code/chapter8_causal_toy.py`. Core idea:
+
+```python
+# True dynamics (unknown to learner): next_s1 = 0.8*s1 + 0.2*a
+# Nuisance z = s1 + noise — correlated with s1, not a cause of next_s1
+# Correlation model: fit next_s1 from (s2, z, a)
+# Causal model:       fit next_s1 from (s1, a)
+# Intervention: s1=0.2, z=0.9, a=0.5 → true next_s1=0.26
+#   Correlation model (sees z=0.9, no s1) → predicts ~0.7 (wrong)
+#   Causal model (sees s1=0.2, a=0.5)    → predicts 0.26 (correct)
+```
+
+> 📄 Full code: [`chapter8_causal_toy.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter8_causal_toy.py)
+
+---
+
+## Summary
+
+Three complementary SHAP explanations for a trained Offline RL agent:
+
+| Level | Model | Question | Input space |
+|---|---|---|---|
+| Q-function SHAP | Critic $Q(s,a)$ | Why is this action valued here? | $(s, a) \in \mathbb{R}^{S+A}$ |
+| Policy SHAP | Actor $\pi(s)$ | Why was this action chosen? | $s \in \mathbb{R}^S$ |
+| Dynamics SHAP | $\hat{f}(s,a)$ | Why is this next state predicted? | $(s, a) \in \mathbb{R}^{S+A}$ |
+
+The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.
+
+Chapter 12 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.
+
+---
+
+## Appendix 8.A: Choosing Between SHAP Variants
+
+| Explainer | Best for | Speed | Notes |
+|---|---|---|---|
+| `KernelExplainer` | Any black-box | Slow | Used throughout — consistent across all model types |
+| `DeepExplainer` | PyTorch / TF nets | Fast | Uses backprop; less accurate near tanh saturation |
+| `GradientExplainer` | Differentiable nets | Medium | Gradient × input; fast but noisy |
+| `TreeExplainer` | XGBoost, RF | Very fast | Exact SHAP; irrelevant for neural policies |
+| `LinearExplainer` | Linear models | Instant | Exact; use if policy is distilled to a linear surrogate |
+
+For fast per-step operator explanations in a deployed system: distill the policy to a shallow `DecisionTreeRegressor` and use `TreeExplainer`. The distillation loses some accuracy but makes each decision explainable in $< 1$ms.
 
 ---
 
 ## References
 
-**Decision Transformers and Sequence Models**
-
-- Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., & Mordatch, I. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
-- Janner, M., Li, Q., & Levine, S. (2021). *Offline Reinforcement Learning as One Big Sequence Modeling Problem.* NeurIPS. [arXiv:2106.02039](https://arxiv.org/abs/2106.02039). *(Trajectory Transformer)*
-- Yamagata, T., Khalil, A., & Santos-Rodriguez, R. (2023). *Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.* [arXiv:2309.10150](https://arxiv.org/abs/2309.10150).
-
-**Diffusion Models for Offline RL**
-
-- Janner, M., Du, Y., Tenenbaum, J., & Levine, S. (2022). *Planning with Diffusion Models.* ICML. [arXiv:2205.09991](https://arxiv.org/abs/2205.09991). *(Diffuser)*
-- Ajay, A., Du, Y., Gupta, A., Tenenbaum, J., Jaakkola, T., & Agrawal, P. (2023). *Is Conditional Generative Modeling all you need for Decision-Making?* ICLR. [arXiv:2211.15657](https://arxiv.org/abs/2211.15657). *(Decision Diffuser)*
-- Chi, C., Feng, S., Du, Y., Xu, Z., Cousineau, E., Burchfiel, B., & Song, S. (2023). *Diffusion Policy: Visuomotor Policy Learning via Action Diffusion.* RSS. [arXiv:2303.04137](https://arxiv.org/abs/2303.04137).
-
-**Diffusion Models and Transformers for Offline RL**
-
-- Peebles, W., & Xie, S. (2023). *Scalable Diffusion Models with Transformers.* ICCV. [arXiv:2212.09748](https://arxiv.org/abs/2212.09748). *(DiT architecture — the backbone trend)*
-- Wang, Z., Hunt, J.J., & Zhou, M. (2023). *Diffusion Policies as an Expressive Policy Class for Offline Reinforcement Learning.* ICLR. [arXiv:2208.06193](https://arxiv.org/abs/2208.06193). *(DQL — diffusion as policy class)*
-- Chen, T., Wang, Z., & Zhou, M. (2024). *Diffusion Policies creating a Trust Region for Offline Reinforcement Learning.* NeurIPS. [arXiv:2405.19690](https://arxiv.org/abs/2405.19690). *(DTQL — fast inference)*
-- Venkatraman, S., Khaitan, S., Akella, R.T., Dolan, J., Schneider, J., & Berseth, G. (2024). *Reasoning with Latent Diffusion in Offline Reinforcement Learning.* ICLR. *(diffusion in latent world model space)*
-
-**Flow Matching and Consistency Models**
-
-- Lipman, Y., Chen, R.T.Q., Ben-Hamu, H., Nickel, M., & Le, M. (2022). *Flow Matching for Generative Modeling.* [arXiv:2210.02747](https://arxiv.org/abs/2210.02747).
-- Song, Y., Dhariwal, P., Chen, M., & Sutskever, I. (2023). *Consistency Models.* ICML. [arXiv:2303.01469](https://arxiv.org/abs/2303.01469).
-
-**Offline-to-Online RL**
-
-- Kostrikov, I., Nair, A., & Levine, S. (2021). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR 2022. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169). *(IQL + online fine-tuning)*
-- Nakamoto, M., Zhai, Y., Singh, A., Mark, M.S., Ma, Y., Finn, C., Kumar, A., & Levine, S. (2023). *Cal-QL: Calibrated Offline RL Pre-Training for Efficient Online Fine-Tuning.* NeurIPS. [arXiv:2303.05479](https://arxiv.org/abs/2303.05479).
-
-**Safe Offline RL**
-
-- Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., & Zhao, D. (2022). *Constrained Variational Policy Optimization for Safe Reinforcement Learning.* ICML. [arXiv:2201.11927](https://arxiv.org/abs/2201.11927). *(CVPO)*
-- Berkenkamp, F., Turchetta, M., Schoellig, A., & Krause, A. (2017). *Safe Model-based Reinforcement Learning with Stability Guarantees.* NeurIPS. [arXiv:1705.08551](https://arxiv.org/abs/1705.08551).
-
-**LLM-Based Reward Design**
-
-- Ma, Y.J., Liang, W., Wang, G., Huang, D.A., Bastani, O., Jayaraman, D., Zhu, Y., Fan, L., & Anandkumar, A. (2023). *Eureka: Human-Level Reward Design via Coding Large Language Models.* [arXiv:2310.12931](https://arxiv.org/abs/2310.12931).
-
-**Surveys and Foundations**
-
-- Levine, S., Kumar, A., Tucker, G., & Fu, J. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
-- Prudencio, R.F., Maximo, M.R.O.A., & Colombini, E.L. (2023). *A Survey on Offline Reinforcement Learning.* IEEE TNNLS. [arXiv:2203.01387](https://arxiv.org/abs/2203.01387).
+- Lundberg, S.M., & Lee, S.I. (2017). *A Unified Approach to Interpreting Model Predictions.* NeurIPS. [arXiv:1705.07874](https://arxiv.org/abs/1705.07874).
+- Lundberg, S.M., Erion, G., Chen, H. et al. (2020). *From Local Explanations to Global Understanding with Explainable AI for Trees.* Nature Machine Intelligence. [arXiv:1905.04610](https://arxiv.org/abs/1905.04610).
+- Shapley, L.S. (1953). *A Value for n-Person Games.* In Contributions to the Theory of Games.
+- Ribeiro, M.T., Singh, S., & Guestrin, C. (2016). *"Why Should I Trust You?": Explaining the Predictions of Any Classifier.* KDD. [arXiv:1602.04938](https://arxiv.org/abs/1602.04938).
+- Molnar, C. (2022). *[Interpretable Machine Learning](https://interpretable-ml.github.io/).* 2nd ed.
+- Doshi-Velez, F., & Kim, B. (2017). *Towards a Rigorous Science of Interpretable Machine Learning.* [arXiv:1702.08608](https://arxiv.org/abs/1702.08608).
+- Deng, Z., Jiang, J., Long, G., & Zhang, C. (2023). *Causal Reinforcement Learning: A Survey.* TMLR. [arXiv:2307.01452](https://arxiv.org/abs/2307.01452).
+- Zhang, Y., et al. (2022). *Offline Model-Based Reinforcement Learning with Causal Structure.* Front. Comput. Sci. [arXiv:2206.01474](https://arxiv.org/abs/2206.01474) (FOCUS).
+- Buesing, L., et al. (2020). *Woulda, Coulda, Shoulda: Counterfactually-Guided Policy Search.* ICLR. [arXiv:2006.02579](https://arxiv.org/abs/2006.02579) — connection between batch RL and causal inference.

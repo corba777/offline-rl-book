@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Глава 7: Модельно-основанный Offline RL (MOPO, MOReL)</title>
+  <title>Глава 7: Decision Transformers</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
@@ -58,388 +58,114 @@
   </div>
 </header>
 <main>
-<h1>Глава 7: Модельно-основанный Offline RL (MOPO, MOReL)</h1>
+<h1>Глава 7: Decision Transformers</h1>
 <blockquote>
-<p><em>«Если нельзя провести новые эксперименты — постройте симулятор из имеющихся данных и экспериментируйте внутри него. Но помните: симулятор лжёт там, где вы никогда не бывали.»</em></p>
+<p><em>«Что если мы вообще не вычисляем Bellman-бэкап? Спросим: при данной истории и данном желаемом return — какое действие выбрал бы хороший агент?»</em></p>
 </blockquote>
 <hr />
-<h2>За пределами модельно-свободных методов</h2>
-<p>Главы 2–6 атаковали offline RL с одной стороны: модифицировать функцию ценности так, чтобы она была пессимистична относительно действий, отсутствующих в датасете. CQL занижает Q-значения для OOD-действий. IQL полностью избегает запросов к OOD-действиям.</p>
-<p>Оба метода разделяют фундаментальное ограничение: <strong>они могут использовать только переходы, собранные поведенческой политикой</strong>. Если критически важные области пространства состояние-действие просто отсутствуют в датасете, модельно-свободные методы не имеют откуда учиться.</p>
-<p>Модельно-основанный offline RL предлагает иной подход: <strong>обучить динамику системы</strong>, а затем генерировать синтетические переходы «в уме». Вместо того чтобы ограничиваться существующими данными, строится мысленная модель и <em>воображается</em>, что произойдёт при новых действиях.</p>
-<p>Это мощно — но опасно. Модель ошибается там, где данных мало, и политика, эксплуатирующая ошибки модели, провалится так же катастрофически, как и та, что эксплуатирует ошибки Q-функции. Два алгоритма этой главы решают проблему по-разному:</p>
-<ul>
-<li><strong>MOPO</strong> (Yu et al., NeurIPS 2020) — штрафовать синтетические награды за неопределённость модели. Политика может свободно исследовать, но неопределённые регионы становятся непривлекательными.</li>
-<li><strong>MOReL</strong> (Kidambi et al., NeurIPS 2020) — построить явную границу. Внутри хорошо смоделированных регионов агент оптимизирует нормально; снаружи — получает фиксированный большой штраф.</li>
-</ul>
-<p>Одна цель, разная геометрия пессимизма.</p>
+<h2>Другая парадигма</h2>
+<p>В главах 2–5 общим был костяк: <strong>функция ценности</strong> (Q или V) и <strong>политика</strong>, обучение с Bellman-бэкапами или policy gradient. Проблема — экстраполяционная ошибка; мы решали её пессимизмом (CQL, IQL) или ограничениями политики (TD3+BC, AWAC).</p>
+<p><strong>Decision Transformer (DT)</strong> (Chen et al., NeurIPS 2021) смотрит иначе: <strong>offline RL как моделирование последовательностей</strong>. По префиксу траектории (прошлые состояния, действия и сумма будущих наград) модель предсказывает следующее действие. <strong>Нет Q-функции</strong>, <strong>нет Bellman-бэкапа</strong>, <strong>нет policy gradient</strong>. «Политика» — условное распределение действий по контексту; обучение — <strong>supervised learning</strong> по последовательностям из датасета.</p>
+<p>Так экстраполяционная ошибка обходится структурно: модель никогда не вычисляет $\max_{a'} Q(s', a')$ по OOD-действиям, потому что Q нет. Она только предсказывает действия по входам, встречавшимся в данных.</p>
 <hr />
-<h2>Часть I: MOPO</h2>
-<h3>Идея</h3>
-<p><strong>Model-Based Offline Policy Optimization (MOPO)</strong> работает в три фазы:</p>
-<ol>
-<li>
-<p><strong>Обучить модель динамики</strong> $\hat{T}(s' | s, a)$ из офлайн-датасета с помощью <strong>ансамбля</strong> нейронных сетей. Каждая модель ансамбля делает немного разные предсказания. Где они согласны — модель уверена. Где расходятся — неопределённость высокая.</p>
-</li>
-<li>
-<p><strong>Генерировать синтетические ролл-ауты</strong>, ветвясь от реальных состояний. Стартуем из реального состояния $s \in \mathcal{D}$, выбираем действие, предсказываем $s'$ моделью, повторяем $h$ шагов. На каждом шаге <strong>штрафуем награду</strong> на неопределённость модели:</p>
-</li>
-</ol>
-<p><div class="math-display">$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$</div></p>
-<ol>
-<li><strong>Обучить стандартный RL-алгоритм</strong> (SAC) на объединённых реальных + синтетических данных. Штраф гарантирует, что агент избегает ненадёжных регионов.</li>
-</ol>
-<p>Результат: эффективный датасет в 10–100 раз больше исходного со встроенной безопасностью через штраф за неопределённость.</p>
-<h3>Формализация</h3>
-<h4>Ансамбль динамики</h4>
-<p>Обучаем ансамбль из $N$ вероятностных моделей ${\hat{T}<em i="1">i}</em>^N$, каждая возвращает гауссиан над следующими состояниями:</p>
-<p><div class="math-display">$$\hat{T}_i(s' | s, a) = \mathcal{N}\left(s + \mu_{\theta_i}(s, a), \; \sigma^2_{\theta_i}(s, a)\right)$$</div></p>
-<p>Ключевые решения:</p>
-<ul>
-<li><strong>Остаточное предсказание</strong>: предсказываем $\Delta s = s' - s$, а не $s'$ напрямую. Это даёт сети базовую линию «ничего не изменилось» — сети нужно обучиться только поправке.</li>
-<li><strong>NLL-обучение</strong>: минимизация отрицательного логарифма правдоподобия $-\log \hat{T}_i(s' | s, a)$ обучает одновременно среднее (точность) и дисперсию (откалиброванная неопределённость).</li>
-<li><strong>Bootstrap-сэмплирование</strong>: каждая модель обучается на случайных 80% данных, обеспечивая разнообразие ансамбля.</li>
-</ul>
-<h4>Оценка неопределённости</h4>
-<p>Для данной пары $(s, a)$ каждая модель предсказывает среднее $\hat{s}'_i$. <strong>Эпистемическая неопределённость</strong> — «насколько модели расходятся?»:</p>
-<p><div class="math-display">$$u(s, a) = \left\| \text{Std}_{i=1}^N \left[ \hat{s}'_i \right] \right\|_2$$</div></p>
-<p>Это стандартное отклонение предсказаний по ансамблю, свёрнутое в скаляр через L2-норму.</p>
-<p><strong>Почему расхождение ансамбля работает</strong>: если все модели видели похожие данные рядом с $(s, a)$, они сходятся к похожим предсказаниям — малое $u$. Если данных мало, bootstrap приводит к тому, что каждая модель выучивает разные паразитные паттерны — большое $u$. Это ключевой механизм: неопределённость высокая именно там, где данных нет.</p>
-<h4>Цель MOPO</h4>
-<p>MOPO строит <strong>пессимистическое MDP</strong> $\tilde{\mathcal{M}}$ со штрафными наградами и оптимизирует политику в нём:</p>
-<p><div class="math-display">$$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$</div></p>
-<p><div class="math-display">$$\pi^* = \arg\max_\pi \; \mathbb{E}_{\tilde{\mathcal{M}}} \left[ \sum_t \gamma^t \tilde{r}(s_t, a_t) \right]$$</div></p>
-<p>Теоретическая гарантия из Yu et al. (2020):</p>
-<p><div class="math-display">$$J(\pi) \geq \hat{J}_{\tilde{\mathcal{M}}}(\pi) - C \cdot \mathbb{E}_{s \sim d^\pi} \left[ \max_a u(s, a) \right]$$</div></p>
-<p>где $J(\pi)$ — истинная отдача, $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ — отдача в пессимистической модели. Граница говорит: оптимизация в штрафной модели даёт нижнюю оценку реальной производительности, с зазором пропорциональным остаточной ошибке модели.</p>
-<h4>Ветвящиеся ролл-ауты</h4>
-<p>Вместо того чтобы разворачивать полные эпизоды с нуля, MOPO использует <strong>ветвящиеся ролл-ауты</strong>:</p>
-<ol>
-<li>Сэмплируем начальное состояние $s_0$ из реального датасета $\mathcal{D}$.</li>
-<li>Разворачиваем на $h$ шагов с моделью и текущей политикой.</li>
-<li>Каждый синтетический переход $(s_t, a_t, \tilde{r}<em t_1="t+1">t, s</em>)$ добавляется в синтетический буфер.</li>
-</ol>
-<p>Старт из реальных состояний гарантирует, что ролл-аут начинается в хорошо смоделированном регионе. Короткий горизонт $h$ ограничивает накопление ошибок. Штрафная награда препятствует посещению плохо смоделированных регионов внутри ролл-аута.</p>
-<h3>Реализация</h3>
+<h2>Идея</h2>
+<p>Модель учит условное распределение:</p>
+<p><div class="math-display">$$\pi(a_t \mid s_{1:t}, a_{1:t-1}, R_{1:t})$$</div></p>
+<p>где $R_t$ — <strong>return-to-go</strong> в момент $t$: сумма наград с $t$ до конца траектории. На <strong>тесте</strong> задаём целевой return $R^*$ (например, высокий перцентиль по датасету) и подаём его модели; она выдаёт действия, которые в данных соответствовали такому return.</p>
+<p><strong>Почему нет экстраполяции:</strong> модель не оценивает действия вне похожего контекста — только предсказывает следующее действие по (история состояний, история действий, return-to-go), всё это есть в данных.</p>
+<hr />
+<h2>Формализация</h2>
+<p><strong>Представление:</strong> траектория — последовательность $(s_1, a_1, r_1, R_1, \ldots, s_T, a_T, r_T, R_T)$. Контекст длины $K$: для шага $t$ вход — $(R_{t-K+1}, s_{t-K+1}, a_{t-K+1}, \ldots, R_t, s_t)$; цель — $a_t$.</p>
+<p><strong>Архитектура:</strong> GPT-подобный трансформер с каузальной маской; три потока (return-to-go, состояние, действие) эмбеддятся и проходят через блоки внимания.</p>
+<p><strong>Обучение:</strong> минимизация NLL действий по данным:</p>
+<p><div class="math-display">$$\mathcal{L} = -\mathbb{E}_{\tau \sim \mathcal{D}} \left[ \sum_{t=1}^{T} \log \pi_\theta(a_t \mid R_{1:t}, s_{1:t}, a_{1:t-1}) \right]$$</div></p>
+<p>На тесте: инициализируем $R_1 = R^*$, на каждом шаге по текущему контексту получаем $a_t$, обновляем return-to-go и повторяем.</p>
+<hr />
+<h2>Реализация</h2>
 <blockquote>
-<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/mopo.py"><code>mopo.py</code></a></p>
+<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/decision_transformer.py"><code>decision_transformer.py</code></a></p>
 </blockquote>
-<h4>Вероятностная модель динамики</h4>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">ProbabilisticDynamicsNet</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<h3>Эмбеддинги и модель</h3>
+<p>Чанки собираются в <code>ChunkDataset</code>; для каждой (траектория, шаг $t$) формируются массивы длины <code>context_len</code> по return-to-go, состояниям и действиям (действия до $t-1$; предсказываем $a_t$). Модель склеивает $(R, s, a)$ по шагам в один токен, эмбеддит одним линейным слоем, добавляет позиционное кодирование и прогоняет каузальный трансформер:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">DecisionTransformer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    (s, a) -&gt; (mean, log_var) для s&#39;.</span>
-<span class="sd">    Предсказывает остатки: s&#39;_pred ~ N(s + mean(s,a), exp(log_var(s,a)))</span>
-<span class="sd">    Обучается через NLL, а не MSE — сеть сама учится своей неопределённости.</span>
+<span class="sd">    GPT-style model. Input: context_len tokens, each (R, s, a) concatenated and embedded.</span>
+<span class="sd">    Output: predicted action for the last timestep.</span>
+<span class="sd">    Causal mask: each position sees only past.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">256</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">n_heads</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">n_layers</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">context_len</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">trunk</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
-            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">SiLU</span><span class="p">(),</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">context_len</span> <span class="o">=</span> <span class="n">context_len</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">token_dim</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">embed</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pos_embed</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">context_len</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">))</span>
+        <span class="n">encoder_layer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">TransformerEncoderLayer</span><span class="p">(</span>
+            <span class="n">d_model</span><span class="o">=</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">nhead</span><span class="o">=</span><span class="n">n_heads</span><span class="p">,</span> <span class="n">dim_feedforward</span><span class="o">=</span><span class="n">hidden_dim</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span>
+            <span class="n">dropout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">activation</span><span class="o">=</span><span class="s1">&#39;relu&#39;</span><span class="p">,</span> <span class="n">batch_first</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">norm_first</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">mean_head</span>    <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">log_var_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span>  <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="o">-</span><span class="mf">10.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span>  <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="mf">0.5</span>  <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">state_dim</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transformer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">TransformerEncoder</span><span class="p">(</span><span class="n">encoder_layer</span><span class="p">,</span> <span class="n">num_layers</span><span class="o">=</span><span class="n">n_layers</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">action_head</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">Tanh</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_causal_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;-inf&#39;</span><span class="p">),</span> <span class="n">diagonal</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">R_chunk</span><span class="p">,</span> <span class="n">S_chunk</span><span class="p">,</span> <span class="n">A_chunk</span><span class="p">):</span>
+        <span class="n">B</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">R_chunk</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">R_chunk</span><span class="p">,</span> <span class="n">S_chunk</span><span class="p">,</span> <span class="n">A_chunk</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos_embed</span><span class="p">[:,</span> <span class="p">:</span><span class="n">L</span><span class="p">]</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_causal_mask</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformer</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">action_head</span><span class="p">(</span><span class="n">x</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
 </code></pre></div>
 
-<p>Активация <code>SiLU</code> (swish) превосходит ReLU для моделей динамики — более гладкие градиенты помогают аппроксимировать плавные физические переходы.</p>
-<h4>NLL-обучение</h4>
-<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">nll_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">):</span>
-        <span class="n">mean</span><span class="p">,</span> <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
-        <span class="n">residual</span> <span class="o">=</span> <span class="n">next_state</span> <span class="o">-</span> <span class="n">state</span>
-        <span class="n">var</span>      <span class="o">=</span> <span class="n">log_var</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
-        <span class="c1"># NLL = 0.5 * [ log_var + (residual - mean)² / var ]</span>
-        <span class="n">nll</span>      <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">log_var</span> <span class="o">+</span> <span class="p">(</span><span class="n">residual</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">var</span><span class="p">)</span>
-        <span class="n">loss</span>     <span class="o">=</span> <span class="n">nll</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-        <span class="n">bound_reg</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_log_var</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
-        <span class="k">return</span> <span class="n">loss</span> <span class="o">+</span> <span class="n">bound_reg</span>
-</code></pre></div>
-
-<p>Обучение через NLL, а не MSE критично. MSE обучает только среднее, оставляя дисперсию неконтролируемой. NLL совместно обучает среднее (минимизация ошибки предсказания) и дисперсию (калибровка уверенности) — делая обученное $\sigma^2$ значимым как прокси неопределённости.</p>
-<h4>Синтетические ролл-ауты со штрафом за неопределённость</h4>
-<div class="codehilite"><pre><span></span><code>    <span class="k">def</span> <span class="nf">generate_synthetic_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">real_states</span><span class="p">):</span>
-        <span class="n">state</span> <span class="o">=</span> <span class="n">real_states</span><span class="p">[</span><span class="n">random_idx</span><span class="p">]</span>
-
-        <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rollout_horizon</span><span class="p">):</span>
-            <span class="n">action</span><span class="p">,</span> <span class="n">_</span>   <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-            <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
-                <span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
-            <span class="n">reward</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
-
-            <span class="c1"># Ключевая строка: штрафуем награду на эпистемическую неопределённость</span>
-            <span class="n">penalized_reward</span> <span class="o">=</span> <span class="n">reward</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span> <span class="o">*</span> <span class="n">uncertainty</span>
-            <span class="n">state</span> <span class="o">=</span> <span class="n">next_state</span>
-</code></pre></div>
-
-<p>Одно вычитание <code>reward - self.lam * uncertainty</code> — это то, что превращает наивный MBRL (опасный) в MOPO (безопасный).</p>
-<hr />
-<h2>Часть II: MOReL</h2>
-<h3>Иная геометрия пессимизма</h3>
-<p>MOPO использует <strong>непрерывный</strong> штраф: чем дальше от данных, тем больше вычитается из награды. Политика всё равно может заходить в неопределённые регионы — они просто кажутся менее привлекательными.</p>
-<p>MOReL использует <strong>дискретный</strong> подход: разделяет пространство состояние-действие на «известные» и «неизвестные» регионы и применяет <strong>жёсткий штраф</strong> $\kappa$ в неизвестном регионе. Это создаёт резкую границу, а не градиент.</p>
-<p><strong>Model-Based Offline Reinforcement Learning (MOReL)</strong> — Kidambi et al., NeurIPS 2020 — строит <strong>Пессимистическое MDP (P-MDP)</strong> непосредственно из офлайн-данных с встроенным поглощающим состоянием отказа для OOD-переходов.</p>
-<h3>Построение P-MDP</h3>
-<p>Пусть $\mathcal{D}$ — офлайн-датасет. MOReL определяет порог $\epsilon$ на неопределённость предсказания и разделяет пространство:</p>
-<p><div class="math-display">$$\text{KNOWN}   = \{(s,a) : u(s,a) \leq \epsilon\}$$</div></p>
-<p><div class="math-display">$$\text{UNKNOWN} = \{(s,a) : u(s,a) > \epsilon\}$$</div></p>
-<p><strong>Пессимистическое MDP</strong> $\tilde{\mathcal{M}} = (\mathcal{S} \cup {s_\perp}, \mathcal{A}, \tilde{T}, \tilde{r}, \gamma)$:</p>
-<p><div class="math-display">$$\tilde{T}(s' | s, a) = \begin{cases} \hat{T}(s' | s, a) & \text{если } (s,a) \in \text{KNOWN} \\ \delta(s_\perp) & \text{если } (s,a) \in \text{UNKNOWN} \end{cases}$$</div></p>
-<p><div class="math-display">$$\tilde{r}(s, a) = \begin{cases} \hat{r}(s, a) & \text{если } s \neq s_\perp \\ -\kappa & \text{если } s = s_\perp \end{cases}$$</div></p>
-<p>где $s_\perp$ — поглощающее состояние отказа, а $\kappa &gt; 0$ — большой штраф. Попав в неизвестный регион, агент переходит в $s_\perp$ и получает $-\kappa$ на каждом последующем шаге — сильнейший стимул избегать неизвестного.</p>
-<h3>Теоретическая гарантия</h3>
-<p><strong>Теорема (Kidambi et al., 2020).</strong> Пусть $\hat{\pi}$ — оптимальная политика в P-MDP $\tilde{\mathcal{M}}$. Тогда:</p>
-<p><div class="math-display">$$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^{\hat{\pi}}}[\text{UNKNOWN}]$$</div></p>
-<p>Граница говорит: зазор между оптимальной политикой и тем, что находит MOReL, ограничен вероятностью попадания политики MOReL в неизвестный регион, взвешенной на штраф. Это более сильная гарантия, чем у MOPO: она <strong>не зависит от распределения</strong> и не требует предположений о распределении ошибок динамики.</p>
-<h3>Реализация</h3>
-<blockquote>
-<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/morel.py"><code>morel.py</code></a></p>
-</blockquote>
-<p>MOReL использует ту же архитектуру ансамбля что и MOPO (<code>ProbabilisticDynamicsNet</code>, <code>DynamicsEnsemble</code>). Специфичные для MOReL дополнения:</p>
-<p><strong>Шаг 1 — Калибровка epsilon по данным in-distribution:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># После обучения ансамбля — установить epsilon на 80-м перцентиле</span>
-<span class="c1"># неопределённости на реальных переходах из датасета.</span>
-<span class="n">epsilon</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">calibrate_epsilon</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">percentile</span><span class="o">=</span><span class="mf">80.0</span><span class="p">)</span>
-</code></pre></div>
-
-<p><strong>Шаг 2 — Ролл-ауты в P-MDP с жёстким HALT:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Внутри MOReLAgent.generate_synthetic_data():</span>
-<span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rollout_horizon</span><span class="p">):</span>
-    <span class="n">action</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">])</span>
-    <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
-        <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">)</span>
-
-    <span class="c1"># Жёсткая граница: если OOD — завершить с штрафом</span>
-    <span class="n">ood</span> <span class="o">=</span> <span class="n">uncertainty</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span>
-
-    <span class="n">reward</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
-        <span class="n">ood</span><span class="p">,</span>
-        <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">kappa</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">ood</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">),</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
-    <span class="p">)</span>
-    <span class="n">done</span> <span class="o">=</span> <span class="n">ood</span><span class="o">.</span><span class="n">float</span><span class="p">()</span>
-
-    <span class="c1"># Поглощающее состояние: остановленные ролл-ауты остаются на месте</span>
-    <span class="n">next_state_out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
-        <span class="n">ood</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">next_state</span><span class="p">)</span>
-
-    <span class="c1"># Деактивировать остановленные ролл-ауты</span>
-    <span class="n">active</span><span class="p">[</span><span class="n">active</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">as_tuple</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="n">ood</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">False</span>
-</code></pre></div>
-
-<p>Ключевое отличие от MOPO: вместо вычитания непрерывного штрафа OOD-переходы немедленно завершаются с <code>done=True</code> и наградой $-\kappa$. Q-функция видит нулевое будущее вознаграждение после таких переходов.</p>
-<h3>Выбор $\epsilon$</h3>
-<table>
-<thead>
-<tr>
-<th>$\epsilon$</th>
-<th>Эффект</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Очень малый</td>
-<td>Крошечный известный регион — агент ограничен рядом с поведенческой политикой (≈ BC)</td>
-</tr>
-<tr>
-<td>Умеренный (по умолчанию)</td>
-<td>Включает хорошо смоделированные экстраполяции</td>
-</tr>
-<tr>
-<td>Очень большой</td>
-<td>Всё пространство «известно» — возврат к неограниченному MBRL</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Практика</strong>: устанавливайте $\epsilon$ на уровне 70–80-го перцентиля неопределённости на данных in-distribution.</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Калибровка epsilon по данным in-distribution</span>
-<span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-    <span class="n">s_cal</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][:</span><span class="mi">2000</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">a_cal</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][:</span><span class="mi">2000</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">_</span><span class="p">,</span> <span class="n">u_cal</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span><span class="n">s_cal</span><span class="p">,</span> <span class="n">a_cal</span><span class="p">)</span>
-<span class="n">epsilon</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">quantile</span><span class="p">(</span><span class="n">u_cal</span><span class="p">,</span> <span class="mf">0.80</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Откалиброванный epsilon = </span><span class="si">{</span><span class="n">epsilon</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</code></pre></div>
-
-<hr />
-<h2>MOPO vs MOReL vs модельно-свободные</h2>
-<table>
-<thead>
-<tr>
-<th></th>
-<th>CQL</th>
-<th>IQL</th>
-<th>MOPO</th>
-<th>MOReL</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Использует модель</td>
-<td>Нет</td>
-<td>Нет</td>
-<td>Да</td>
-<td>Да</td>
-</tr>
-<tr>
-<td>Обработка OOD</td>
-<td>Занижает Q</td>
-<td>Никогда не запрашивает OOD</td>
-<td>Непрерывный штраф $-\lambda u$</td>
-<td>Жёсткая граница + $-\kappa$</td>
-</tr>
-<tr>
-<td>Аугментация данных</td>
-<td>Нет</td>
-<td>Нет</td>
-<td>Да</td>
-<td>Да</td>
-</tr>
-<tr>
-<td>Геометрия пессимизма</td>
-<td>Мягкая (штраф Q)</td>
-<td>Структурная (V-сеть)</td>
-<td>Мягкая (штраф награды)</td>
-<td>Жёсткая (поглощающее состояние)</td>
-</tr>
-<tr>
-<td>Теоретическая гарантия</td>
-<td>Нижняя оценка Q</td>
-<td>Через V</td>
-<td>Нижняя оценка $J(\pi)$</td>
-<td>PAC-оценка без предположений на распределение</td>
-</tr>
-<tr>
-<td>Гиперпараметры</td>
-<td>$\alpha$</td>
-<td>$\tau, \beta$</td>
-<td>$\lambda, h, N$</td>
-<td>$\epsilon, \kappa, h, N$</td>
-</tr>
-<tr>
-<td>Лучше всего для</td>
-<td>Плотные датасеты</td>
-<td>Стабильное обучение</td>
-<td>Разреженные, гладкая динамика</td>
-<td>Жёсткие требования безопасности</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2>Гайд по гиперпараметрам</h2>
-<h3>MOPO: $\lambda$ (вес штрафа за неопределённость)</h3>
-<table>
-<thead>
-<tr>
-<th>$\lambda$</th>
-<th>Поведение</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>$\lambda = 0$</td>
-<td>Нет штрафа — полное доверие модели (опасно)</td>
-</tr>
-<tr>
-<td>$\lambda = 0.5$</td>
-<td>Лёгкий штраф — для высококачественных моделей</td>
-</tr>
-<tr>
-<td>$\lambda = 1.0$</td>
-<td>По умолчанию — разумный пессимизм</td>
-</tr>
-<tr>
-<td>$\lambda = 3.0$+</td>
-<td>Сильный штраф — для зашумлённых данных</td>
-</tr>
-<tr>
-<td>$\lambda \to \infty$</td>
-<td>Возврат к модельно-свободному на реальных данных</td>
-</tr>
-</tbody>
-</table>
-<h3>Оба: $h$ (горизонт ролл-аута)</h3>
-<ul>
-<li><code>h=1</code>: однощаговые предсказания. Безопаснее всего, но ограниченная аугментация.</li>
-<li><code>h=5</code>: по умолчанию. Хороший баланс аугментации vs накопление ошибок.</li>
-<li><code>h=10+</code>: только при очень высокой точности модели.</li>
-</ul>
-<p><strong>Правило большого пальца</strong>: если модель имеет ошибку $\epsilon_1$ за шаг, за $h$ шагов накапливается примерно $h \cdot \epsilon_1$. Устанавливайте $h$ так, чтобы $h \cdot \epsilon_1 &lt; 0.1$.</p>
-<h3>Оба: $N$ (размер ансамбля)</h3>
-<ul>
-<li><code>N=3</code>: минимум для значимой неопределённости (не рекомендуется в продакшене).</li>
-<li><code>N=5</code>: по умолчанию.</li>
-<li><code>N=7–10</code>: лучше оценки, пропорциональные вычислительные затраты.</li>
-</ul>
-<hr />
-<h2>Практические советы</h2>
-<p><strong>Нормализуйте всё.</strong> Состояния, действия, награды — всё нормализуется до обучения модели динамики. Входные данные в $[-1, 1]$ или $[0, 1]$ критически важны для сходимости.</p>
-<p><strong>Остаточное предсказание обязательно.</strong> Всегда предсказывайте $\Delta s = s' - s$. Для медленно изменяющихся систем (большинство промышленных процессов) остаток на порядки меньше абсолютного состояния.</p>
-<p><strong>Мониторьте расхождение ансамбля.</strong> Отношение <code>u(OOD) / u(in-distribution)</code> должно быть &gt;&gt; 1. Если близко к 1 — ансамбль недостаточно разнообразен.</p>
-<p><strong>Периодически перегенерируйте синтетические данные.</strong> По мере улучшения политики она посещает другие регионы. Перегенерируйте каждые 5–10 эпох SAC.</p>
-<p><strong>Для промышленных приложений</strong>: если у вас есть физический симулятор (хотя бы приближённый), обучайте нейронный ансамбль на остатках между физической моделью и реальными данными. Этот гибридный подход часто требует значительно меньше офлайн-данных. Глава 8 развивает эту идею в полноценную методологию.</p>
+<p>Цикл обучения: батч из <code>ChunkDataset</code>, forward, loss = MSE(predicted_a, target_a).</p>
+<p><strong>Ключевые гиперпараметры:</strong> нормализация return по макс. return в датасете, длина контекста, целевой $R^*$ на тесте (например, высокий перцентиль).</p>
 <hr />
 <h2>Ограничения</h2>
-<p><strong>Ошибки модели накапливаются.</strong> На $h$ шагах однощаговые ошибки суммируются. Штраф MOPO или жёсткая граница MOReL снижают риск, но очень длинные горизонты остаются проблематичными.</p>
-<p><strong>Высокоразмерные наблюдения.</strong> Обучение $T(s' | s, a)$ по пикселям требует значительно больше данных, чем по компактным представлениям состояния.</p>
-<p><strong>Вычислительные затраты масштабируются с размером ансамбля.</strong> Обучение и инференс требуют $N \times$ вычислений по сравнению с одной моделью.</p>
-<p><strong>Модель вознаграждения.</strong> В нашей реализации функция вознаграждения известна аналитически. На практике награды тоже могут потребовать обучения — ещё один источник ошибок.</p>
-<p><strong>Разнообразие ансамбля хрупко.</strong> Если все модели сходятся к одному решению, оценки неопределённости обрушиваются до нуля — штраф MOPO и граница MOReL становятся бесполезными.</p>
+<p>Нет явного credit assignment (нет TD). Стандартный DT не «сшивает» куски траекторий. Чувствительность к выбору $R^*$ на тесте. Теоретической гарантии нет.</p>
 <hr />
-<h2>Итоги</h2>
+<h2>Итог</h2>
 <table>
 <thead>
 <tr>
 <th>Свойство</th>
-<th>MOPO</th>
-<th>MOReL</th>
+<th>Decision Transformer</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Необходимые данные</td>
-<td>Переходы $(s, a, r, s')$</td>
-<td>Переходы $(s, a, r, s')$</td>
+<td>Данные</td>
+<td>Траектории с return-to-go</td>
 </tr>
 <tr>
-<td>Ключевой механизм</td>
-<td>Неопределённость ансамбля как мягкий штраф награды</td>
-<td>Жёсткое разделение known/unknown через порог $\epsilon$</td>
+<td>Обучение</td>
+<td>Supervised (NLL действий по контексту + RTG)</td>
 </tr>
 <tr>
-<td>Пессимизм</td>
-<td>Непрерывный: $\tilde{r} = r - \lambda u$</td>
-<td>Дискретный: поглощающее состояние за $\epsilon$</td>
+<td>OOD</td>
+<td>Структурно: нет Q и $\max_a$</td>
 </tr>
 <tr>
-<td>Теоретическая гарантия</td>
-<td>Нижняя оценка $J(\pi)$</td>
-<td>PAC-оценка без предположений на распределение</td>
-</tr>
-<tr>
-<td>Лучше для</td>
-<td>Максимизация производительности, гладкая динамика</td>
-<td>Жёсткие требования безопасности, нужны формальные гарантии</td>
+<td>Гиперпараметры</td>
+<td>Длина контекста, целевой $R^*$, нормализация return</td>
 </tr>
 </tbody>
 </table>
-<p>Оба алгоритма представляют качественный сдвиг от модельно-свободного offline RL: вместо ограничения политики рядом с данными мы расширяем данные на большую область пространства состояние-действие. Ансамбль обеспечивает безопасность этого расширения — агент доверяет модели только там, где она надёжна.</p>
-<p>Следующий вопрос: можно ли делать лучше, чем обучать динамику с нуля? Если мы знаем физику системы — законы сохранения, дифференциальные уравнения, свойства материала — мы можем встроить эти знания прямо в модель и резко сократить объём необходимых данных. Это тема Главы 6: Physics-Informed Offline RL.</p>
+<p>Decision Transformers — альтернатива value-based offline RL: один supervised-объектив, без Bellman. Удобны при длинных траекториях и инфраструктуре под sequence modeling. Для непрерывного управления с сильными гарантиями по-прежнему стандарт — CQL, IQL и модельные методы (глава 7).</p>
+<p>Глава 7 — <strong>модельный</strong> offline RL: обучение динамики и генерация синтетических данных с штрафами за неопределённость (MOPO, MOReL).</p>
 <hr />
 <h2>Литература</h2>
 <ul>
-<li>Yu, T., Thomas, G., Yu, L., Ermon, S., Zou, J., Levine, S., Finn, C., &amp; Ma, T. (2020). <em>MOPO: Model-Based Offline Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/2005.13239">arXiv:2005.13239</a>.</li>
-<li>Kidambi, R., Rajeswaran, A., Netrapalli, P., &amp; Kakade, S. (2020). <em>MOReL: Model-Based Offline Reinforcement Learning.</em> NeurIPS. <a href="https://arxiv.org/abs/2005.05951">arXiv:2005.05951</a>.</li>
-<li>Janner, M., Fu, J., Zhang, M., &amp; Levine, S. (2019). <em>When to Trust Your Model: Model-Based Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/1906.08253">arXiv:1906.08253</a>.</li>
-<li>Chua, K., Calandra, R., McAllister, R., &amp; Levine, S. (2018). <em>Deep Reinforcement Learning in a Handful of Trials using Probabilistic Dynamics Models.</em> NeurIPS. <a href="https://arxiv.org/abs/1805.12114">arXiv:1805.12114</a>.</li>
-<li>Lakshminarayanan, B., Pritzel, A., &amp; Blundell, C. (2017). <em>Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles.</em> NeurIPS. <a href="https://arxiv.org/abs/1612.01474">arXiv:1612.01474</a>.</li>
-<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
-<li>Fu, J. et al. (2020). <em>D4RL: Datasets for Deep Data-Driven Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2004.07219">arXiv:2004.07219</a>.</li>
+<li>Chen, L. et al. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
+<li>Yamagata, T. et al. (2023). <em>Q-learning Decision Transformer.</em> ICML. <a href="https://arxiv.org/abs/2209.03993">arXiv:2209.03993</a>.</li>
+<li>Zheng, Q. et al. (2022). <em>Online Decision Transformer.</em> ICML. <a href="https://arxiv.org/abs/2202.05607">arXiv:2202.05607</a>.</li>
 </ul></main>
 <nav class="chapter-nav">
-<a href="/offline-rl-book/ru/chapter6.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Decision Transformers</span></a>
-    <a href="/offline-rl-book/ru/chapter8.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Physics-Informed Offline RL</span></a>
+<a href="/offline-rl-book/ru/chapter6.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Ограничение политики и Actor-Critic (TD3+BC, AWAC)</span></a>
+    <a href="/offline-rl-book/ru/chapter8.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Модельный Offline RL (MOPO, MOReL)</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">

@@ -286,7 +286,7 @@ This is precisely why **offline RL** exists: we want to improve beyond BC withou
 
 BC fails because it treats the problem as i.i.d. supervised learning and ignores sequential structure. The next question: can we use reward information to do better, while still learning only from a fixed dataset?
 
-This is the offline RL problem. Chapter 2 defines it formally and shows why naively applying Q-learning to offline data produces catastrophically overoptimistic value estimates — the **extrapolation error** problem that motivates everything in Chapters 3–5.
+This is the offline RL problem. Chapter 2 defines it formally and shows why naively applying Q-learning to offline data produces catastrophically overoptimistic value estimates — the **extrapolation error** problem that motivates the methods in Chapters 3–9.
 
 ---
 
