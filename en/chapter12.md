@@ -100,15 +100,11 @@ In practice, the two approaches converge: offline RL with a behavior cloning reg
 
 ### The Multimodal Action Problem
 
-The most important failure mode of behavioral cloning — and the key motivation for Diffusion Policy — is the **multimodal action problem**. Consider training a robot to push a T-shaped block to a target zone. Expert demonstrations show some operators pushing from the left, others from the right. Both are correct.
+The most important failure mode of behavioral cloning — and the key motivation for Diffusion Policy — is the **multimodal action problem**. In industrial processes, operators from different shifts often develop different but valid strategies for the same upset condition. In a coating line, for example, when temperature and filler drift off setpoint, one operator may respond by lowering heat (conservative, prioritizes temperature recovery); another may increase filler feed to correct the blend. Both strategies can be correct under their respective experience and constraints. A Gaussian policy $\pi_\theta(a|s)$ fits a unimodal distribution over actions. Faced with these two valid responses, it predicts their mean — e.g. a small change in both heat and flow that no operator would choose. The result can be catastrophic: the averaged action may violate mass balance, worsen the deviation, or drive the process toward a constraint. The policy fails not because the data are bad, but because the architecture cannot represent two valid answers to the same question.
 
-A Gaussian policy $\pi_\theta(a|s)$ fits a unimodal distribution over actions. Faced with two valid but opposite strategies, it predicts their mean — push straight into the flat edge of the T-block. The robot fails not because it lacks skill, but because the policy architecture cannot represent two valid answers to the same question.
+$$\text{Gaussian collapses: } \hat{a} = \mathbb{E}[a | s] = \frac{a_{\text{shift A}} + a_{\text{shift B}}}{2} \notin \{a_{\text{shift A}}, a_{\text{shift B}}\}$$
 
-$$\text{Gaussian collapses: } \hat{a} = \mathbb{E}[a | s] = \frac{a_{\text{left}} + a_{\text{right}}}{2} \notin \{a_{\text{left}}, a_{\text{right}}\}$$
-
-This is not a pathological edge case. In industrial processes, multiple operators develop different control strategies for the same upset condition. A model that averages them may produce a strategy no operator ever used — and for good reason.
-
-Diffusion models solve this by modeling the full conditional distribution $p(a|s)$ rather than its mean.
+A model that averages operator strategies may produce an action no operator ever used — and for good reason. Diffusion models address this by modeling the full conditional distribution $p(a|s)$ rather than its mean.
 
 ### Diffusion Policy: Architecture and Temporal Horizons
 
