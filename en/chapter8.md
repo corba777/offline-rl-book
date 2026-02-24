@@ -305,6 +305,36 @@ shap_physical = results['q_shap'][:, :S] * s_std
 
 ---
 
+## Beyond SHAP: Causal AI in Offline RL
+
+SHAP is a well-established tool for *attribution* — which inputs the model uses for a prediction. A different line of work asks: can we make Offline RL agents reason in terms of *cause and effect*, so they generalize better and avoid spurious correlations?
+
+**Why causality matters in Offline RL.** Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones — e.g. in autonomous driving, "rain → wipers on" and "rain → braking" are correlated, but only one is a direct cause of the other.
+
+**Causal RL in practice.** Recent work includes:
+
+- **Causal world models.** Instead of a single black-box $\hat{s}' = f(s, a)$, algorithms like FOCUS learn *causal structure* over state variables (which state factors cause which next-state factors). Theory shows that such structure can improve generalization bounds in offline model-based RL; experiments show more robust behavior when the environment or data distribution changes.
+- **Deconfounding.** When data is confounded (e.g. a hidden variable drives both action and outcome), do-calculus and latent causal transition models allow combining offline observational data with limited online interventional data safely.
+- **Surveys and taxonomy.** Causal RL is often categorized into: causal representation learning, counterfactual policy optimization, *offline* causal RL, causal transfer, and causal explainability. The last connects directly to this chapter: explanations that reflect cause–effect structure are easier to trust and to debug.
+
+**Resources.** The survey by Deng et al. (2023) gives a unified view of causal RL and includes a section on offline/batch settings. The FOCUS paper (Zhang et al.) is a concrete example of causal-structured world models for offline model-based RL. For the link between off-policy evaluation and causal inference (treatment effect estimation), see the batch RL / causal inference literature (e.g. the connection between importance sampling and inverse propensity scoring). References are listed below.
+
+**Toy code example.** A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next\_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ — correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an *intervention* we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: `python code/chapter8_causal_toy.py`. Core idea:
+
+```python
+# True dynamics (unknown to learner): next_s1 = 0.8*s1 + 0.2*a
+# Nuisance z = s1 + noise — correlated with s1, not a cause of next_s1
+# Correlation model: fit next_s1 from (s2, z, a)
+# Causal model:       fit next_s1 from (s1, a)
+# Intervention: s1=0.2, z=0.9, a=0.5 → true next_s1=0.26
+#   Correlation model (sees z=0.9, no s1) → predicts ~0.7 (wrong)
+#   Causal model (sees s1=0.2, a=0.5)    → predicts 0.26 (correct)
+```
+
+> 📄 Full code: [`chapter8_causal_toy.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter8_causal_toy.py)
+
+---
+
 ## Summary
 
 Three complementary SHAP explanations for a trained Offline RL agent:
@@ -343,3 +373,6 @@ For fast per-step operator explanations in a deployed system: distill the policy
 - Ribeiro, M.T., Singh, S., & Guestrin, C. (2016). *"Why Should I Trust You?": Explaining the Predictions of Any Classifier.* KDD. [arXiv:1602.04938](https://arxiv.org/abs/1602.04938).
 - Molnar, C. (2022). *[Interpretable Machine Learning](https://interpretable-ml.github.io/).* 2nd ed.
 - Doshi-Velez, F., & Kim, B. (2017). *Towards a Rigorous Science of Interpretable Machine Learning.* [arXiv:1702.08608](https://arxiv.org/abs/1702.08608).
+- Deng, Z., Jiang, J., Long, G., & Zhang, C. (2023). *Causal Reinforcement Learning: A Survey.* TMLR. [arXiv:2307.01452](https://arxiv.org/abs/2307.01452).
+- Zhang, Y., et al. (2022). *Offline Model-Based Reinforcement Learning with Causal Structure.* Front. Comput. Sci. [arXiv:2206.01474](https://arxiv.org/abs/2206.01474) (FOCUS).
+- Buesing, L., et al. (2020). *Woulda, Coulda, Shoulda: Counterfactually-Guided Policy Search.* ICLR. [arXiv:2006.02579](https://arxiv.org/abs/2006.02579) — connection between batch RL and causal inference.
