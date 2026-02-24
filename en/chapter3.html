@@ -84,9 +84,19 @@
 <h3>2. Direct Method (DM)</h3>
 <p>Learn a model of the reward and dynamics (or just the Q-function) from $\mathcal{D}$, then estimate $J(\pi)$ by <strong>simulating</strong> $\pi$ in the model or by averaging the learned $Q(s,a)$ under $\pi$:</p>
 <p><div class="math-display">$$\hat{J}_{DM} = \mathbb{E}_{s \sim \mathcal{D}}\left[ \hat{Q}(s, \pi(s)) \right] \quad \text{or} \quad \frac{1}{n}\sum_i \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$$</div></p>
-<p>where $\hat{Q}$ is learned from $\mathcal{D}$ (e.g. by Fitted Q Iteration or a single TD pass). <strong>Fitted Q Evaluation (FQE)</strong> is a common choice: fit $Q$ to minimize TD error on $\mathcal{D}$ with target $r + \gamma Q(s', \pi(s'))$, then $\hat{J}<em _mathcal_D="\mathcal{D" _s_a_sim="(s,a)\sim">{FQE} = \mathbb{E}</em>(s,\pi(s))\bigr]$ or an average over initial states.}}\bigl[\hat{Q</p>
+<p>where $\hat{Q}$ is learned from $\mathcal{D}$. <strong>Fitted Q Evaluation (FQE)</strong> is the standard way to obtain $\hat{Q}$ for a given policy $\pi$; we detail it below.</p>
 <p><strong>Pros:</strong> Low variance; uses the whole dataset.<br />
 <strong>Cons:</strong> Biased when the model or $\hat{Q}$ is wrong — and in offline RL it often is (extrapolation error). DM/FQE can be overly optimistic if $\hat{Q}$ overestimates for $\pi$'s actions.</p>
+<h4>Fitted Q Evaluation (FQE) in detail</h4>
+<p><strong>FQE</strong> (Le et al., 2019; later formalized for OPE) fits a Q-function that approximates the <em>value of the target policy $\pi$</em> using only off-policy data from $\mathcal{D}$. Unlike Fitted Q Iteration (FQI), which alternates between policy improvement and evaluation, FQE <strong>evaluates a fixed policy</strong>: the Bellman target uses $\pi$ at the next state, not $\max_a$ or the behavior policy.</p>
+<p><strong>Bellman target for $\pi$:</strong> The true $Q^\pi$ satisfies $Q^\pi(s,a) = r + \gamma \mathbb{E}_{s'}\bigl[ Q^\pi(s', \pi(s')) \bigr]$. So we regress $\hat{Q}$ to the target $y = r + \gamma \hat{Q}(s', \pi(s'))$ on transitions $(s, a, r, s') \in \mathcal{D}$. In practice $\hat{Q}$ on the right-hand side is the current iterate (or a target network), and we minimize TD error over the dataset:</p>
+<p><div class="math-display">$$\mathcal{L}_{FQE} = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \hat{Q}_{tgt}(s', \pi(s')) - \hat{Q}(s, a) \right)^2 \right]$$</div></p>
+<p>We can do a single regression (one backward pass over $\mathcal{D}$ with a fixed target $\hat{Q}<em tgt="tgt">{tgt}$) or iterate: update $\hat{Q}</em>(s, \pi(s))$ at states (and optionally at dataset $(s,a)$ for DR), so we often use the } \leftarrow \hat{Q}$ every $K$ steps. For evaluation we only need $\hat{Q<strong>same</strong> $\hat{Q}$ for both the bootstrap and the regression (one-step TD) or a lagged target to stabilize training.</p>
+<p><strong>Why FQE is useful:</strong> No importance weights — no need to know $\pi_\beta$ or form ratios. Works naturally for <strong>continuous actions</strong>: we only need to query $\hat{Q}(s', \pi(s'))$ at next states, which is a forward pass. The estimate $\hat{J}_{FQE} = \frac{1}{n}\sum_i \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$ (or average over a held-out set of initial states) is cheap to compute once $\hat{Q}$ is trained, so FQE scales well when comparing many candidate policies: train one FQE model per $\pi$, or reuse a single model if policies are similar.</p>
+<p><strong>Bias:</strong> $\hat{Q}$ is trained on the same distribution as the data — state-action pairs that appear in $\mathcal{D}$. When we evaluate $\pi$, we plug in $\pi(s)$ and $\pi(s')$, which may be <strong>out-of-distribution</strong> relative to the actions in $\mathcal{D}$. So the same extrapolation error from Chapter 2 applies: $\hat{Q}$ can be overoptimistic (or under) for OOD actions. FQE is therefore most reliable when $\pi$ is close to $\pi_\beta$ or when the state coverage of $\mathcal{D}$ is rich enough that $\pi(s)$ often falls near observed actions.</p>
+<blockquote>
+<p>📄 <strong>Code:</strong> <a href="https://github.com/corba777/offline-rl-book/blob/main/code/fqe.py"><code>fqe.py</code></a> — FQE on the same toy env as in later chapters: train BC, fit $Q^\pi$ with the FQE TD loss, report $\hat{J}_{FQE}$ and compare with rollout return.</p>
+</blockquote>
 <h3>3. Doubly Robust (DR)</h3>
 <p>Combines IS and DM so that the estimator is <strong>unbiased</strong> if either (a) the importance weights are correct, or (b) the value model $\hat{Q}$ is correct:</p>
 <p><div class="math-display">$$\hat{J}_{DR} = \frac{1}{n}\sum_{i=1}^n \left[ \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)})) + \sum_{t\ge 0} \gamma^t \rho_{0:t}^{(i)} \left( r_t^{(i)} + \gamma \hat{Q}(s_{t+1}^{(i)}, \pi(s_{t+1}^{(i)})) - \hat{Q}(s_t^{(i)}, a_t^{(i)}) \right) \right]$$</div></p>
@@ -164,6 +174,7 @@
 <hr />
 <h2>References</h2>
 <ul>
+<li>Le, H. M., Jiang, N., Agarwal, A., Dudík, M., Yue, Y., &amp; Daumé III, H. (2019). <em>Horizon: Reinforcement Learning for Production.</em> RL4RealLife Workshop @ ICML. <em>(FQE for OPE)</em></li>
 <li>Precup, D., Sutton, R. S., &amp; Singh, S. (2000). <em>Eligibility Traces for Off-Policy Policy Evaluation.</em> ICML.</li>
 <li>Thomas, P., Theocharous, G., &amp; Ghavamzadeh, M. (2015). <em>High-Confidence Off-Policy Evaluation.</em> AAAI.</li>
 <li>Jiang, N., &amp; Li, L. (2016). <em>Doubly Robust Off-policy Value Evaluation for Reinforcement Learning.</em> ICML.</li>

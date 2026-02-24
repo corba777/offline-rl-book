@@ -188,7 +188,7 @@ Based on the material in this book, a pragmatic deployment sequence for a new in
 
 **Step 4 — Offline-to-online fine-tuning.** After an initial deployment period (1–4 weeks), collect online interaction data and fine-tune with the IQL offline-to-online procedure. Maintain the physics constraints throughout — they are not an artifact of offline training but a representation of physical reality.
 
-**Step 5 — Monitor distribution shift.** Track the distribution of observed states over time. If the fraction of observations outside the training distribution exceeds 5–10%, retrain on the combined historical + deployment data. This is not a failure mode — it is the expected lifecycle of an industrial ML model.
+**Step 5 — Monitor distribution shift.** Track the distribution of observed states over time. If the fraction of observations outside the training distribution exceeds 5–10%, retrain on the combined historical + deployment data. This is not a failure mode — it is the expected lifecycle of an industrial ML model. For concrete design of **drift detection**, **fallback policies**, and **safe RL** checks in deployment, see Chapter 10 (Safe RL, Drift Detection, and Fallback).
 
 ---
 

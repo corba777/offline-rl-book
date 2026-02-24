@@ -430,6 +430,54 @@ Five variables with different physical scales and variances require per-dimensio
 
 ---
 
+## Safe RL, Drift Detection, and Fallback
+
+Deploying an offline RL policy in production is not a one-time event. The process changes over time; the policy was trained on a fixed dataset and has no built-in way to adapt. This section outlines three industrial practices that close the gap: **safe RL** (constraints and safety critics), **drift detection** (when to distrust the policy), and **fallback** (what to do when you do).
+
+### Safe RL in Deployment
+
+Chapters 9 and 10 already use **physics-informed constraint penalties** and hard bounds: the policy is trained to avoid regions where constraints are violated. That gives *expected* constraint satisfaction — violations are rare but not provably zero.
+
+For higher assurance, two directions are relevant in industry:
+
+- **Safety critics** (see Chapter 12): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.
+- **Action masking / safe sets:** At runtime, before applying the RL action, check whether it would push the state toward a constraint boundary. If the predicted next state (from a physics or hybrid model) violates a bound, replace the action with a safe alternative: e.g. clip to a conservative set, or switch to a PID that only corrects toward setpoint without aggressive moves. This is especially useful when the primary policy is model-based (HybridMOReL): the same ensemble that generates rollouts can predict $s'$ and flag unsafe actions.
+
+Neither approach removes the need for the constraint calibration described earlier; they add a second layer of checks at deployment.
+
+### Drift Detection
+
+**Distribution shift** is the main reason an offline policy degrades: the live distribution of states (and possibly rewards) drifts away from the training distribution. Equipment wear, feed composition, seasonality, or new operating modes can cause this. The policy has no mechanism to detect it — you must add one.
+
+**Simple drift signals:**
+
+- **State statistics:** Track mean and covariance of the state (or of a low-dimensional embedding) over a sliding window (e.g. last 24 hours). Compare to the same statistics on the training dataset. If the live mean shifts by more than a few standard deviations, or the Mahalanobis distance from the training distribution exceeds a threshold, flag drift.
+- **Density / OOD score:** Fit a density model (e.g. Gaussian mixture, normalizing flow, or leave-one-out kernel density) on training states. At runtime, compute the log-density of the current state (or a short trajectory). If the score drops below a chosen quantile of the training scores, treat the situation as out-of-distribution.
+- **Ensemble disagreement:** If you use a dynamics ensemble (e.g. HybridMOReL), high prediction variance indicates epistemic uncertainty — the model has not seen similar states. Use the same `halt_thresh` logic: when uncertainty is above threshold, consider the state as drifted relative to what the model was trained on.
+
+**What to do when drift is detected:** Reduce confidence in the RL policy. Options include: (1) switch to a **fallback policy** (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a **retrain** on historical + recent deployment data. Chapter 12’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.
+
+### Fallback Offline RL
+
+A **fallback policy** is a safe default used when the primary RL policy is deemed unreliable: after drift is detected, when a constraint violation is predicted or observed, or when uncertainty is above threshold.
+
+**Choosing the fallback:**
+
+- **Behavioral cloning (BC)** on the same dataset is a natural choice: it stays close to the historical behavior that generated the data and tends to avoid extreme actions. Its weakness is compounding error in OOD states — but if the fallback is only used when the state is already flagged as OOD or uncertain, BC’s conservatism is often acceptable.
+- **PID or rule-based controller:** A hand-tuned PID that only corrects toward setpoint, or a small set of safety rules (e.g. “if level &gt; 0.8, reduce flow”), gives interpretable, predictable behavior. It does not improve on the behavior policy but avoids catastrophic RL extrapolation.
+- **Conservative offline RL:** A policy trained with strong conservatism (e.g. CQL with high $\alpha$, or IQL with a narrow advantage filter) can serve as fallback: lower reward than the primary policy but safer when the primary is uncertain.
+
+**Switching logic (example):**
+
+1. Every step: compute drift score and (if available) ensemble uncertainty.
+2. If drift score &lt; threshold **and** uncertainty &lt; threshold: use **primary policy** (e.g. CQL+Physics or HybridMOReL).
+3. Else: use **fallback policy** (BC or PID).
+4. Optionally: if a constraint violation is observed, force fallback for the next $K$ steps or until the state returns to a safe region.
+
+This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 12), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.
+
+---
+
 ## Summary
 
 This chapter translated the tools from Chapters 1–8 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.

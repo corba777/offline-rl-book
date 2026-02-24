@@ -59,10 +59,26 @@ Learn a model of the reward and dynamics (or just the Q-function) from $\mathcal
 
 $$\hat{J}_{DM} = \mathbb{E}_{s \sim \mathcal{D}}\left[ \hat{Q}(s, \pi(s)) \right] \quad \text{or} \quad \frac{1}{n}\sum_i \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$$
 
-where $\hat{Q}$ is learned from $\mathcal{D}$ (e.g. by Fitted Q Iteration or a single TD pass). **Fitted Q Evaluation (FQE)** is a common choice: fit $Q$ to minimize TD error on $\mathcal{D}$ with target $r + \gamma Q(s', \pi(s'))$, then $\hat{J}_{FQE} = \mathbb{E}_{(s,a)\sim \mathcal{D}}\bigl[\hat{Q}(s,\pi(s))\bigr]$ or an average over initial states.
+where $\hat{Q}$ is learned from $\mathcal{D}$. **Fitted Q Evaluation (FQE)** is the standard way to obtain $\hat{Q}$ for a given policy $\pi$; we detail it below.
 
 **Pros:** Low variance; uses the whole dataset.  
 **Cons:** Biased when the model or $\hat{Q}$ is wrong — and in offline RL it often is (extrapolation error). DM/FQE can be overly optimistic if $\hat{Q}$ overestimates for $\pi$'s actions.
+
+#### Fitted Q Evaluation (FQE) in detail
+
+**FQE** (Le et al., 2019; later formalized for OPE) fits a Q-function that approximates the *value of the target policy $\pi$* using only off-policy data from $\mathcal{D}$. Unlike Fitted Q Iteration (FQI), which alternates between policy improvement and evaluation, FQE **evaluates a fixed policy**: the Bellman target uses $\pi$ at the next state, not $\max_a$ or the behavior policy.
+
+**Bellman target for $\pi$:** The true $Q^\pi$ satisfies $Q^\pi(s,a) = r + \gamma \mathbb{E}_{s'}\bigl[ Q^\pi(s', \pi(s')) \bigr]$. So we regress $\hat{Q}$ to the target $y = r + \gamma \hat{Q}(s', \pi(s'))$ on transitions $(s, a, r, s') \in \mathcal{D}$. In practice $\hat{Q}$ on the right-hand side is the current iterate (or a target network), and we minimize TD error over the dataset:
+
+$$\mathcal{L}_{FQE} = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \hat{Q}_{tgt}(s', \pi(s')) - \hat{Q}(s, a) \right)^2 \right]$$
+
+We can do a single regression (one backward pass over $\mathcal{D}$ with a fixed target $\hat{Q}_{tgt}$) or iterate: update $\hat{Q}_{tgt} \leftarrow \hat{Q}$ every $K$ steps. For evaluation we only need $\hat{Q}(s, \pi(s))$ at states (and optionally at dataset $(s,a)$ for DR), so we often use the **same** $\hat{Q}$ for both the bootstrap and the regression (one-step TD) or a lagged target to stabilize training.
+
+**Why FQE is useful:** No importance weights — no need to know $\pi_\beta$ or form ratios. Works naturally for **continuous actions**: we only need to query $\hat{Q}(s', \pi(s'))$ at next states, which is a forward pass. The estimate $\hat{J}_{FQE} = \frac{1}{n}\sum_i \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$ (or average over a held-out set of initial states) is cheap to compute once $\hat{Q}$ is trained, so FQE scales well when comparing many candidate policies: train one FQE model per $\pi$, or reuse a single model if policies are similar.
+
+**Bias:** $\hat{Q}$ is trained on the same distribution as the data — state-action pairs that appear in $\mathcal{D}$. When we evaluate $\pi$, we plug in $\pi(s)$ and $\pi(s')$, which may be **out-of-distribution** relative to the actions in $\mathcal{D}$. So the same extrapolation error from Chapter 2 applies: $\hat{Q}$ can be overoptimistic (or under) for OOD actions. FQE is therefore most reliable when $\pi$ is close to $\pi_\beta$ or when the state coverage of $\mathcal{D}$ is rich enough that $\pi(s)$ often falls near observed actions.
+
+> 📄 **Code:** [`fqe.py`](https://github.com/corba777/offline-rl-book/blob/main/code/fqe.py) — FQE on the same toy env as in later chapters: train BC, fit $Q^\pi$ with the FQE TD loss, report $\hat{J}_{FQE}$ and compare with rollout return.
 
 ### 3. Doubly Robust (DR)
 
@@ -111,6 +127,7 @@ Off-Policy Evaluation answers: *from offline data only, how good is this policy?
 
 ## References
 
+- Le, H. M., Jiang, N., Agarwal, A., Dudík, M., Yue, Y., & Daumé III, H. (2019). *Horizon: Reinforcement Learning for Production.* RL4RealLife Workshop @ ICML. *(FQE for OPE)*
 - Precup, D., Sutton, R. S., & Singh, S. (2000). *Eligibility Traces for Off-Policy Policy Evaluation.* ICML.
 - Thomas, P., Theocharous, G., & Ghavamzadeh, M. (2015). *High-Confidence Off-Policy Evaluation.* AAAI.
 - Jiang, N., & Li, L. (2016). *Doubly Robust Off-policy Value Evaluation for Reinforcement Learning.* ICML.
