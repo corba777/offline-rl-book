@@ -70,7 +70,7 @@
 <p>OPE is the sibling of offline RL: offline RL <em>learns</em> a policy from $\mathcal{D}$; OPE <em>evaluates</em> a candidate policy from the same $\mathcal{D}$. In practice you use both: train several policies (e.g. CQL with different $\alpha$), use OPE to rank them or to select the best one, and only then consider deploying the top candidate (possibly after a final safety check).</p>
 <hr />
 <h2>Why Not Just Use the Learned Q-Function?</h2>
-<p>Chapter 2 already introduced $\hat{J}(\hat\pi) = \mathbb{E}<em>{s,a \sim d^{\hat\pi}}[Q</em>\theta(s,a)]$ — the return <em>predicted</em> by the learned Q-function under the greedy policy. We argued that $\hat{J}$ can be wildly optimistic when $Q_\theta$ overestimates OOD actions. So <strong>using the training Q-network as an evaluator</strong> is biased and unreliable for the very policies we care about (policies that may choose OOD actions).</p>
+<p>Chapter 2 already introduced $\hat{J}(\hat\pi) = \mathbb{E}_{s,a \sim d^{\hat\pi}}[Q_\theta(s,a)]$ — the return <em>predicted</em> by the learned Q-function under the greedy policy. We argued that $\hat{J}$ can be wildly optimistic when $Q_\theta$ overestimates OOD actions. So <strong>using the training Q-network as an evaluator</strong> is biased and unreliable for the very policies we care about (policies that may choose OOD actions).</p>
 <p>OPE provides <strong>dedicated estimators</strong> of $J(\pi)$ that do not assume the Q-function is correct. They use the dataset directly, with explicit treatment of the distribution shift between $\pi_\beta$ and $\pi$.</p>
 <hr />
 <h2>Three Families of Estimators</h2>
