@@ -60,7 +60,59 @@ $A(s,a) = Q(s,a) - V(s)$ — преимущество действия $a$ в с
 
 > 📄 Полный код: [`td3bc.py`](https://github.com/corba777/offline-rl-book/blob/main/code/td3bc.py)
 
-Архитектура как в TD3; к loss актора добавляется член BC с нормализацией Q (см. EN-версию главы).
+### TD3+BC: сети и loss актора
+
+TD3+BC использует ту же архитектуру, что и TD3: детерминированный актор, две Q-сети, target-сети.
+
+```python
+class Actor(nn.Module):
+    """Deterministic policy s -> a in [-1, 1]. Same as IQL DeterministicPolicy."""
+    def __init__(self, state_dim, action_dim, hidden_dim=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim), nn.Tanh(),
+        )
+    def forward(self, state):
+        return self.net(state)
+    def act(self, state):
+        with torch.no_grad():
+            return self.forward(state).cpu().numpy().squeeze()
+
+
+def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
+    """
+    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.
+    Q is normalized by (q - q.mean()) / (q.std() + eps) over the batch
+    so the Q-term and BC-term have comparable scale.
+    """
+    pi = actor(states)
+    q = Q1(states, pi)
+    q_norm = (q - q.mean()) / (q.std() + 1e-6)
+    bc_loss = ((pi - actions) ** 2).mean()
+    return -q_norm.mean() * lambda_ + bc_loss
+```
+
+Оба члена (Q и BC) вносят вклад в градиент; в `td3bc.py` используется нормализация Q по батчу и фиксированный $\lambda$.
+
+### AWAC-style loss политики (advantage-weighted)
+
+```python
+def awac_actor_loss(policy, Q, V, states, actions, beta=1.0):
+    """
+    Advantage-Weighted Regression: log pi(a|s) weighted by exp(A(s,a)/beta).
+    A(s,a) = Q(s,a) - V(s). Requires stochastic policy that outputs log_prob.
+    """
+    with torch.no_grad():
+        A = Q(states, actions) - V(states)
+        weights = (A / beta).exp()
+        weights = weights / (weights.mean() + 1e-6)  # stabilize
+    log_prob = policy.log_prob(states, actions)
+    return -(weights * log_prob).mean()
+```
+
+Для детерминированной политики (как в TD3) можно использовать гауссов с малой дисперсией вокруг $\pi(s)$ как суррогат log_prob или перейти на стохастическую голову.
 
 ---
 

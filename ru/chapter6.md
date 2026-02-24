@@ -58,7 +58,48 @@ $$\mathcal{L} = -\mathbb{E}_{\tau \sim \mathcal{D}} \left[ \sum_{t=1}^{T} \log \
 
 > 📄 Полный код: [`decision_transformer.py`](https://github.com/corba777/offline-rl-book/blob/main/code/decision_transformer.py)
 
-Эмбеддинги для (R, s, a), позиционное кодирование, каузальные блоки, голова на действие (например, tanh). Нормализация return, выбор длины контекста и целевого $R^*$ — ключевые гиперпараметры.
+### Эмбеддинги и модель
+
+Чанки собираются в `ChunkDataset`; для каждой (траектория, шаг $t$) формируются массивы длины `context_len` по return-to-go, состояниям и действиям (действия до $t-1$; предсказываем $a_t$). Модель склеивает $(R, s, a)$ по шагам в один токен, эмбеддит одним линейным слоем, добавляет позиционное кодирование и прогоняет каузальный трансформер:
+
+```python
+class DecisionTransformer(nn.Module):
+    """
+    GPT-style model. Input: context_len tokens, each (R, s, a) concatenated and embedded.
+    Output: predicted action for the last timestep.
+    Causal mask: each position sees only past.
+    """
+    def __init__(self, state_dim, action_dim, hidden_dim=128, n_heads=4, n_layers=2, context_len=20):
+        super().__init__()
+        self.context_len = context_len
+        self.token_dim = 1 + state_dim + action_dim
+        self.embed = nn.Linear(self.token_dim, hidden_dim)
+        self.pos_embed = nn.Parameter(torch.zeros(1, context_len, hidden_dim))
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_dim, nhead=n_heads, dim_feedforward=hidden_dim * 4,
+            dropout=0.1, activation='relu', batch_first=True, norm_first=False,
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        self.action_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim), nn.Tanh(),
+        )
+
+    def _causal_mask(self, L, device):
+        return torch.triu(torch.ones(L, L, device=device) * float('-inf'), diagonal=1)
+
+    def forward(self, R_chunk, S_chunk, A_chunk):
+        B, L, _ = R_chunk.shape
+        tokens = torch.cat([R_chunk, S_chunk, A_chunk], dim=-1)
+        x = self.embed(tokens) + self.pos_embed[:, :L]
+        mask = self._causal_mask(L, x.device)
+        x = self.transformer(x, mask=mask)
+        return self.action_head(x[:, -1])
+```
+
+Цикл обучения: батч из `ChunkDataset`, forward, loss = MSE(predicted_a, target_a).
+
+**Ключевые гиперпараметры:** нормализация return по макс. return в датасете, длина контекста, целевой $R^*$ на тесте (например, высокий перцентиль).
 
 ---
 
