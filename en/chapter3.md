@@ -72,7 +72,26 @@ where $\hat{Q}$ is learned from $\mathcal{D}$. **Fitted Q Evaluation (FQE)** is 
 
 $$\mathcal{L}_{FQE} = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \hat{Q}_{tgt}(s', \pi(s')) - \hat{Q}(s, a) \right)^2 \right]$$
 
-We can do a single regression (one backward pass over $\mathcal{D}$ with a fixed target $\hat{Q}_{tgt}$) or iterate: update $\hat{Q}_{tgt} \leftarrow \hat{Q}$ every $K$ steps. For evaluation we only need $\hat{Q}(s, \pi(s))$ at states (and optionally at dataset $(s,a)$ for DR), so we often use the **same** $\hat{Q}$ for both the bootstrap and the regression (one-step TD) or a lagged target to stabilize training.
+We can do a single regression (one backward pass over $\mathcal{D}$ with a fixed target $\hat{Q}\_{tgt}$) or iterate: update $\hat{Q}\_{tgt} \leftarrow \hat{Q}$ every $K$ steps. For evaluation we only need $\hat{Q}(s, \pi(s))$ at states (and optionally at dataset $(s,a)$ for DR), so we often use the **same** $\hat{Q}$ for both the bootstrap and the regression (one-step TD) or a lagged target to stabilize training.
+
+A minimal training step and the J estimate look like this (policy $\pi$ is a callable, e.g. a neural network):
+
+```python
+# FQE update: TD target uses π at next state (not behavior action)
+with torch.no_grad():
+    a_next = policy_fn(next_states)           # π(s')
+    q_next = Q_tgt(next_states, a_next)
+    td_target = rewards + gamma * (1 - dones) * q_next
+q = Q(states, actions)
+loss = F.mse_loss(q, td_target)
+# ... backward, optimizer step, then soft update Q_tgt ← Q
+
+# FQE estimate: (1/n) Σ Q(s, π(s)) over states (e.g. initial or dataset)
+def estimate_J_FQE(Q, policy_fn, states):
+    with torch.no_grad():
+        a = policy_fn(states)
+        return Q(states, a).mean().item()
+```
 
 **Why FQE is useful:** No importance weights — no need to know $\pi_\beta$ or form ratios. Works naturally for **continuous actions**: we only need to query $\hat{Q}(s', \pi(s'))$ at next states, which is a forward pass. The estimate $\hat{J}_{FQE} = \frac{1}{n}\sum_i \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$ (or average over a held-out set of initial states) is cheap to compute once $\hat{Q}$ is trained, so FQE scales well when comparing many candidate policies: train one FQE model per $\pi$, or reuse a single model if policies are similar.
 
