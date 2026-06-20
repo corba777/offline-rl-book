@@ -34,7 +34,7 @@ The question: can we apply Q-learning to a fixed offline dataset? The answer is 
 
 The Q-function satisfies the **Bellman optimality equation**:
 
-$$Q^{*}(s, a) = r(s, a) + \gamma \, \mathbb{E}_{s' \sim P(\cdot|s,a)} \left[ \max_{a'} Q^{*}(s', a') \right]$$
+$$Q^{\ast}(s, a) = r(s, a) + \gamma \, \mathbb{E}_{s' \sim P(\cdot|s,a)} \left[ \max_{a'} Q^{\ast}(s', a') \right]$$
 
 We learn $Q_\theta$ by minimizing the **TD error** (Temporal Difference):
 
@@ -86,11 +86,11 @@ Define the **estimated performance** $\hat{J}(\hat{\pi}) = \underset{s,a \sim d^
 
 The gap between them is bounded (approximately, following Kumar et al., 2020):
 
-$$\hat{J}(\hat{\pi}) - J(\hat{\pi}) \leq \frac{2\gamma}{(1-\gamma)^{2}} \underset{s \sim d^{{\hat{\pi}}}}{\mathbb{E}}\left[\max_a \left| Q_\theta(s,a) - Q^{*}(s,a) \right|\right]$$
+$$\hat{J}(\hat{\pi}) - J(\hat{\pi}) \leq \frac{2\gamma}{(1-\gamma)^{2}} \underset{s \sim d^{{\hat{\pi}}}}{\mathbb{E}}\left[\max_a \left| Q_\theta(s,a) - Q^{\ast}(s,a) \right|\right]$$
 
 This is the right way to frame the problem. The left side is what we fear: the **gap between the promised and the real return**. The right side shows what drives it: Q-function error evaluated under $d^{{\hat{\pi}}}$ — the state distribution of the *learned* policy, not the behavior policy.
 
-This is what makes OOD overestimation dangerous. During training, $\hat{J}(\hat{\pi})$ looks high — the Q-function is optimistic. But that optimism is concentrated exactly in the regions the greedy policy seeks out: actions never seen in $\mathcal{D}$, where $\lvert Q_\theta - Q^{*} \rvert$ is largest. The bound above can be arbitrarily large, meaning real performance can be arbitrarily worse than estimated.
+This is what makes OOD overestimation dangerous. During training, $\hat{J}(\hat{\pi})$ looks high — the Q-function is optimistic. But that optimism is concentrated exactly in the regions the greedy policy seeks out: actions never seen in $\mathcal{D}$, where $\lvert Q_\theta - Q^{\ast} \rvert$ is largest. The bound above can be arbitrarily large, meaning real performance can be arbitrarily worse than estimated.
 
 The crucial asymmetry: **the error is evaluated under $d^{{\hat{\pi}}}$, not $d^{{\pi_{\beta}}}$**. A policy that stays near the behavior policy would keep this term small. The greedy policy actively maximizes it.
 
@@ -195,13 +195,13 @@ The solution space splits into two families:
 
 **Policy-constraint methods** — restrict the learned policy to stay close to $\pi_{\beta}$:
 
-$$\pi^{*} = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \,\|\, \pi_{\beta}) \leq \epsilon$$
+$$\pi^{\ast} = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \,\|\, \pi_{\beta}) \leq \epsilon$$
 
 Examples: TD3+BC, BEAR, BCQ.
 
 **Value-pessimism methods** — instead of constraining the policy, make Q-values pessimistic for OOD actions:
 
-$$Q^{*} = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]$$
+$$Q^{\ast} = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]$$
 
 The intuition: if OOD Q-values are artificially pushed *down*, the greedy policy will naturally prefer in-distribution actions.
 
