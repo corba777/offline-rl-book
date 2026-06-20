@@ -191,8 +191,8 @@ Start with $\lambda = 0.25$ or use the paper's adaptive scaling. If the policy i
 |---|---|---|---|
 | TD3+BC | Actor loss (BC penalty) | Yes (actor outputs fed to Q) | No |
 | AWAC | Actor loss (advantage weights) | No | No |
-| CQL (Ch3) | Q-function | Yes (penalized) | Lower bound |
-| IQL (Ch4) | V + policy extraction | No | Implicit pessimism |
+| CQL (Ch4) | Q-function | Yes (penalized) | Lower bound |
+| IQL (Ch5) | V + policy extraction | No | Implicit pessimism |
 
 Policy-constraint and actor-critic methods offer a simple way to improve over the behavior policy while staying close to the data. TD3+BC is the lightest to implement; AWAC (and IQL) avoid OOD actor queries entirely. For industrial applications where simplicity matters, TD3+BC is a good first try; for maximum safety and performance, CQL and IQL remain the preferred choice.
 

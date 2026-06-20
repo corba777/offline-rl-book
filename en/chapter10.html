@@ -472,7 +472,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
 <p>This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 12), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.</p>
 <hr />
 <h2>Summary</h2>
-<p>This chapter translated the tools from Chapters 1–8 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
+<p>This chapter translated the tools from Chapters 1–9 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
 <p>The comparison across four algorithms reveals a clean hierarchy:</p>
 <table>
 <thead>
@@ -511,11 +511,11 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
 </tbody>
 </table>
 <p>The practical recommendation for industrial deployment: <strong>start with CQL+Physics</strong> (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, <strong>add the hybrid ensemble</strong> as a source of diverse synthetic experience.</p>
-<p>Chapter 11 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.</p>
+<p>Chapter 11 turns to explainability: how to interrogate a trained agent's Q-function, policy, and dynamics model with SHAP so an operator can understand — and an auditor can certify — why the agent chose a given action.</p>
 <hr />
 <h2>References</h2>
 <ul>
-<li>All references from Chapters 1–8 apply to the algorithms used here.</li>
+<li>All references from Chapters 1–9 apply to the algorithms used here.</li>
 <li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(PID baseline, first-order process models)</em></li>
 <li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(industrial process control, transport delay)</em></li>
 <li>Rawlings, J.B., Mayne, D.Q., &amp; Diehl, M. (2017). <em>Model Predictive Control.</em> Nob Hill. <em>(MPC for comparison context)</em></li>

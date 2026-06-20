@@ -115,6 +115,7 @@ where $D_{CQL}$ is a divergence term that measures how far the learned policy dr
 CQL typically uses a SAC-style architecture: two Q-networks (to reduce overestimation via double-Q), a stochastic actor, and entropy regularization.
 
 ```python
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

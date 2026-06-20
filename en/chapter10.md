@@ -482,7 +482,7 @@ This way, the system uses the best policy when the distribution matches training
 
 ## Summary
 
-This chapter translated the tools from Chapters 1–8 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.
+This chapter translated the tools from Chapters 1–9 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.
 
 The comparison across four algorithms reveals a clean hierarchy:
 
@@ -495,13 +495,13 @@ The comparison across four algorithms reveals a clean hierarchy:
 
 The practical recommendation for industrial deployment: **start with CQL+Physics** (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, **add the hybrid ensemble** as a source of diverse synthetic experience.
 
-Chapter 11 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.
+Chapter 11 turns to explainability: how to interrogate a trained agent's Q-function, policy, and dynamics model with SHAP so an operator can understand — and an auditor can certify — why the agent chose a given action.
 
 ---
 
 ## References
 
-- All references from Chapters 1–8 apply to the algorithms used here.
+- All references from Chapters 1–9 apply to the algorithms used here.
 - Åström, K.J., & Wittenmark, B. (2013). *Computer-Controlled Systems.* Dover. *(PID baseline, first-order process models)*
 - Seborg, D.E., Edgar, T.F., Mellichamp, D.A., & Doyle, F.J. (2016). *Process Dynamics and Control.* Wiley. *(industrial process control, transport delay)*
 - Rawlings, J.B., Mayne, D.Q., & Diehl, M. (2017). *Model Predictive Control.* Nob Hill. *(MPC for comparison context)*

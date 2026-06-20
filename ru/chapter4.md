@@ -115,6 +115,7 @@ $$J(\hat\pi) \geq J(\pi_\beta) - \frac{\alpha}{1-\gamma} \cdot \mathbb{E}_{s \si
 CQL обычно использует архитектуру в стиле SAC: два Q-networks (для снижения переоценки через double-Q), стохастический актор и регуляризацию энтропией.
 
 ```python
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
