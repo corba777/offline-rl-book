@@ -138,7 +138,7 @@ Agent observability / tracing → trajectories → offline or off-policy RL data
 
 1. **Replay в sandbox** — cached fixtures, recorded API responses.
 2. **Verifiers** — unit tests, SQL, retrieval, code execution.
-3. **Learned critics** — FQE-style или goal-conditioned values. *Planning without Search* — [Planning with a Natural Language Critic](https://arxiv.org/abs/2505.18098) (в secondary sources иногда PNLC или PLNC) — natural-language critic без fine-tuning base LLM.
+3. **Learned critics** — FQE-style или goal-conditioned values. *Planning without Search* ([Hong et al., 2025](https://arxiv.org/abs/2505.18098)) — natural-language critic без fine-tuning base LLM.
 4. **Human / A/B review** — при высоком deploy risk.
 
 ---
@@ -260,7 +260,7 @@ State key включает `(task, x_known, y_known, result)` — числово
 - Xi et al. (2024). *AgentGym.* [arXiv:2406.04151](https://arxiv.org/abs/2406.04151), [project](https://agentgym.github.io/).
 - Luo et al. (2025). *Agent Lightning.* [arXiv:2508.03680](https://arxiv.org/abs/2508.03680), [docs](https://microsoft.github.io/agent-lightning/latest/).
 - Pang et al. (2024). *KALM.* [arXiv:2404.09248](https://arxiv.org/abs/2404.09248), [project](https://kalmneurips2024.github.io/).
-- TEDUO (2024). [arXiv:2412.06877](https://arxiv.org/abs/2412.06877).
-- *Planning without Search* (Planning with a Natural Language Critic). [arXiv:2505.18098](https://arxiv.org/abs/2505.18098).
+- Pouplin et al. (2024). *The Synergy of LLMs & RL (TEDUO).* ICML 2025. [arXiv:2412.06877](https://arxiv.org/abs/2412.06877).
+- Hong, J., Dragan, A., & Levine, S. (2025). *Planning without Search: Refining Frontier LLMs with Offline Goal-Conditioned RL.* NeurIPS 2025. [arXiv:2505.18098](https://arxiv.org/abs/2505.18098).
 - Wang et al. (2025). *RAGEN.* [arXiv:2504.20073](https://arxiv.org/abs/2504.20073).
 - Wang et al. (2026). *RAGEN-2.* [arXiv:2604.06268](https://arxiv.org/abs/2604.06268), [project](https://ragen-ai.github.io/v2/).

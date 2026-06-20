@@ -154,7 +154,7 @@ Practical evaluation layers:
 
 1. **Replay in sandbox** — re-execute tool calls against cached fixtures or recorded API responses (when safe and deterministic).
 2. **Verifiers** — unit tests, SQL result checks, retrieval precision, code execution outcomes.
-3. **Learned critics** — FQE-style $Q(s,a)$ or goal-conditioned value models trained on logs. *Planning without Search* — [Planning with a Natural Language Critic](https://arxiv.org/abs/2505.18098) (sometimes abbreviated PNLC or PLNC in secondary sources) — uses offline goal-conditioned values as a **natural-language critic** at inference without fine-tuning the base LLM.
+3. **Learned critics** — FQE-style $Q(s,a)$ or goal-conditioned value models trained on logs. *Planning without Search* ([Hong et al., 2025](https://arxiv.org/abs/2505.18098)) — uses offline goal-conditioned values as a **natural-language critic** at inference without fine-tuning the base LLM.
 4. **Human or A/B review** — expensive but necessary for high-stakes deploy.
 
 Offline RL for agents fails quietly when OPE measures **format quality** instead of **task success**. Align metrics with deployment risk, as in Chapter 3’s coverage warnings.
@@ -353,7 +353,7 @@ See the [Appendix: Algorithm Selection Guide](/offline-rl-book/en/appendix.html)
 - Xi et al. (2024). *AgentGym: Evolving LLM-based Agents across Diverse Environments.* [arXiv:2406.04151](https://arxiv.org/abs/2406.04151), [project](https://agentgym.github.io/).
 - Luo et al. (2025). *Agent Lightning: Train ANY AI Agents with Reinforcement Learning.* [arXiv:2508.03680](https://arxiv.org/abs/2508.03680), [docs](https://microsoft.github.io/agent-lightning/latest/).
 - Pang et al. (2024). *KALM: Knowledgeable Agents by Offline RL from LLM Rollouts.* [arXiv:2404.09248](https://arxiv.org/abs/2404.09248), [project](https://kalmneurips2024.github.io/).
-- TEDUO (2024). *The Synergy of LLMs & RL Unlocks Offline Learning of Generalizable Language-Conditioned Policies.* [arXiv:2412.06877](https://arxiv.org/abs/2412.06877).
-- *Planning without Search: Refining Frontier LLMs with Offline Goal-Conditioned RL* (Planning with a Natural Language Critic). [arXiv:2505.18098](https://arxiv.org/abs/2505.18098).
+- Pouplin, T., Kobalczyk, K., Sun, H., & van der Schaar, M. (2024). *The Synergy of LLMs & RL Unlocks Offline Learning of Generalizable Language-Conditioned Policies (TEDUO).* ICML 2025. [arXiv:2412.06877](https://arxiv.org/abs/2412.06877).
+- Hong, J., Dragan, A., & Levine, S. (2025). *Planning without Search: Refining Frontier LLMs with Offline Goal-Conditioned RL.* NeurIPS 2025. [arXiv:2505.18098](https://arxiv.org/abs/2505.18098).
 - Wang et al. (2025). *RAGEN: Understanding Self-Evolution in LLM Agents via Multi-Turn RL.* [arXiv:2504.20073](https://arxiv.org/abs/2504.20073).
 - Wang et al. (2026). *RAGEN-2: Reasoning Collapse in Agentic RL.* [arXiv:2604.06268](https://arxiv.org/abs/2604.06268), [project](https://ragen-ai.github.io/v2/).
