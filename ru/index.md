@@ -89,7 +89,13 @@ permalink: "/offline-rl-book/ru/"
   </li>
   <li>
     <a href="/offline-rl-book/ru/chapter12.html">
-      <span><span class="ch-num">Гл 12</span>Заключение и перспективы</span>
+      <span><span class="ch-num">Гл 12</span>Offline RL для tool-using LLM-агентов</span>
+      <span class="ch-status ready">готово</span>
+    </a>
+  </li>
+  <li>
+    <a href="/offline-rl-book/ru/chapter13.html">
+      <span><span class="ch-num">Гл 13</span>Заключение и перспективы</span>
       <span class="ch-status ready">готово</span>
     </a>
   </li>

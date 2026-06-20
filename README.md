@@ -20,7 +20,8 @@ Applied learning notes on offline deep reinforcement learning — **created and 
 | 9. Physics-Informed Offline RL | `en/chapter9.md` | `ru/chapter9.md` | ✅ Ready |
 | 10. Industrial Applications | `en/chapter10.md` | `ru/chapter10.md` | ✅ Ready |
 | 11. Explainability in Offline RL | `en/chapter11.md` | `ru/chapter11.md` | ✅ Ready |
-| 12. Conclusion and Future Directions | `en/chapter12.md` | `ru/chapter12.md` | ✅ Ready |
+| 12. Offline RL for Tool-Using LLM Agents | `en/chapter12.md` | `ru/chapter12.md` | ✅ Ready |
+| 13. Conclusion and Future Directions | `en/chapter13.md` | `ru/chapter13.md` | ✅ Ready |
 | App. Algorithm Selection Guide | `en/appendix.md` | `ru/appendix.md` | ✅ Ready |
 
 **Algorithm coverage:** Off-Policy Evaluation (OPE) has a dedicated chapter (Ch 3). Value-based (CQL, IQL), policy-constraint / Actor-Critic (TD3+BC, AWAC), Decision Transformers, and model-based (MOPO, MOReL) each have dedicated chapters. Chapter 2 maps the full landscape with references.
@@ -31,11 +32,11 @@ Applied learning notes on offline deep reinforcement learning — **created and 
 ├── index.html               # English TOC
 ├── ru.html                  # Russian TOC
 ├── en/
-│   ├── chapter1.md … chapter12.md, appendix.md
-│   └── chapter1.html … chapter12.html, appendix.html
+│   ├── chapter1.md … chapter13.md, appendix.md
+│   └── chapter1.html … chapter13.html, appendix.html
 ├── ru/
-│   ├── chapter1.md … chapter12.md, appendix.md
-│   └── chapter1.html … chapter12.html, appendix.html
+│   ├── chapter1.md … chapter13.md, appendix.md
+│   └── chapter1.html … chapter13.html, appendix.html
 └── code/
     ├── behavioral_cloning.py
     ├── extrapolation_error.py

@@ -8,7 +8,7 @@ prev_chapter:
   title: "Промышленные применения"
 next_chapter:
   url: /ru/chapter12/
-  title: "Заключение и перспективы"
+  title: "Offline RL для tool-using LLM-агентов"
 permalink: "/offline-rl-book/ru/chapter11/"
 ---
 

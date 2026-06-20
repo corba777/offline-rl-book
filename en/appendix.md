@@ -4,7 +4,7 @@ title: "Appendix: Algorithm Selection Guide"
 lang: en
 ru_url: /ru/appendix/
 prev_chapter:
-  url: /en/chapter12/
+  url: /en/chapter13/
   title: "Conclusion and Future Directions"
 next_chapter: null
 permalink: "/offline-rl-book/en/appendix/"

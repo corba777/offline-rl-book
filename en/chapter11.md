@@ -8,7 +8,7 @@ prev_chapter:
   title: "Industrial Applications"
 next_chapter:
   url: /en/chapter12/
-  title: "Conclusion and Future Directions"
+  title: "Offline RL for Tool-Using LLM Agents"
 permalink: "/offline-rl-book/en/chapter11/"
 ---
 

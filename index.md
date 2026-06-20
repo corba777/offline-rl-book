@@ -89,7 +89,13 @@ Each chapter: **idea → formalization → code → limitations**.
   </li>
   <li>
     <a href="/offline-rl-book/en/chapter12.html">
-      <span><span class="ch-num">Ch 12</span>Conclusion and Future Directions</span>
+      <span><span class="ch-num">Ch 12</span>Offline RL for Tool-Using LLM Agents</span>
+      <span class="ch-status ready">ready</span>
+    </a>
+  </li>
+  <li>
+    <a href="/offline-rl-book/en/chapter13.html">
+      <span><span class="ch-num">Ch 13</span>Conclusion and Future Directions</span>
       <span class="ch-status ready">ready</span>
     </a>
   </li>

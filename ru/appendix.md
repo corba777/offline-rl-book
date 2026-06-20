@@ -4,7 +4,7 @@ title: "Приложение: выбор алгоритма"
 lang: ru
 en_url: /en/appendix/
 prev_chapter:
-  url: /ru/chapter12/
+  url: /ru/chapter13/
   title: "Заключение и перспективы"
 next_chapter: null
 permalink: "/offline-rl-book/ru/appendix/"
