@@ -31,11 +31,11 @@ Applied learning notes on offline deep reinforcement learning — **created and 
 ├── index.html               # English TOC
 ├── ru.html                  # Russian TOC
 ├── en/
-│   ├── chapter1.md … chapter11.md
-│   └── chapter1.html … chapter11.html
+│   ├── chapter1.md … chapter12.md, appendix.md
+│   └── chapter1.html … chapter12.html, appendix.html
 ├── ru/
-│   ├── chapter1.md … chapter11.md
-│   └── chapter1.html … chapter11.html
+│   ├── chapter1.md … chapter12.md, appendix.md
+│   └── chapter1.html … chapter12.html, appendix.html
 └── code/
     ├── behavioral_cloning.py
     ├── extrapolation_error.py
