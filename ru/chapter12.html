@@ -258,6 +258,23 @@
 <h2>Failure modes</h2>
 <p>Reward hacking, spurious tool use, template collapse (RAGEN-2), unsupported tool calls (OOD), overconfident critics, non-stationary APIs, cost/safety в reward.</p>
 <hr />
+<h2>Toy example: calculator agent</h2>
+<p>Пример <strong>намеренно без language modeling</strong>: политика выбирает structured tool calls, не генерирует free text. Так изолируется offline RL: улучшение над logged behavior через value learning и support constraints.</p>
+<blockquote>
+<p>📄 Код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/agentic_offline_rl_toy.py"><code>agentic_offline_rl_toy.py</code></a></p>
+</blockquote>
+<p><strong>Среда:</strong> задачи <code>x+y</code>, <code>x-y</code>, <code>x*y</code>; tools <code>lookup_x</code>, <code>lookup_y</code>, <code>add</code>, <code>sub</code>, <code>mul</code>, <code>final</code>. Награды: +1 / −1 / −0.02 за шаг.</p>
+<p><strong>Четыре политики:</strong> Behavior (logger), BC (majority action), naive FQI (tabular Q), support-constrained FQI (argmax только по actions из dataset на state — toy analogue CQL/support mask).</p>
+<p><strong>Два режима данных:</strong> (1) <code>mul</code> есть в логах; (2) на mul-задачах behavior никогда не вызывает <code>mul</code>.</p>
+<p>Запуск: <code>python code/agentic_offline_rl_toy.py</code></p>
+<p>Типичный qualitative результат:</p>
+<ul>
+<li><strong>Good coverage:</strong> FQI ≈ 1.0, улучшение над behavior (~0.7).</li>
+<li><strong>No mul support:</strong> BC ~0.67; <strong>naive FQI на mul-only ≈ 1.0</strong> (extrapolation — выбирает <code>mul</code> без support); <strong>support-constrained на mul ≈ 0</strong> (отказывается от unsupported op).</li>
+</ul>
+<p>State key включает <code>(task, x_known, y_known, result)</code> — числовой <code>result</code>, чтобы wrong/correct outcome не сливались.</p>
+<p><strong>Тезис:</strong> offline RL улучшает <strong>внутри support</strong>; conservative methods отказываются от unsupported improvement; unconstrained Q может «галлюцинировать» OOD actions. Начинайте с tabular toy, затем classifier / LLM + support filter.</p>
+<hr />
 <h2>Практическая schema логирования</h2>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;episode_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;task_001&quot;</span><span class="p">,</span>

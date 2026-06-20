@@ -189,6 +189,85 @@ Conservative methods (CQL-style pessimism, support constraints, rejection of low
 
 ---
 
+## Toy Example: Offline RL for a Calculator Agent
+
+This example **intentionally removes language modeling complexity**. The policy does not generate free text; it chooses among structured tool calls. That isolates the offline RL question: can we improve over logged behavior using value learning and support constraints?
+
+> 📄 Full code: [`agentic_offline_rl_toy.py`](https://github.com/corba777/offline-rl-book/blob/main/code/agentic_offline_rl_toy.py)
+
+### Environment
+
+The agent solves `x + y`, `x - y`, or `x * y` but never sees `x` and `y` directly. It must call tools:
+
+| Action | Effect |
+|--------|--------|
+| `lookup_x` | observe hidden $x$ |
+| `lookup_y` | observe hidden $y$ |
+| `add` / `sub` / `mul` | compute on known values |
+| `final` | submit answer (verifier checks against true task) |
+
+Rewards: **+1** correct final answer, **−1** wrong final or invalid tool, **−0.02** per step (latency/cost proxy).
+
+This mirrors an LLM agent trace:
+
+| Real agent | Toy analogue |
+|------------|--------------|
+| Context window | Discrete state tuple |
+| Tool-call JSON | Discrete action |
+| Tool output | Observation update |
+| Final answer | `final` action |
+| Verifier | Exact arithmetic checker |
+| Agent trace | Offline RL transition |
+
+The tabular state key is `(task, x_known, y_known, result)` — including the **numeric result** when set, so a wrong arithmetic outcome does not alias with a correct one.
+
+### Four policies on two datasets
+
+| Policy | Role |
+|--------|------|
+| **Behavior** | Stochastic logger (sometimes wrong op, extra steps) |
+| **BC** | Majority action per state in logs (SFT-on-traces) |
+| **Naive FQI** | Tabular fitted Q with greedy improvement over **valid** actions |
+| **Support-constrained FQI** | Same, but argmax restricted to actions seen in the dataset at each state (toy CQL / support mask) |
+
+Two data regimes:
+
+1. **Good coverage** — `mul` appears in logs when the task is multiplication.
+2. **Coverage gap** — on `mul` tasks, behavior logs only `add` / `sub`, never `mul`.
+
+Run: `python code/agentic_offline_rl_toy.py`
+
+Example output (your numbers may vary slightly with seed):
+
+```text
+Dataset: good coverage (mul in logs)
+  Behavior success (all tasks):    0.72
+  BC success:                    1.00
+  Naive FQI success:             1.00
+  Support-constrained FQI:       1.00
+
+Dataset: no multiplication support
+  Behavior success (all tasks):    0.52
+  BC success:                    0.67
+  Naive FQI success:             1.00
+  Support-constrained FQI:       0.72
+  --- mul tasks only ---
+  BC / naive FQI / constrained:  0.01 / 1.00 / 0.02
+```
+
+### What this demonstrates
+
+1. **BC** clones the behavior policy. It improves over raw logging when the majority action at a state is good, but cannot invent unsupported tools.
+2. **Naive FQI** can stitch successful sub-trajectories (`lookup_x → lookup_y → correct op → final`) when coverage exists.
+3. **Without `mul` in the logs**, support-constrained FQI **cannot** solve multiplication — it never selects an unsupported tool. That is the conservative behavior you want offline.
+4. **Naive FQI on mul tasks** may still pick `mul` even though it was absent from behavior logs at that state: Q-values for unseen actions default to 0, which can beat negative Q on logged wrong ops — an **extrapolation / OOD action** effect. In the toy simulator `mul` succeeds; in deployment that would be a policy with no evidential support.
+
+**Thesis (same as classical offline RL):** improvement is possible **inside** the action/state support of the dataset; conservative methods refuse unsupported gains; unconstrained value learning can overtrust unvisited actions.
+
+Start with this tabular agent before LLM confounders (stochastic decoding, prompt drift, missing log-probs, expensive OPE). A natural next step is replacing the tabular policy with a small classifier over trace states, then an LLM that proposes tool calls filtered by a support or critic model.
+
+---
+
 ## Practical Logging Schema
 
 For applied work, a consistent JSON (or parquet) schema matters as much as algorithm choice:

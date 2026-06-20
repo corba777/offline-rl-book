@@ -159,6 +159,31 @@ Reward hacking, spurious tool use, template collapse (RAGEN-2), unsupported tool
 
 ---
 
+## Toy example: calculator agent
+
+Пример **намеренно без language modeling**: политика выбирает structured tool calls, не генерирует free text. Так изолируется offline RL: улучшение над logged behavior через value learning и support constraints.
+
+> 📄 Код: [`agentic_offline_rl_toy.py`](https://github.com/corba777/offline-rl-book/blob/main/code/agentic_offline_rl_toy.py)
+
+**Среда:** задачи `x+y`, `x-y`, `x*y`; tools `lookup_x`, `lookup_y`, `add`, `sub`, `mul`, `final`. Награды: +1 / −1 / −0.02 за шаг.
+
+**Четыре политики:** Behavior (logger), BC (majority action), naive FQI (tabular Q), support-constrained FQI (argmax только по actions из dataset на state — toy analogue CQL/support mask).
+
+**Два режима данных:** (1) `mul` есть в логах; (2) на mul-задачах behavior никогда не вызывает `mul`.
+
+Запуск: `python code/agentic_offline_rl_toy.py`
+
+Типичный qualitative результат:
+
+- **Good coverage:** FQI ≈ 1.0, улучшение над behavior (~0.7).
+- **No mul support:** BC ~0.67; **naive FQI на mul-only ≈ 1.0** (extrapolation — выбирает `mul` без support); **support-constrained на mul ≈ 0** (отказывается от unsupported op).
+
+State key включает `(task, x_known, y_known, result)` — числовой `result`, чтобы wrong/correct outcome не сливались.
+
+**Тезис:** offline RL улучшает **внутри support**; conservative methods отказываются от unsupported improvement; unconstrained Q может «галлюцинировать» OOD actions. Начинайте с tabular toy, затем classifier / LLM + support filter.
+
+---
+
 ## Практическая schema логирования
 
 ```json

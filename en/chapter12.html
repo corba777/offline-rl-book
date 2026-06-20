@@ -284,6 +284,135 @@
 </ul>
 <p>Conservative methods (CQL-style pessimism, support constraints, rejection of low-coverage tool branches) are conceptually appropriate but require defining <strong>action support</strong> in structured action spaces — an open engineering problem.</p>
 <hr />
+<h2>Toy Example: Offline RL for a Calculator Agent</h2>
+<p>This example <strong>intentionally removes language modeling complexity</strong>. The policy does not generate free text; it chooses among structured tool calls. That isolates the offline RL question: can we improve over logged behavior using value learning and support constraints?</p>
+<blockquote>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/agentic_offline_rl_toy.py"><code>agentic_offline_rl_toy.py</code></a></p>
+</blockquote>
+<h3>Environment</h3>
+<p>The agent solves <code>x + y</code>, <code>x - y</code>, or <code>x * y</code> but never sees <code>x</code> and <code>y</code> directly. It must call tools:</p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lookup_x</code></td>
+<td>observe hidden $x$</td>
+</tr>
+<tr>
+<td><code>lookup_y</code></td>
+<td>observe hidden $y$</td>
+</tr>
+<tr>
+<td><code>add</code> / <code>sub</code> / <code>mul</code></td>
+<td>compute on known values</td>
+</tr>
+<tr>
+<td><code>final</code></td>
+<td>submit answer (verifier checks against true task)</td>
+</tr>
+</tbody>
+</table>
+<p>Rewards: <strong>+1</strong> correct final answer, <strong>−1</strong> wrong final or invalid tool, <strong>−0.02</strong> per step (latency/cost proxy).</p>
+<p>This mirrors an LLM agent trace:</p>
+<table>
+<thead>
+<tr>
+<th>Real agent</th>
+<th>Toy analogue</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Context window</td>
+<td>Discrete state tuple</td>
+</tr>
+<tr>
+<td>Tool-call JSON</td>
+<td>Discrete action</td>
+</tr>
+<tr>
+<td>Tool output</td>
+<td>Observation update</td>
+</tr>
+<tr>
+<td>Final answer</td>
+<td><code>final</code> action</td>
+</tr>
+<tr>
+<td>Verifier</td>
+<td>Exact arithmetic checker</td>
+</tr>
+<tr>
+<td>Agent trace</td>
+<td>Offline RL transition</td>
+</tr>
+</tbody>
+</table>
+<p>The tabular state key is <code>(task, x_known, y_known, result)</code> — including the <strong>numeric result</strong> when set, so a wrong arithmetic outcome does not alias with a correct one.</p>
+<h3>Four policies on two datasets</h3>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Behavior</strong></td>
+<td>Stochastic logger (sometimes wrong op, extra steps)</td>
+</tr>
+<tr>
+<td><strong>BC</strong></td>
+<td>Majority action per state in logs (SFT-on-traces)</td>
+</tr>
+<tr>
+<td><strong>Naive FQI</strong></td>
+<td>Tabular fitted Q with greedy improvement over <strong>valid</strong> actions</td>
+</tr>
+<tr>
+<td><strong>Support-constrained FQI</strong></td>
+<td>Same, but argmax restricted to actions seen in the dataset at each state (toy CQL / support mask)</td>
+</tr>
+</tbody>
+</table>
+<p>Two data regimes:</p>
+<ol>
+<li><strong>Good coverage</strong> — <code>mul</code> appears in logs when the task is multiplication.</li>
+<li><strong>Coverage gap</strong> — on <code>mul</code> tasks, behavior logs only <code>add</code> / <code>sub</code>, never <code>mul</code>.</li>
+</ol>
+<p>Run: <code>python code/agentic_offline_rl_toy.py</code></p>
+<p>Example output (your numbers may vary slightly with seed):</p>
+<div class="codehilite"><pre><span></span><code>Dataset: good coverage (mul in logs)
+  Behavior success (all tasks):    0.72
+  BC success:                    1.00
+  Naive FQI success:             1.00
+  Support-constrained FQI:       1.00
+
+Dataset: no multiplication support
+  Behavior success (all tasks):    0.52
+  BC success:                    0.67
+  Naive FQI success:             1.00
+  Support-constrained FQI:       0.72
+  --- mul tasks only ---
+  BC / naive FQI / constrained:  0.01 / 1.00 / 0.02
+</code></pre></div>
+
+<h3>What this demonstrates</h3>
+<ol>
+<li><strong>BC</strong> clones the behavior policy. It improves over raw logging when the majority action at a state is good, but cannot invent unsupported tools.</li>
+<li><strong>Naive FQI</strong> can stitch successful sub-trajectories (<code>lookup_x → lookup_y → correct op → final</code>) when coverage exists.</li>
+<li><strong>Without <code>mul</code> in the logs</strong>, support-constrained FQI <strong>cannot</strong> solve multiplication — it never selects an unsupported tool. That is the conservative behavior you want offline.</li>
+<li><strong>Naive FQI on mul tasks</strong> may still pick <code>mul</code> even though it was absent from behavior logs at that state: Q-values for unseen actions default to 0, which can beat negative Q on logged wrong ops — an <strong>extrapolation / OOD action</strong> effect. In the toy simulator <code>mul</code> succeeds; in deployment that would be a policy with no evidential support.</li>
+</ol>
+<p><strong>Thesis (same as classical offline RL):</strong> improvement is possible <strong>inside</strong> the action/state support of the dataset; conservative methods refuse unsupported gains; unconstrained value learning can overtrust unvisited actions.</p>
+<p>Start with this tabular agent before LLM confounders (stochastic decoding, prompt drift, missing log-probs, expensive OPE). A natural next step is replacing the tabular policy with a small classifier over trace states, then an LLM that proposes tool calls filtered by a support or critic model.</p>
+<hr />
 <h2>Practical Logging Schema</h2>
 <p>For applied work, a consistent JSON (or parquet) schema matters as much as algorithm choice:</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>

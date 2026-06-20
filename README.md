@@ -46,7 +46,8 @@ Applied learning notes on offline deep reinforcement learning — **created and 
     ├── morel.py
     ├── physics_informed.py
     ├── chapter10.py         # Industrial case study (coating process)
-    └── chapter11.py         # SHAP explainability
+    ├── chapter11.py         # SHAP explainability
+    └── agentic_offline_rl_toy.py  # Tabular calculator agent (Ch. 12)
 ```
 
 ## Writing New Chapters
