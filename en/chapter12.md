@@ -100,9 +100,11 @@ For multi-step tool use, SFT also **cannot assign credit** across steps: a traje
 
 ### DPO vs trajectory-level offline RL
 
-**DPO** optimizes token-level likelihood ratios, but the supervision signal is usually a **sequence-level pairwise preference**. As a result, it provides **weak step-level credit assignment** for multi-turn reasoning and tool use.
+**DPO** optimizes a **sequence-level** log-likelihood ratio (a sum of per-token log-probs relative to a reference model), supervised by a pairwise preference label. As a result, it provides **weak step-level credit assignment** for multi-turn reasoning and tool use.
 
 [OREO](https://github.com/jwhj/OREO) — *Offline Reinforcement Learning for LLM Multi-Step Reasoning* ([Wang et al., 2024/2025](https://arxiv.org/abs/2412.16145), [ACL Findings 2025](https://aclanthology.org/2025.findings-acl.464/)) — is a useful anchor: it jointly trains an LLM policy and **value function** via a soft Bellman-style objective, motivated by sparse rewards and credit assignment across reasoning steps. Empirically it improves over DPO-style baselines on math reasoning (GSM8K, MATH) and embodied control (ALFWorld).
+
+A direct precursor is **ILQL** (Implicit Language Q-Learning; [Snell et al., 2023](https://arxiv.org/abs/2206.11871)) — IQL (Chapter 5) adapted to language generation: an expectile value function plus an implicit dataset-support constraint, with the policy realized by advantage-reweighting the base model's token logits. It is the most direct bridge from this book's value-pessimism chapters to LLM policies.
 
 The conceptual contrast:
 
@@ -118,7 +120,8 @@ Do **not** read this table as “drop in CQL unchanged.” Read it as **design v
 | Classical offline RL (this book) | Agentic AI analogue |
 |-----------------------------------|---------------------|
 | **BC** | SFT on successful traces |
-| **AWR / AWAC / IQL-style extraction** | Weight steps or trajectories by advantage, verifier score, or process reward |
+| **Policy constraint (TD3+BC, Ch. 6)** | The KL-to-reference penalty in RLHF / DPO / GRPO is the same "stay near the behavior policy" regularizer |
+| **AWR / AWAC / IQL-style extraction** | Weight steps or trajectories by advantage, verifier score, or process reward (**ILQL** applies IQL directly to token-level language generation) |
 | **CQL / pessimism** | Penalize unsupported tool calls, plans, or API invocations |
 | **FQE / learned Q** | Critic over agent states and actions (text or structured) |
 | **Decision Transformer** | Condition generation on desired return / success label |
@@ -345,7 +348,8 @@ See the [Appendix: Algorithm Selection Guide](/offline-rl-book/en/appendix.html)
 
 ## References
 
-- Wang et al. (2025). *Offline Reinforcement Learning for LLM Multi-Step Reasoning (OREO).* [arXiv:2412.16145](https://arxiv.org/abs/2412.16145), [ACL Findings 2025](https://aclanthology.org/2025.findings-acl.464/), [code](https://github.com/jwhj/OREO).
+- Wang, H., Hao, S., Dong, H., et al. (2024). *Offline Reinforcement Learning for LLM Multi-Step Reasoning (OREO).* [arXiv:2412.16145](https://arxiv.org/abs/2412.16145), [ACL Findings 2025](https://aclanthology.org/2025.findings-acl.464/), [code](https://github.com/jwhj/OREO).
+- Snell, C., Kostrikov, I., Su, Y., Yang, M., & Levine, S. (2023). *Offline RL for Natural Language Generation with Implicit Language Q-Learning (ILQL).* ICLR. [arXiv:2206.11871](https://arxiv.org/abs/2206.11871).
 - Xi et al. (2024). *AgentGym: Evolving LLM-based Agents across Diverse Environments.* [arXiv:2406.04151](https://arxiv.org/abs/2406.04151), [project](https://agentgym.github.io/).
 - Luo et al. (2025). *Agent Lightning: Train ANY AI Agents with Reinforcement Learning.* [arXiv:2508.03680](https://arxiv.org/abs/2508.03680), [docs](https://microsoft.github.io/agent-lightning/latest/).
 - Pang et al. (2024). *KALM: Knowledgeable Agents by Offline RL from LLM Rollouts.* [arXiv:2404.09248](https://arxiv.org/abs/2404.09248), [project](https://kalmneurips2024.github.io/).

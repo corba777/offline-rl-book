@@ -144,8 +144,9 @@
 <hr />
 <h2>Offline RL beyond SFT</h2>
 <h3>DPO vs trajectory-level offline RL</h3>
-<p><strong>DPO</strong> оптимизирует token-level likelihood ratios, но supervision signal обычно <strong>sequence-level pairwise preference</strong>. Поэтому <strong>step-level credit assignment</strong> слаб для multi-turn reasoning и tool use.</p>
+<p><strong>DPO</strong> оптимизирует <strong>sequence-level</strong> log-likelihood ratio (сумму потокенных log-prob относительно reference-модели) под supervision pairwise-предпочтения. Поэтому <strong>step-level credit assignment</strong> слаб для multi-turn reasoning и tool use.</p>
 <p><a href="https://github.com/jwhj/OREO">OREO</a> (<a href="https://arxiv.org/abs/2412.16145">Wang et al., 2024/2025</a>, <a href="https://aclanthology.org/2025.findings-acl.464/">ACL Findings 2025</a>) — якорь: policy + <strong>value function</strong> через soft Bellman-style objective, мотивирован sparse rewards и credit assignment по шагам reasoning. Эмпирически лучше DPO-style baselines на GSM8K, MATH и ALFWorld.</p>
+<p>Прямой предшественник — <strong>ILQL</strong> (Implicit Language Q-Learning; <a href="https://arxiv.org/abs/2206.11871">Snell et al., 2023</a>): IQL (глава 5), адаптированный к генерации языка — expectile value-функция плюс неявное ограничение на support датасета, политика реализуется advantage-перевзвешиванием логитов базовой модели. Самый прямой мост от глав про value-пессимизм к LLM-политикам.</p>
 <table>
 <thead>
 <tr>
@@ -182,8 +183,12 @@
 <td>SFT на успешных traces</td>
 </tr>
 <tr>
+<td><strong>Policy constraint (TD3+BC, гл. 6)</strong></td>
+<td>KL-штраф к reference в RLHF / DPO / GRPO — тот же регуляризатор «держись близко к поведенческой»</td>
+</tr>
+<tr>
 <td><strong>AWR / AWAC / IQL</strong></td>
-<td>Веса по advantage, verifier score, process reward</td>
+<td>Веса по advantage, verifier score, process reward (<strong>ILQL</strong> = IQL прямо для токенной генерации)</td>
 </tr>
 <tr>
 <td><strong>CQL / pessimism</strong></td>
@@ -336,7 +341,8 @@
 <hr />
 <h2>Литература</h2>
 <ul>
-<li>Wang et al. (2025). <em>Offline RL for LLM Multi-Step Reasoning (OREO).</em> <a href="https://arxiv.org/abs/2412.16145">arXiv:2412.16145</a>, <a href="https://aclanthology.org/2025.findings-acl.464/">ACL 2025</a>, <a href="https://github.com/jwhj/OREO">code</a>.</li>
+<li>Wang, H., Hao, S., Dong, H., et al. (2024). <em>Offline RL for LLM Multi-Step Reasoning (OREO).</em> <a href="https://arxiv.org/abs/2412.16145">arXiv:2412.16145</a>, <a href="https://aclanthology.org/2025.findings-acl.464/">ACL 2025</a>, <a href="https://github.com/jwhj/OREO">code</a>.</li>
+<li>Snell, C., Kostrikov, I., Su, Y., Yang, M., &amp; Levine, S. (2023). <em>Offline RL for Natural Language Generation with Implicit Language Q-Learning (ILQL).</em> ICLR. <a href="https://arxiv.org/abs/2206.11871">arXiv:2206.11871</a>.</li>
 <li>Xi et al. (2024). <em>AgentGym.</em> <a href="https://arxiv.org/abs/2406.04151">arXiv:2406.04151</a>, <a href="https://agentgym.github.io/">project</a>.</li>
 <li>Luo et al. (2025). <em>Agent Lightning.</em> <a href="https://arxiv.org/abs/2508.03680">arXiv:2508.03680</a>, <a href="https://microsoft.github.io/agent-lightning/latest/">docs</a>.</li>
 <li>Pang et al. (2024). <em>KALM.</em> <a href="https://arxiv.org/abs/2404.09248">arXiv:2404.09248</a>, <a href="https://kalmneurips2024.github.io/">project</a>.</li>

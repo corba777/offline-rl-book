@@ -96,9 +96,11 @@ Agent observability / tracing → trajectories → offline or off-policy RL data
 
 ### DPO vs trajectory-level offline RL
 
-**DPO** оптимизирует token-level likelihood ratios, но supervision signal обычно **sequence-level pairwise preference**. Поэтому **step-level credit assignment** слаб для multi-turn reasoning и tool use.
+**DPO** оптимизирует **sequence-level** log-likelihood ratio (сумму потокенных log-prob относительно reference-модели) под supervision pairwise-предпочтения. Поэтому **step-level credit assignment** слаб для multi-turn reasoning и tool use.
 
 [OREO](https://github.com/jwhj/OREO) ([Wang et al., 2024/2025](https://arxiv.org/abs/2412.16145), [ACL Findings 2025](https://aclanthology.org/2025.findings-acl.464/)) — якорь: policy + **value function** через soft Bellman-style objective, мотивирован sparse rewards и credit assignment по шагам reasoning. Эмпирически лучше DPO-style baselines на GSM8K, MATH и ALFWorld.
+
+Прямой предшественник — **ILQL** (Implicit Language Q-Learning; [Snell et al., 2023](https://arxiv.org/abs/2206.11871)): IQL (глава 5), адаптированный к генерации языка — expectile value-функция плюс неявное ограничение на support датасета, политика реализуется advantage-перевзвешиванием логитов базовой модели. Самый прямой мост от глав про value-пессимизм к LLM-политикам.
 
 | Подход | Данные | Credit assignment |
 |--------|--------|-------------------|
@@ -112,7 +114,8 @@ Agent observability / tracing → trajectories → offline or off-policy RL data
 | Классический offline RL | Agentic AI analogue |
 |-------------------------|---------------------|
 | **BC** | SFT на успешных traces |
-| **AWR / AWAC / IQL** | Веса по advantage, verifier score, process reward |
+| **Policy constraint (TD3+BC, гл. 6)** | KL-штраф к reference в RLHF / DPO / GRPO — тот же регуляризатор «держись близко к поведенческой» |
+| **AWR / AWAC / IQL** | Веса по advantage, verifier score, process reward (**ILQL** = IQL прямо для токенной генерации) |
 | **CQL / pessimism** | Штраф unsupported tool calls / plans |
 | **FQE / learned Q** | Critic по agent states и actions |
 | **Decision Transformer** | Conditioning на desired return / success |
@@ -252,7 +255,8 @@ State key включает `(task, x_known, y_known, result)` — числово
 
 ## Литература
 
-- Wang et al. (2025). *Offline RL for LLM Multi-Step Reasoning (OREO).* [arXiv:2412.16145](https://arxiv.org/abs/2412.16145), [ACL 2025](https://aclanthology.org/2025.findings-acl.464/), [code](https://github.com/jwhj/OREO).
+- Wang, H., Hao, S., Dong, H., et al. (2024). *Offline RL for LLM Multi-Step Reasoning (OREO).* [arXiv:2412.16145](https://arxiv.org/abs/2412.16145), [ACL 2025](https://aclanthology.org/2025.findings-acl.464/), [code](https://github.com/jwhj/OREO).
+- Snell, C., Kostrikov, I., Su, Y., Yang, M., & Levine, S. (2023). *Offline RL for Natural Language Generation with Implicit Language Q-Learning (ILQL).* ICLR. [arXiv:2206.11871](https://arxiv.org/abs/2206.11871).
 - Xi et al. (2024). *AgentGym.* [arXiv:2406.04151](https://arxiv.org/abs/2406.04151), [project](https://agentgym.github.io/).
 - Luo et al. (2025). *Agent Lightning.* [arXiv:2508.03680](https://arxiv.org/abs/2508.03680), [docs](https://microsoft.github.io/agent-lightning/latest/).
 - Pang et al. (2024). *KALM.* [arXiv:2404.09248](https://arxiv.org/abs/2404.09248), [project](https://kalmneurips2024.github.io/).
