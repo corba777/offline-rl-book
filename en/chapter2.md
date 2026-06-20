@@ -34,11 +34,15 @@ The question: can we apply Q-learning to a fixed offline dataset? The answer is 
 
 The Q-function satisfies the **Bellman optimality equation**:
 
-$$Q^{\ast}(s, a) = r(s, a) + \gamma \, \mathbb{E}_{s' \sim P(\cdot|s,a)} \left[ \max_{a'} Q^{\ast}(s', a') \right]$$
+```math
+Q^{\ast}(s, a) = r(s, a) + \gamma \, \mathbb{E}_{s' \sim P(\cdot|s,a)} \left[ \max_{a'} Q^{\ast}(s', a') \right]
+```
 
 We learn $Q_\theta$ by minimizing the **TD error** (Temporal Difference):
 
-$$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar{\theta}}(s', a') - Q_\theta(s, a) \right)^{2} \right]$$
+```math
+\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar{\theta}}(s', a') - Q_\theta(s, a) \right)^{2} \right]
+```
 
 where $Q_{\bar{\theta}}$ is a **target network** — a periodically updated copy of $Q_\theta$ used to stabilize training.
 
@@ -52,7 +56,9 @@ In **offline RL**, the dataset $\mathcal{D}$ is fixed. There is no feedback loop
 
 Here is the key issue. During the $\max_{a'}$ step in the Bellman backup:
 
-$$\max_{a'} Q_{\bar{\theta}}(s', a')$$
+```math
+\max_{a'} Q_{\bar{\theta}}(s', a')
+```
 
 the optimizer searches over **all possible actions** $a'$ — including actions that never appear in the dataset $\mathcal{D}$.
 
@@ -60,7 +66,9 @@ For an action $a' \notin \mathcal{D}$, the Q-function has no training signal. It
 
 When the Bellman backup picks this overestimated $Q(s', a')$ as the target, it propagates the overestimation backward through the chain:
 
-$$Q(s, a) \leftarrow r + \gamma \cdot \underbrace{Q(s', a')}_{\text{overestimated}}$$
+```math
+Q(s, a) \leftarrow r + \gamma \cdot \underbrace{Q(s', a')}_{\text{overestimated}}
+```
 
 This is **bootstrapping error**: errors propagate and amplify through the TD update chain.
 
@@ -80,13 +88,17 @@ This is not a corner case. It is the **default behavior** of Q-learning on offli
 
 Let $\hat{\pi}$ be the greedy policy with respect to a learned Q-function:
 
-$$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$
+```math
+\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)
+```
 
 Define the **estimated performance** $\hat{J}(\hat{\pi}) = \underset{s,a \sim d^{{\hat{\pi}}}}{\mathbb{E}}\bigl[Q_\theta(s,a)\bigr]$ — what the Q-function *predicts* the policy will achieve — and the **true performance** $J(\hat{\pi})$ — what it actually achieves in the environment.
 
 The gap between them is bounded (approximately, following Kumar et al., 2020):
 
-$$\hat{J}(\hat{\pi}) - J(\hat{\pi}) \leq \frac{2\gamma}{(1-\gamma)^{2}} \underset{s \sim d^{{\hat{\pi}}}}{\mathbb{E}}\left[\max_a \left| Q_\theta(s,a) - Q^{\ast}(s,a) \right|\right]$$
+```math
+\hat{J}(\hat{\pi}) - J(\hat{\pi}) \leq \frac{2\gamma}{(1-\gamma)^{2}} \underset{s \sim d^{{\hat{\pi}}}}{\mathbb{E}}\left[\max_a \left| Q_\theta(s,a) - Q^{\ast}(s,a) \right|\right]
+```
 
 This is the right way to frame the problem. The left side is what we fear: the **gap between the promised and the real return**. The right side shows what drives it: Q-function error evaluated under $d^{{\hat{\pi}}}$ — the state distribution of the *learned* policy, not the behavior policy.
 
@@ -195,13 +207,17 @@ The solution space splits into two families:
 
 **Policy-constraint methods** — restrict the learned policy to stay close to $\pi_{\beta}$:
 
-$$\pi^{\ast} = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \,\|\, \pi_{\beta}) \leq \epsilon$$
+```math
+\pi^{\ast} = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \,\|\, \pi_{\beta}) \leq \epsilon
+```
 
 Examples: TD3+BC, BEAR, BCQ.
 
 **Value-pessimism methods** — instead of constraining the policy, make Q-values pessimistic for OOD actions:
 
-$$Q^{\ast} = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]$$
+```math
+Q^{\ast} = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]
+```
 
 The intuition: if OOD Q-values are artificially pushed *down*, the greedy policy will naturally prefer in-distribution actions.
 

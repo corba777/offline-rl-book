@@ -34,11 +34,15 @@ permalink: "/offline-rl-book/ru/chapter2/"
 
 Q-функция удовлетворяет **уравнению оптимальности Беллмана**:
 
-$$Q^{\ast}(s, a) = r(s, a) + \gamma \, \mathbb{E}_{s' \sim P(\cdot|s,a)} \left[ \max_{a'} Q^{\ast}(s', a') \right]$$
+```math
+Q^{\ast}(s, a) = r(s, a) + \gamma \, \mathbb{E}_{s' \sim P(\cdot|s,a)} \left[ \max_{a'} Q^{\ast}(s', a') \right]
+```
 
 Мы обучаем $Q_\theta$, минимизируя **ошибку TD** (Temporal Difference):
 
-$$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar{\theta}}(s', a') - Q_\theta(s, a) \right)^{2} \right]$$
+```math
+\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar{\theta}}(s', a') - Q_\theta(s, a) \right)^{2} \right]
+```
 
 где $Q_{\bar{\theta}}$ — **целевая сеть** (target network): периодически обновляемая копия $Q_\theta$, используемая для стабилизации обучения.
 
@@ -52,7 +56,9 @@ $$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \le
 
 Вот в чём суть проблемы. На шаге $\max_{a'}$ в обновлении Беллмана:
 
-$$\max_{a'} Q_{\bar{\theta}}(s', a')$$
+```math
+\max_{a'} Q_{\bar{\theta}}(s', a')
+```
 
 оптимизатор перебирает **все возможные действия** $a'$ — включая те, которых никогда не было в датасете $\mathcal{D}$.
 
@@ -60,7 +66,9 @@ $$\max_{a'} Q_{\bar{\theta}}(s', a')$$
 
 Когда обновление Беллмана берёт это завышенное $Q(s', a')$ в качестве цели, оно распространяет переоценку назад по цепочке:
 
-$$Q(s, a) \leftarrow r + \gamma \cdot \underbrace{Q(s', a')}_{\text{завышено}}$$
+```math
+Q(s, a) \leftarrow r + \gamma \cdot \underbrace{Q(s', a')}_{\text{завышено}}
+```
 
 Это **ошибка бутстрэппинга**: ошибки распространяются и усиливаются через цепочку TD-обновлений.
 
@@ -80,13 +88,17 @@ $$Q(s, a) \leftarrow r + \gamma \cdot \underbrace{Q(s', a')}_{\text{завыше
 
 Пусть $\hat{\pi}$ — жадная политика относительно обученной Q-функции:
 
-$$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$
+```math
+\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)
+```
 
 Определим **оценённую производительность** $\hat{J}(\hat{\pi}) = \underset{s,a \sim d^{{\hat{\pi}}}}{\mathbb{E}}\bigl[Q_\theta(s,a)\bigr]$ — то, что Q-функция *предсказывает* для данной политики — и **реальную производительность** $J(\hat{\pi})$ — то, что политика фактически получит в среде.
 
 Разрыв между ними ограничен сверху (приближённо, по Kumar et al., 2020):
 
-$$\hat{J}(\hat{\pi}) - J(\hat{\pi}) \leq \frac{2\gamma}{(1-\gamma)^{2}} \underset{s \sim d^{{\hat{\pi}}}}{\mathbb{E}}\left[\max_a \left| Q_\theta(s,a) - Q^{\ast}(s,a) \right|\right]$$
+```math
+\hat{J}(\hat{\pi}) - J(\hat{\pi}) \leq \frac{2\gamma}{(1-\gamma)^{2}} \underset{s \sim d^{{\hat{\pi}}}}{\mathbb{E}}\left[\max_a \left| Q_\theta(s,a) - Q^{\ast}(s,a) \right|\right]
+```
 
 Именно так правильно формулировать проблему. Левая часть — то, чего мы боимся: **разрыв между обещанной и реальной наградой**. Правая показывает, что его порождает: ошибка Q-функции, взятая под $d^{{\hat{\pi}}}$ — распределением состояний *обученной* политики, а не поведенческой.
 
@@ -177,13 +189,17 @@ Q-функция присваивает значения, в **5 раз прев
 
 **Методы ограничения политики** — ограничивают обученную политику, удерживая её близко к $\pi_{\beta}$:
 
-$$\pi^{\ast} = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \,\|\, \pi_{\beta}) \leq \epsilon$$
+```math
+\pi^{\ast} = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \,\|\, \pi_{\beta}) \leq \epsilon
+```
 
 Примеры: TD3+BC, BEAR, BCQ.
 
 **Методы пессимизма по значениям** — вместо ограничения политики, делают Q-значения пессимистичными для OOD-действий:
 
-$$Q^{\ast} = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]$$
+```math
+Q^{\ast} = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]
+```
 
 Интуиция: если OOD Q-значения искусственно занижены, жадная политика естественным образом предпочтёт действия из распределения данных.
 

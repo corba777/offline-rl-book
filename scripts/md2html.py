@@ -121,11 +121,18 @@ def protect_math(body):
     """Replace display and inline $...$ math with placeholders."""
     blocks = []
 
+    def repl_math_fence(m):
+        content = m.group(1).strip()
+        blocks.append(("display", f"$${content}$$"))
+        return f"\n@@MATH{len(blocks)-1}@@\n"
+
+    new_body = re.sub(r"```math\s*\n([\s\S]*?)```", repl_math_fence, body)
+
     def repl_display(m):
         blocks.append(("display", m.group(0)))
         return f"\n@@MATH{len(blocks)-1}@@\n"
 
-    new_body = re.sub(r"\$\$[\s\S]*?\$\$", repl_display, body)
+    new_body = re.sub(r"\$\$[\s\S]*?\$\$", repl_display, new_body)
 
     def repl_inline(m):
         blocks.append(("inline", m.group(0)))
