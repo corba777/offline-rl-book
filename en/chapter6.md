@@ -47,11 +47,11 @@ The hyperparameter $\lambda$ balances the two. Small $\lambda$ → policy is alm
 
 ### Normalization of Q
 
-If raw Q-values are large (e.g. in the hundreds), the gradient from the Q-term dominates and the BC term has little effect. TD3+BC normalizes the Q-values in the batch before forming the actor loss:
+If raw Q-values are large (e.g. in the hundreds), the gradient from the Q-term dominates and the BC term has little effect. TD3+BC scales Q-values in the batch before forming the actor loss:
 
-$$\tilde{Q}(s, a) = \frac{Q(s, a) - \mathbb{E}_{(s,a) \sim \mathcal{D}}[Q(s,a)]}{\sigma_{\mathcal{D}}(Q) + 10^{-6}}$$
+$$\tilde{Q}(s, a) = \frac{Q(s, a)}{\mathbb{E}_{(s,a) \sim \mathcal{B}} |Q(s,a)| + 10^{-6}}$$
 
-Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\pi(s) - a)^2 \bigr]$. With this normalization, a typical choice is $\lambda \in [0.1, 2.0]$; the paper uses $\alpha / \|\nabla_a Q(s,a)\|$ with $\alpha = 2.5$ for the scaling, which is equivalent in spirit.
+Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\pi(s) - a)^2 \bigr]$. With this scaling, a typical choice is $\lambda \in [0.1, 2.0]$; the paper uses $\alpha = 2.5$ with the same mean-$|Q|$ normalization.
 
 ### Formalization
 

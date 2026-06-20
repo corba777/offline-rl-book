@@ -72,7 +72,7 @@
 <h2>Ключевая идея</h2>
 <p>IQL вводит <strong>функцию ценности состояния</strong> $V(s)$ как промежуточный элемент. Главное наблюдение:</p>
 <p><div class="math-display">$$V(s) \approx \mathbb{E}_{\tau}\left[ Q(s, a) \right]_{\text{верхний экспектиль}}$$</div></p>
-<p>Вместо того чтобы аппроксимировать $V(s) = \max_a Q(s, a)$ (что требует OOD-запросов), IQL подгоняет $V(s)$ к <strong>верхнему $\tau$-экспектилю</strong> значений $Q(s, a)$ по действиям из датасета. При $\tau &gt; 0.5$ это смещает $V$ в сторону лучших действий в данных — не выходя за пределы датасета.</p>
+<p>Вместо того чтобы аппроксимировать $V(s) = \max_a Q(s, a)$ (что требует OOD-запросов), IQL подгоняет $V(s)$ к <strong>верхнему $\tau$-экспектилю</strong> значений $Q(s, a)$ по действиям из датасета. При $\tau > 0.5$ это смещает $V$ в сторону лучших действий в данных — не выходя за пределы датасета.</p>
 <p>Трёхшаговый цикл обучения:</p>
 <ol>
 <li><strong>V-обновление</strong>: подогнать $V(s)$ к $\tau$-экспектилю $\min(Q_1, Q_2)(s, a)$ для датасетных $(s, a)$</li>
@@ -90,7 +90,7 @@
 <p>При $\tau = 0.5$: стандартный MSE, оценка стремится к среднему.
 При $\tau \to 1.0$: оценка стремится к максимуму.
 При $\tau = 0.7$ (умолчание IQL): оценка между медианой и максимумом — смещена к большим значениям.</p>
-<p>Весь трюк: выбирая $\tau &gt; 0.5$, мы делаем $V(s)$ аппроксимацией ценности <strong>лучше-чем-среднего</strong> действия в состоянии $s$ — используя только действия из датасета.</p>
+<p>Весь трюк: выбирая $\tau > 0.5$, мы делаем $V(s)$ аппроксимацией ценности <strong>лучше-чем-среднего</strong> действия в состоянии $s$ — используя только действия из датасета.</p>
 <h3>Три лосса</h3>
 <p><strong>V-лосс</strong> (expectile regression):</p>
 <p><div class="math-display">$$\mathcal{L}_V(\psi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ L_\tau\!\left(\min(Q_{\theta_1}, Q_{\theta_2})(s,a) - V_\psi(s)\right) \right]$$</div></p>
@@ -203,20 +203,20 @@
 <p>При <code>tau=0.7</code>: недооценка штрафуется в 2.3× сильнее переоценки, смещая оценку вверх — к лучшим действиям в датасете.</p>
 <h3>V-обновление</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">iql_value_loss</span><span class="p">(</span><span class="n">V</span><span class="p">:</span> <span class="n">ValueNetwork</span><span class="p">,</span>
-                   <span class="n">Q1</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span> <span class="n">Q2</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span>
+                   <span class="n">Q1_tgt</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span> <span class="n">Q2_tgt</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span>
                    <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                    <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                    <span class="n">tau</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.7</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    V-network update via expectile regression.</span>
 
-<span class="sd">    Target: min(Q1(s,a), Q2(s,a)) for dataset (s,a) pairs.</span>
+<span class="sd">    Target: min(Q1_tgt(s,a), Q2_tgt(s,a)) for dataset (s,a) pairs.</span>
 <span class="sd">    V(s) is pushed toward the tau-expectile of this target.</span>
 
 <span class="sd">    No next states, no policy sampling — fully in-sample.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-        <span class="n">q_target</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">Q1</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">),</span> <span class="n">Q2</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">))</span>
+        <span class="n">q_target</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">Q1_tgt</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">),</span> <span class="n">Q2_tgt</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">))</span>
 
     <span class="n">v_pred</span> <span class="o">=</span> <span class="n">V</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
     <span class="n">loss</span>   <span class="o">=</span> <span class="n">expectile_loss</span><span class="p">(</span><span class="n">v_pred</span><span class="p">,</span> <span class="n">q_target</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
@@ -229,26 +229,21 @@
     <span class="p">}</span>
 </code></pre></div>
 
-<p>Блок <code>torch.no_grad()</code> важен: градиенты текут только через <code>V</code>, не через <code>Q1</code> и <code>Q2</code>. Q-сети служат чисто как регрессионные цели.</p>
+<p>Блок <code>torch.no_grad()</code> важен: градиенты текут только через <code>V</code>, не через таргетные Q-сети. Q-таргеты служат чисто как регрессионные цели.</p>
 <h3>Q-обновление</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">iql_q_loss</span><span class="p">(</span><span class="n">Q</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span>
-               <span class="n">V_tgt</span><span class="p">:</span> <span class="n">ValueNetwork</span><span class="p">,</span>
+               <span class="n">V</span><span class="p">:</span> <span class="n">ValueNetwork</span><span class="p">,</span>
                <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                <span class="n">rewards</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">next_states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                <span class="n">dones</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                <span class="n">gamma</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.99</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Q-network update via standard TD backup — but using V(s&#39;) instead of max_a Q(s&#39;,a&#39;).</span>
+<span class="sd">    Q-network update via standard TD backup — using live V(s&#39;) instead of max_a Q(s&#39;,a&#39;).</span>
 
 <span class="sd">    TD target: r + gamma * V(s&#39;)</span>
-
-<span class="sd">    This is the key IQL insight: replace max_a Q(s&#39;,a&#39;) with V(s&#39;).</span>
-<span class="sd">    V(s&#39;) was trained to approximate the upper expectile of Q at s&#39;,</span>
-<span class="sd">    so it acts as a conservative upper bound on next-state value.</span>
-<span class="sd">    No policy sampling at all.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-        <span class="n">v_next</span>    <span class="o">=</span> <span class="n">V_tgt</span><span class="p">(</span><span class="n">next_states</span><span class="p">)</span>
+        <span class="n">v_next</span>    <span class="o">=</span> <span class="n">V</span><span class="p">(</span><span class="n">next_states</span><span class="p">)</span>
         <span class="n">td_target</span> <span class="o">=</span> <span class="n">rewards</span> <span class="o">+</span> <span class="n">gamma</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">dones</span><span class="p">)</span> <span class="o">*</span> <span class="n">v_next</span>
 
     <span class="n">q_pred</span> <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
@@ -261,14 +256,14 @@
     <span class="p">}</span>
 </code></pre></div>
 
-<p>Сравните с Q-обновлением CQL: там <code>v_next</code> требовал <code>policy.sample(next_states)</code> и затем <code>Q_target(next_states, next_actions)</code>. Здесь — один прямой проход через <code>V_tgt</code>, без сэмплирования действий.</p>
+<p>Сравните с Q-обновлением CQL: там <code>v_next</code> требовал <code>policy.sample(next_states)</code> и затем <code>Q_target(next_states, next_actions)</code>. Здесь — один прямой проход через живую <code>V</code>, без сэмплирования действий.</p>
 <h3>Извлечение политики через AWR</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">iql_policy_loss</span><span class="p">(</span><span class="n">policy</span><span class="p">:</span> <span class="n">DeterministicPolicy</span><span class="p">,</span>
                     <span class="n">Q1</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span> <span class="n">Q2</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span>
                     <span class="n">V</span><span class="p">:</span> <span class="n">ValueNetwork</span><span class="p">,</span>
                     <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                     <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
-                    <span class="n">beta</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                    <span class="n">beta</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">3.0</span><span class="p">,</span>
                     <span class="n">clip_exp</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">100.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Policy extraction via Advantage-Weighted Regression (AWR).</span>
@@ -313,17 +308,17 @@
 
 <p>Нормализация <code>adv - adv.max()</code> критична — без неё <code>exp(beta * adv)</code> переполняется при больших advantage.</p>
 <h3>Полный шаг обновления</h3>
-<div class="codehilite"><pre><span></span><code>        <span class="n">v_loss</span><span class="p">,</span> <span class="n">v_info</span> <span class="o">=</span> <span class="n">iql_value_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau</span><span class="p">)</span>
+<div class="codehilite"><pre><span></span><code>        <span class="n">v_loss</span><span class="p">,</span> <span class="n">v_info</span> <span class="o">=</span> <span class="n">iql_value_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q1_tgt</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q2_tgt</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">v_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
         <span class="n">v_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">v_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
         <span class="n">info</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">v_info</span><span class="p">)</span>
 
-        <span class="c1"># ── 2. Q update (TD with V as next-state value) ───────────────────</span>
-        <span class="c1"># Q(s,a) ← r + gamma * V_target(s&#39;)</span>
-        <span class="n">q_loss1</span><span class="p">,</span> <span class="n">q_info1</span> <span class="o">=</span> <span class="n">iql_q_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">V_tgt</span><span class="p">,</span>
+        <span class="c1"># ── 2. Q update (TD with live V as next-state value) ──────────────</span>
+        <span class="c1"># Q(s,a) ← r + gamma * V(s&#39;)</span>
+        <span class="n">q_loss1</span><span class="p">,</span> <span class="n">q_info1</span> <span class="o">=</span> <span class="n">iql_q_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">,</span>
                                        <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma</span><span class="p">)</span>
-        <span class="n">q_loss2</span><span class="p">,</span> <span class="n">q_info2</span> <span class="o">=</span> <span class="n">iql_q_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">V_tgt</span><span class="p">,</span>
+        <span class="n">q_loss2</span><span class="p">,</span> <span class="n">q_info2</span> <span class="o">=</span> <span class="n">iql_q_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">,</span>
                                        <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">q_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
         <span class="p">(</span><span class="n">q_loss1</span> <span class="o">+</span> <span class="n">q_loss2</span><span class="p">)</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
@@ -333,7 +328,6 @@
         <span class="n">info</span><span class="p">[</span><span class="s1">&#39;q_loss&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">q_info1</span><span class="p">[</span><span class="s1">&#39;q_loss&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">q_info2</span><span class="p">[</span><span class="s1">&#39;q_loss&#39;</span><span class="p">])</span> <span class="o">/</span> <span class="mi">2</span>
 
         <span class="c1"># ── 3. Policy update (advantage-weighted regression) ──────────────</span>
-        <span class="c1"># pi(s) ← argmin_a exp(beta * A(s,a)) * ||pi(s) - a||^2 over dataset</span>
         <span class="n">pi_loss</span><span class="p">,</span> <span class="n">pi_info</span> <span class="o">=</span> <span class="n">iql_policy_loss</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">beta</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">pi_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
@@ -341,9 +335,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">pi_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
         <span class="n">info</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">pi_info</span><span class="p">)</span>
 
-        <span class="c1"># ── 4. Soft target updates ────────────────────────────────────────</span>
-        <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">pt</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">V_tgt</span><span class="o">.</span><span class="n">parameters</span><span class="p">()):</span>
-            <span class="n">pt</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">mul_</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau_target</span><span class="p">)</span><span class="o">.</span><span class="n">add_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tau_target</span> <span class="o">*</span> <span class="n">p</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="c1"># ── 4. Soft target updates (Q only) ───────────────────────────────</span>
         <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">pt</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q1_tgt</span><span class="o">.</span><span class="n">parameters</span><span class="p">()):</span>
             <span class="n">pt</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">mul_</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau_target</span><span class="p">)</span><span class="o">.</span><span class="n">add_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tau_target</span> <span class="o">*</span> <span class="n">p</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">pt</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q2_tgt</span><span class="o">.</span><span class="n">parameters</span><span class="p">()):</span>
@@ -357,7 +349,7 @@
 <span class="c1"># ============================================================================</span>
 </code></pre></div>
 
-<p>Важно: в <code>iql_q_loss</code> используется <code>V_tgt</code> (таргет-сеть), а не <code>V</code>. Это предотвращает цикличную зависимость, при которой $V$ и $Q$ дестабилизируют друг друга.</p>
+<p>По статье IQL: value loss использует <strong>таргетные</strong> Q-сети (<code>Q1_tgt</code>, <code>Q2_tgt</code>), а Q-loss — <strong>живую</strong> <code>V</code> для bootstrap на $s'$.</p>
 <hr />
 <h2>Что делает tau</h2>
 <p>Функция <code>show_expectile_intuition()</code> в <code>iql.py</code> демонстрирует это конкретно. Для состояния с 5 датасетными действиями, имеющими Q-значения $[-0.8, -0.3, 0.1, 0.4, 0.9]$:</p>
@@ -460,7 +452,7 @@ IQL vs BC: +7.69 reward
 <h2>Практические советы</h2>
 <p><strong>IQL чувствителен к нормализации наград.</strong> Нормализуйте награды к нулевому среднему или диапазону $[0, 1]$. Advantage $A = Q - V$ вычисляется в том же масштабе, и <code>exp(beta * A)</code> в лоссе политики взрывается при больших значениях.</p>
 <p><strong>Мониторьте V-Q разрыв.</strong> Логируйте <code>v_q_gap = E[Q(s,a) - V(s)]</code> по датасетным парам. Должно быть слегка положительным (V чуть ниже среднего Q). Если становится сильно отрицательным — $\tau$ слишком мало.</p>
-<p><strong>Используйте таргет-сеть для V в Q-обновлении.</strong> В <code>iql_q_loss</code> используется <code>V_tgt</code>, а не <code>V</code>. Если использовать живую <code>V</code>, Q и V формируют цикличную зависимость и обучение часто расходится.</p>
+<p><strong>Используйте таргетные Q-сети в value-обновлении.</strong> Expectile-цель строится из <code>Q1_tgt</code> и <code>Q2_tgt</code>, а не из живых Q-сетей того же шага — как в референсной реализации IQL.</p>
 <p><strong>IQL быстрее сходится, чем CQL</strong> на плотных датасетах — V-обновление очень стабильно (нет OOD-сэмплирования, нет logsumexp).</p>
 <hr />
 <h2>Ограничения</h2>
@@ -503,7 +495,7 @@ IQL vs BC: +7.69 reward
 </tr>
 </tbody>
 </table>
-<p>IQL — наиболее чистое решение задачи офлайн RL среди безмодельных методов: пессимизм структурный, встроенный в архитектуру. Следующий шаг: научиться моделировать мир и генерировать синтетические данные. Это позволяет рассуждать о переходах, которых нет в датасете — ценой ошибки модели. Об этом — в главе 5.</p>
+<p>IQL — наиболее чистое решение задачи офлайн RL среди безмодельных методов: пессимизм структурный, встроенный в архитектуру. Следующий шаг: научиться моделировать мир и генерировать синтетические данные. Это позволяет рассуждать о переходах, которых нет в датасете — ценой ошибки модели. Об этом — в главе 8.</p>
 <hr />
 <h2>Литература</h2>
 <ul>

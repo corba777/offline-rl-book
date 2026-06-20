@@ -76,7 +76,7 @@
 <p><div class="math-display">$$\mathcal{L}_{CQL}(\theta) = \mathcal{L}_{TD}(\theta) + \alpha \cdot \underbrace{\left( \mathbb{E}_{s \sim \mathcal{D},\, a \sim \mu} \left[ Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right)}_{\text{консервативный штраф}}$$</div></p>
 <p>где:
 - $\mu$ — некоторое распределение над действиями (как правило, равномерное или текущая политика)
-- $\alpha &gt; 0$ — гиперпараметр, управляющий силой консерватизма
+- $\alpha > 0$ — гиперпараметр, управляющий силой консерватизма
 - Первое математическое ожидание <strong>занижает Q-значения</strong> для действий из $\mu$
 - Второе математическое ожидание <strong>завышает Q-значения</strong> для действий из датасета</p>
 <p>Иными словами: <strong>минимизировать Q-значения везде, но максимизировать их в точках датасета</strong>. Разрыв между двумя членами — то, что минимизирует CQL: действия из датасета выглядят лучше, чем OOD-действия.</p>
@@ -88,7 +88,7 @@
 <p>Первый член — <strong>log-sum-exp</strong> по всем действиям — гладкая аппроксимация $\max_a Q(s,a)$. Он опускает всю Q-поверхность вниз. Второй член поднимает Q-значения именно в точках датасета.</p>
 <p>Определим:</p>
 <p><div class="math-display">$$\mathcal{R}_{CQL}(\theta) = \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right]$$</div></p>
-<p>Тогда: $\mathcal{L}<em TD="TD">{CQL}(\theta) = \mathcal{L}</em>(\theta)$}(\theta) + \alpha \cdot \mathcal{R}_{CQL</p>
+<p>Тогда: $\mathcal{L}_{CQL}(\theta) = \mathcal{L}_{TD}(\theta) + \alpha \cdot \mathcal{R}_{CQL}(\theta)$</p>
 <blockquote>
 <p><strong>Замечание о множителе $\frac{1}{2}$.</strong> В оригинальной статье CQL написано $\frac{1}{2}\mathcal{L}_{TD}$ — это соглашение о нормировке в рамках их вывода. На практике множитель поглощается скоростью обучения и $\alpha$, поэтому реализации (включая нашу) его опускают.</p>
 </blockquote>
@@ -101,7 +101,7 @@
 <p>где $\mu$ — предложенное распределение. На практике $\mu$ — либо равномерное над пространством действий, либо текущая политика $\pi_\theta$.</p>
 <p><strong>Зачем вычитать $\log \mu(a|s)$ в коде?</strong> При $\mu = \pi_\theta$ importance-sampling оценка принимает вид:</p>
 <p><div class="math-display">$$\log \mathbb{E}_{a \sim \pi_\theta} \left[ \frac{\exp Q(s,a)}{\pi_\theta(a|s)} \right] \approx \log \frac{1}{N} \sum_{i=1}^N \frac{\exp Q(s, a_i)}{\pi_\theta(a_i|s)} = \text{logsumexp}_i \left[ Q(s, a_i) - \log \pi_\theta(a_i|s) \right] + \text{const}$$</div></p>
-<p>Именно поэтому в коде вычисляется <code>q_policy - policy_log_probs</code> перед logsumexp: вычитание $\log \pi_\theta(a|s)$ реализует коррекцию importance weights. Без неё мы бы аппроксимировали $\mathbb{E}<em>{\pi</em>\theta}[Q]$ (простое среднее Монте-Карло), а не $\log \sum_a \exp Q$ (мягкий максимум, который требует CQL). Для случайных равномерных действий эта коррекция не нужна: их лог-плотность константна и сокращается внутри logsumexp.</p>
+<p>Именно поэтому в коде вычисляется <code>q_policy - policy_log_probs</code> перед logsumexp: вычитание $\log \pi_\theta(a|s)$ реализует коррекцию importance weights. Без неё мы бы аппроксимировали $\mathbb{E}_{\pi_\theta}[Q]$ (простое среднее Монте-Карло), а не $\log \sum_a \exp Q$ (мягкий максимум, который требует CQL). Для случайных равномерных действий эта коррекция не нужна: их лог-плотность константна и сокращается внутри logsumexp.</p>
 <h3>Теоретическая гарантия</h3>
 <p><strong>Теорема (Kumar et al., 2020).</strong> Пусть $\hat{Q}^\pi$ — Q-функция, обученная CQL, а $Q^\pi$ — истинная Q-функция политики $\pi$. Тогда:</p>
 <p><div class="math-display">$$\hat{Q}^\pi(s, a) \leq Q^\pi(s, a) \quad \forall (s, a) \in \mathcal{D}$$</div></p>
@@ -220,11 +220,11 @@
 <div class="codehilite"><pre><span></span><code><span class="c1"># Настройка alpha через двойственный градиентный спуск</span>
 <span class="n">log_alpha_cql</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
 <span class="n">alpha_opt</span>     <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">([</span><span class="n">log_alpha_cql</span><span class="p">],</span> <span class="n">lr</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">)</span>
-<span class="n">target_penalty</span> <span class="o">=</span> <span class="o">-</span><span class="mf">2.0</span>   <span class="c1"># τ: желаемое значение E_μ[Q] - E_D[Q]</span>
+<span class="n">target_gap</span> <span class="o">=</span> <span class="mf">10.0</span>   <span class="c1"># τ: целевой CQL-штраф (разрыв logsumexp, ≥ 0)</span>
 
 <span class="c1"># В шаге обновления:</span>
 <span class="n">alpha_cql</span>  <span class="o">=</span> <span class="n">log_alpha_cql</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
-<span class="n">alpha_loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">log_alpha_cql</span> <span class="o">*</span> <span class="p">(</span><span class="n">cql_penalty</span> <span class="o">-</span> <span class="n">target_penalty</span><span class="p">)</span>
+<span class="n">alpha_loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">log_alpha_cql</span> <span class="o">*</span> <span class="p">(</span><span class="n">cql_penalty</span> <span class="o">-</span> <span class="n">target_gap</span><span class="p">)</span>
 <span class="n">alpha_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
 <span class="n">alpha_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
 <span class="n">alpha_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
@@ -295,7 +295,7 @@
 <h2>Как выбрать α</h2>
 <p>$\alpha$ — важнейший гиперпараметр CQL. Правильное значение зависит от качества датасета, масштаба наград и доверия к поведенческой политике.</p>
 <h3>Шаг 1 — Проверьте знак CQL-штрафа</h3>
-<p>Перед настройкой убедитесь, что штраф положителен: $\mathbb{E}_\mu[Q] &gt; \mathbb{E}_D[Q]$ должно выполняться после нескольких сотен обновлений. Если штраф отрицателен с самого начала — сэмплирование OOD-действий сломано.</p>
+<p>Перед настройкой убедитесь, что штраф положителен: $\mathbb{E}_\mu[Q] > \mathbb{E}_D[Q]$ должно выполняться после нескольких сотен обновлений. Если штраф отрицателен с самого начала — сэмплирование OOD-действий сломано.</p>
 <h3>Шаг 2 — Грид-поиск по логарифмической шкале</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">for</span> <span class="n">alpha</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">]:</span>
     <span class="n">agent</span> <span class="o">=</span> <span class="n">CQLAgent</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">alpha_cql</span><span class="o">=</span><span class="n">alpha</span><span class="p">)</span>
@@ -424,7 +424,7 @@
 <h2>Ограничения</h2>
 <p><strong>Требует разметки наград.</strong> В отличие от BC, CQL нужны кортежи $(s, a, r, s')$. Если датасет содержит только $(s, a, s')$ — необходимо определить функцию вознаграждения.</p>
 <p><strong>Чувствителен к масштабу наград.</strong> Баланс между TD-потерей и CQL-штрафом зависит от величины наград. Если награды большие (например, в тысячах), TD-потеря доминирует и CQL теряет эффект. Нормализуйте награды в $[-1, 1]$ или $[0, 1]$.</p>
-<p><strong>Консервативен по построению.</strong> CQL не превзойдёт поведенческую политику значительно в регионах с редкими данными. Он создан для безопасности, а не для агрессивной экстраполяции. Для задач, требующих существенного выхода за пределы датасета, более уместны модельные методы (Глава 5).</p>
+<p><strong>Консервативен по построению.</strong> CQL не превзойдёт поведенческую политику значительно в регионах с редкими данными. Он создан для безопасности, а не для агрессивной экстраполяции. Для задач, требующих существенного выхода за пределы датасета, более уместны модельные методы (Глава 8).</p>
 <p><strong>Непрерывные пространства действий требуют сэмплирования.</strong> Аппроксимация logsumexp требует сэмплирования — как правило, 10 случайных + 10 политиковых действий на состояние. В коде два предложения усредняются <em>отдельно</em> (log E_rand[exp Q] и log E_π[exp Q] с importance weights для π), затем объединяются как log((1/2)(E_rand + E_π)), а не один logsumexp по всем 20 сэмплам, чтобы не искажать веса важности. Это увеличивает вычислительные затраты по сравнению с BC или TD3+BC.</p>
 <hr />
 <h2>Итоги</h2>
@@ -459,7 +459,7 @@
 </tbody>
 </table>
 <p>CQL закрывает разрыв между поведенческим клонированием и полным офлайн RL. Он использует информацию о награде для улучшения над поведенческой политикой, а пессимизм относительно OOD-действий предотвращает катастрофические отказы стандартного Q-обучения.</p>
-<p>Остающееся ограничение: CQL является <strong>безмодельным</strong>. Глава 4 (IQL) уточняет идею пессимизма по значениям. Глава 5 (MOPO) показывает, как обучение модели мира позволяет генерировать синтетические данные — расширяя эффективный датасет за пределы собранного.</p>
+<p>Остающееся ограничение: CQL является <strong>безмодельным</strong>. Глава 5 (IQL) уточняет идею пессимизма по значениям. Глава 8 (MOPO) показывает, как обучение модели мира позволяет генерировать синтетические данные — расширяя эффективный датасет за пределы собранного.</p>
 <hr />
 <h2>Литература</h2>
 <ul>

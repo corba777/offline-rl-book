@@ -77,7 +77,7 @@
 <li><strong>Past actions</strong> $a_1, \ldots, a_{t-1}$</li>
 <li><strong>Return-to-go</strong> $R_1, \ldots, R_t$ (the desired or observed cumulative future reward from each step)</li>
 </ol>
-<p>At <strong>test time</strong>, we choose a <strong>target return</strong> $R^<em>$ (e.g. the 90th percentile of returns in the dataset) and feed the model the same trajectory prefix plus $R^</em>$ as the current return-to-go. The model then generates actions that, in training data, were associated with that high return. No value function, no $\max_a$ — just autoregressive action prediction.</p>
+<p>At <strong>test time</strong>, we choose a <strong>target return</strong> $R^*$ (e.g. the 90th percentile of returns in the dataset) and feed the model the same trajectory prefix plus $R^*$ as the current return-to-go. The model then generates actions that, in training data, were associated with that high return. No value function, no $\max_a$ — just autoregressive action prediction.</p>
 <p><strong>Why this avoids extrapolation error:</strong> The model is never asked to evaluate an action it hasn't seen in a similar context. It only predicts the next action given (state history, action history, return-to-go). All of these are observed in the dataset. The "policy" is implicit: high return-to-go → actions that led to high return in the data.</p>
 <hr />
 <h2>Formalization</h2>
@@ -103,9 +103,9 @@
 <h3>At Test Time</h3>
 <ol>
 <li>Initialize $R_1 = R^*$ (target return, e.g. high percentile of dataset returns).</li>
-<li>Observe $s_1$; feed $(R_1, s_1, _)$ to the model; get $a_1$.</li>
+<li>Observe $s_1$; feed $(R_1, s_1, \_)$ to the model; get $a_1$.</li>
 <li>Execute $a_1$, get $s_2, r_1$. Set $R_2 = R_1 - r_1$ (or $R_2 = (R_1 - r_1) / \gamma$ depending on convention).</li>
-<li>Feed $(R_1, s_1, a_1, R_2, s_2, _)$; get $a_2$. Repeat.</li>
+<li>Feed $(R_1, s_1, a_1, R_2, s_2, \_)$; get $a_2$. Repeat.</li>
 </ol>
 <p>So we <strong>condition on the desired return</strong> and let the model autoregressively generate actions. The return-to-go is updated each step to reflect how much "return budget" is left.</p>
 <hr />
@@ -114,7 +114,7 @@
 <p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/decision_transformer.py"><code>decision_transformer.py</code></a></p>
 </blockquote>
 <h3>Token Embedding and Model</h3>
-<p>Chunks are built in <code>ChunkDataset</code>: for each (trajectory, timestep $t$) we form padded arrays of length <code>context_len</code> for return-to-go, states, and actions (actions up to $t-1$; we predict $a_t$). The model concatenates $(R, s, a)$ per timestep into a single token, embeds with one linear layer, adds positional embedding, and runs a causal transformer:</p>
+<p>Chunks are built in <code>ChunkDataset</code>: for each (trajectory, timestep $t$) we form padded arrays of length <code>context_len</code> for return-to-go, states, and actions (actions up to $t-1$; we predict $a_t$). The model concatenates $(R, s, a)$ per timestep into a single token, embeds with one linear layer, adds positional embedding, and runs a causal transformer. <em>Note:</em> canonical DT (Chen et al.) embeds $R_t$, $s_t$, and $a_t$ as <strong>three separate tokens</strong> per timestep ($3K$ positions for context $K$); this book uses one fused token per step for simplicity.</p>
 <div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">DecisionTransformer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    GPT-style model. Input: context_len tokens, each (R, s, a) concatenated and embedded.</span>
@@ -160,7 +160,7 @@
 <h2>Limitations</h2>
 <p><strong>No explicit credit assignment.</strong> DT learns "what action came next in good trajectories" but does not use Bellman backups. Long-horizon causality is only in the data; the model may not generalize as well as value-based methods when the dataset is small or noisy.</p>
 <p><strong>Stitching.</strong> Standard DT does not explicitly "stitch" sub-optimal trajectory segments. Value-based methods can combine a good prefix from one trajectory with a good suffix from another via the value function; DT generates autoregressively from a single context. Variants like <strong>Q-learning DT (QDT)</strong> add TD learning to improve credit assignment.</p>
-<p><strong>Conditioning sensitivity.</strong> Performance depends on the choice of $R^<em>$ at test time. If $R^</em>$ is too low, the model behaves conservatively; if too high, it may hallucinate. Return normalization and percentile-based $R^*$ help but are hyperparameters.</p>
+<p><strong>Conditioning sensitivity.</strong> Performance depends on the choice of $R^*$ at test time. If $R^*$ is too low, the model behaves conservatively; if too high, it may hallucinate. Return normalization and percentile-based $R^*$ help but are hyperparameters.</p>
 <p><strong>No theoretical guarantee.</strong> DT does not provide a lower bound or safety guarantee. It is a powerful and flexible sequence model that avoids extrapolation by construction but does not have the same formal guarantees as CQL or MOPO.</p>
 <hr />
 <h2>Summary</h2>

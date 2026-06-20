@@ -151,7 +151,7 @@
 <p>These represent the gap between first-principles engineering knowledge and reality.</p>
 <p><strong>Reward</strong> function targets temperature, filler fraction, and level stability:</p>
 <p><div class="math-display">$$r(s, a) = -2(T - T^*)^2 - 2(f - f^*)^2 - 0.5(L - L^*)^2 - 0.05\|a\|^2$$</div></p>
-<p>with setpoints $T^<em>=0.60$, $f^</em>=0.50$, $L^*=0.50$.</p>
+<p>with setpoints $T^*=0.60$, $f^*=0.50$, $L^*=0.50$.</p>
 <p><strong>Hard constraints</strong> (violation = irreversible equipment damage or shutdown):</p>
 <table>
 <thead>
@@ -338,7 +338,7 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cql</span><span class="o">.</span><span class="n">update</span><span class="p">((</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span> <span class="o">-</span> <span class="n">penalty</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
 </code></pre></div>
 
-<p>The <code>lambdas</code> are calibrated via <code>calibrate_lambda</code> (Theorem 6.1): set $\lambda$ so that the Theorem 6.1 optimality gap is at most 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.</p>
+<p>The <code>lambdas</code> are calibrated via <code>calibrate_lambda</code> using the Chapter 9 heuristic (Part I, "Choosing $\lambda$"): set $\lambda$ so that a typical physics violation costs about 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.</p>
 <p>Three constraints are active:
 1. <strong>Operating bounds</strong> — all five state variables within hard limits
 2. <strong>Temperature first-order consistency</strong> — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
@@ -433,7 +433,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
 
 <p>If a constraint is violated on more than 20% of training transitions, either the tolerance is too tight or the physics model is inaccurate for that variable. In both cases, increasing the tolerance or loosening the manual $\lambda$ is better than tightening the constraint — a constraint that fires too often becomes a second reward signal rather than a physics correction.</p>
 <h3>Normalizing the 5D State</h3>
-<p>Five variables with different physical scales and variances require per-dimension normalization. The provided <code>normalize_dataset</code> normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — centering the reward would remove the sign information that distinguishes good states from bad.</p>
+<p>Five variables with different physical scales and variances require per-dimension normalization. The provided <code>normalize_dataset</code> normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — the reward is structurally non-positive (a sum of negative squared errors), so zero marks a meaningful "perfect" anchor; with variable episode lengths and terminal flags, a constant offset would also accumulate differently across episodes.</p>
 <hr />
 <h2>Safe RL, Drift Detection, and Fallback</h2>
 <p>Deploying an offline RL policy in production is not a one-time event. The process changes over time; the policy was trained on a fixed dataset and has no built-in way to adapt. This section outlines three industrial practices that close the gap: <strong>safe RL</strong> (constraints and safety critics), <strong>drift detection</strong> (when to distrust the policy), and <strong>fallback</strong> (what to do when you do).</p>

@@ -96,7 +96,7 @@ So we **condition on the desired return** and let the model autoregressively gen
 
 ### Token Embedding and Model
 
-Chunks are built in `ChunkDataset`: for each (trajectory, timestep $t$) we form padded arrays of length `context_len` for return-to-go, states, and actions (actions up to $t-1$; we predict $a_t$). The model concatenates $(R, s, a)$ per timestep into a single token, embeds with one linear layer, adds positional embedding, and runs a causal transformer:
+Chunks are built in `ChunkDataset`: for each (trajectory, timestep $t$) we form padded arrays of length `context_len` for return-to-go, states, and actions (actions up to $t-1$; we predict $a_t$). The model concatenates $(R, s, a)$ per timestep into a single token, embeds with one linear layer, adds positional embedding, and runs a causal transformer. *Note:* canonical DT (Chen et al.) embeds $R_t$, $s_t$, and $a_t$ as **three separate tokens** per timestep ($3K$ positions for context $K$); this book uses one fused token per step for simplicity.
 
 ```python
 class DecisionTransformer(nn.Module):

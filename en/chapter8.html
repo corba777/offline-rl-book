@@ -92,7 +92,7 @@
 <p>The result: an effective dataset 10–100× larger than the original, with built-in safety from the uncertainty penalty.</p>
 <h3>Formalization</h3>
 <h4>The Dynamics Ensemble</h4>
-<p>We train an ensemble of $N$ probabilistic models ${\hat{T}<em i="1">i}</em>^N$, each outputting a Gaussian over next states:</p>
+<p>We train an ensemble of $N$ probabilistic models $\{\hat{T}_i\}_{i=1}^N$, each outputting a Gaussian over next states:</p>
 <p><div class="math-display">$$\hat{T}_i(s' | s, a) = \mathcal{N}\left(s + \mu_{\theta_i}(s, a), \; \sigma^2_{\theta_i}(s, a)\right)$$</div></p>
 <p>Key design choices:</p>
 <ul>
@@ -111,13 +111,13 @@
 <p><div class="math-display">$$\pi^* = \arg\max_\pi \; \mathbb{E}_{\tilde{\mathcal{M}}} \left[ \sum_t \gamma^t \tilde{r}(s_t, a_t) \right]$$</div></p>
 <p>The theoretical guarantee from Yu et al. (2020):</p>
 <p><div class="math-display">$$J(\pi) \geq \hat{J}_{\tilde{\mathcal{M}}}(\pi) - C \cdot \mathbb{E}_{s \sim d^\pi} \left[ \max_a u(s, a) \right]$$</div></p>
-<p>where $J(\pi)$ is the true return and $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ is the return in the pessimistic model. The bound says: optimizing in the penalized model gives a lower bound on real performance, with a gap proportional to the remaining model error.</p>
+<p>where $J(\pi)$ is the true return and $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ is the return in the pessimistic model. The bound says: optimizing in the penalized model gives a lower bound on real performance, with a gap proportional to the remaining model error. <em>Note:</em> the original MOPO paper defines $u(s,a)$ as the max over the ensemble of the learned (aleatoric) standard-deviation norm; this book uses <strong>ensemble disagreement</strong> (std of predicted means) instead — a common reimplementation choice, closer to MOReL's USAD.</p>
 <h4>Branched Rollouts</h4>
 <p>Rather than rolling out entire episodes from scratch, MOPO uses <strong>branched rollouts</strong>:</p>
 <ol>
 <li>Sample a starting state $s_0$ uniformly from the real dataset $\mathcal{D}$.</li>
 <li>Roll out for $h$ steps using the model and current policy.</li>
-<li>Each synthetic transition $(s_t, a_t, \tilde{r}<em t_1="t+1">t, s</em>)$ is added to a synthetic buffer.</li>
+<li>Each synthetic transition $(s_t, a_t, \tilde{r}_t, s_{t+1})$ is added to a synthetic buffer.</li>
 </ol>
 <p>Starting from real states ensures the rollout begins in a well-modeled region. The short horizon $h$ limits error compounding. The penalized reward discourages visiting poorly modeled regions within the rollout.</p>
 <h3>Implementation</h3>
@@ -211,10 +211,10 @@
 <p>Let $\mathcal{D}$ be the offline dataset. MOReL defines a threshold $\epsilon$ on prediction uncertainty and partitions state-action space:</p>
 <p><div class="math-display">$$\text{KNOWN}  = \{(s,a) : u(s,a) \leq \epsilon\}$$</div></p>
 <p><div class="math-display">$$\text{UNKNOWN} = \{(s,a) : u(s,a) > \epsilon\}$$</div></p>
-<p>The <strong>Pessimistic MDP</strong> $\tilde{\mathcal{M}} = (\mathcal{S} \cup {s_\perp}, \mathcal{A}, \tilde{T}, \tilde{r}, \gamma)$ is defined as:</p>
+<p>The <strong>Pessimistic MDP</strong> $\tilde{\mathcal{M}} = (\mathcal{S} \cup \{s_\perp\}, \mathcal{A}, \tilde{T}, \tilde{r}, \gamma)$ is defined as:</p>
 <p><div class="math-display">$$\tilde{T}(s' | s, a) = \begin{cases} \hat{T}(s' | s, a) & \text{if } (s,a) \in \text{KNOWN} \\ \delta(s_\perp) & \text{if } (s,a) \in \text{UNKNOWN} \end{cases}$$</div></p>
 <p><div class="math-display">$$\tilde{r}(s, a) = \begin{cases} \hat{r}(s, a) & \text{if } s \neq s_\perp \\ -\kappa & \text{if } s = s_\perp \end{cases}$$</div></p>
-<p>where $s_\perp$ is an absorbing failure state and $\kappa &gt; 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive.</p>
+<p>where $s_\perp$ is an absorbing failure state and $\kappa > 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive.</p>
 <h3>The Theoretical Guarantee</h3>
 <p><strong>Theorem (Kidambi et al., 2020).</strong> Let $\hat{\pi}$ be the optimal policy in the P-MDP $\tilde{\mathcal{M}}$. For any policy $\pi$, let $d^\pi$ denote its state-action occupancy measure. Then:</p>
 <p><div class="math-display">$$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^{\hat{\pi}}}[\text{UNKNOWN}]$$</div></p>
@@ -236,35 +236,46 @@
 <p><strong>Step 2 — P-MDP rollouts with hard HALT:</strong></p>
 <div class="codehilite"><pre><span></span><code><span class="c1"># Inside MOReLAgent.generate_synthetic_data():</span>
 <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rollout_horizon</span><span class="p">):</span>
-    <span class="n">action</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">])</span>
-    <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
-        <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">active</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="k">break</span>
 
-    <span class="c1"># Hard boundary: if OOD, terminate with penalty</span>
-    <span class="n">ood</span> <span class="o">=</span> <span class="n">uncertainty</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span>          <span class="c1"># (batch,) bool</span>
+    <span class="n">s_active</span> <span class="o">=</span> <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">]</span>
+    <span class="n">action</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">s_active</span><span class="p">)</span>
+    <span class="n">next_state</span><span class="p">,</span> <span class="n">uncertainty</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensemble</span><span class="o">.</span><span class="n">predict_with_uncertainty</span><span class="p">(</span>
+        <span class="n">s_active</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
+
+    <span class="n">ood</span> <span class="o">=</span> <span class="n">uncertainty</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span>          <span class="c1"># (n_active,) bool</span>
 
     <span class="n">reward</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
         <span class="n">ood</span><span class="p">,</span>
         <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">kappa</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">ood</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">),</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model_reward</span><span class="p">(</span><span class="n">s_active</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
     <span class="p">)</span>
     <span class="n">done</span> <span class="o">=</span> <span class="n">ood</span><span class="o">.</span><span class="n">float</span><span class="p">()</span>
 
-    <span class="c1"># Absorbing: halted rollouts stay at current state</span>
     <span class="n">next_state_out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
-        <span class="n">ood</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">state</span><span class="p">[</span><span class="n">active</span><span class="p">],</span> <span class="n">next_state</span><span class="p">)</span>
+        <span class="n">ood</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">s_active</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
 
-    <span class="c1"># Mark halted rollouts as inactive — they stop here</span>
-    <span class="n">active</span><span class="p">[</span><span class="n">active</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">as_tuple</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="n">ood</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">syn_s</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s_active</span><span class="p">)</span>
+    <span class="n">syn_a</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">action</span><span class="p">)</span>
+    <span class="n">syn_r</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">reward</span><span class="p">)</span>
+    <span class="n">syn_s2</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">next_state_out</span><span class="p">)</span>
+    <span class="n">syn_d</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">done</span><span class="p">)</span>
 
-        <span class="n">transitions</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">reward</span><span class="p">,</span> <span class="n">next_state</span><span class="p">,</span> <span class="n">done</span><span class="p">))</span>
-        <span class="c1"># Only continue non-terminated rollouts</span>
-        <span class="n">state</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">ood_mask</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">state</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
+    <span class="n">active_indices</span> <span class="o">=</span> <span class="n">active</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">as_tuple</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">active</span><span class="p">[</span><span class="n">active_indices</span><span class="p">[</span><span class="n">ood</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">state</span><span class="p">[</span><span class="n">active_indices</span><span class="p">[</span><span class="o">~</span><span class="n">ood</span><span class="p">]]</span> <span class="o">=</span> <span class="n">next_state</span><span class="p">[</span><span class="o">~</span><span class="n">ood</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">transitions</span>
+<span class="k">return</span> <span class="p">{</span>
+    <span class="s1">&#39;states&#39;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">syn_s</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span>
+    <span class="s1">&#39;actions&#39;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">syn_a</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span>
+    <span class="s1">&#39;rewards&#39;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">syn_r</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span>
+    <span class="s1">&#39;next_states&#39;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">syn_s2</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span>
+    <span class="s1">&#39;dones&#39;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">syn_d</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span>
+<span class="p">}</span>
 </code></pre></div>
 
-<p>The <code>ood_mask</code> is the key difference from MOPO. Instead of subtracting a continuous penalty, OOD transitions are terminated immediately with <code>done=True</code> and reward $-\kappa$. The Q-learning target then sees zero future value after OOD transitions, which strongly discourages entering the unknown region.</p>
+<p>The <code>ood</code> mask is the key difference from MOPO. Instead of subtracting a continuous penalty, OOD transitions are terminated immediately with <code>done=True</code> and reward $-\kappa$. The Q-learning target then sees zero future value after OOD transitions, which strongly discourages entering the unknown region.</p>
 <h3>Choosing $\epsilon$</h3>
 <p>The threshold $\epsilon$ controls the known/unknown boundary and is the critical hyperparameter in MOReL:</p>
 <table>
@@ -419,7 +430,7 @@
 <li><code>h=5</code>: default. Good balance of augmentation vs error compounding.</li>
 <li><code>h=10+</code>: only if model one-step accuracy is very high.</li>
 </ul>
-<p><strong>Rule of thumb</strong>: if the model has $\epsilon_1$ one-step error, after $h$ steps you accumulate roughly $h \cdot \epsilon_1$ error. Set $h$ so that $h \cdot \epsilon_1 &lt; 0.1$ (10% accumulated error).</p>
+<p><strong>Rule of thumb</strong>: if the model has $\epsilon_1$ one-step error, after $h$ steps you accumulate roughly $h \cdot \epsilon_1$ error. Set $h$ so that $h \cdot \epsilon_1 < 0.1$ (10% accumulated error).</p>
 <h3>Both: $N$ (ensemble size)</h3>
 <ul>
 <li><code>N=3</code>: minimum for meaningful uncertainty (not recommended in production).</li>

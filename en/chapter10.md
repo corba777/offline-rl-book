@@ -293,7 +293,7 @@ class PhysicsInformedCQL:
         return self.cql.update((s, a, r - penalty, s2, d))
 ```
 
-The `lambdas` are calibrated via `calibrate_lambda` (Theorem 6.1): set $\lambda$ so that the Theorem 6.1 optimality gap is at most 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.
+The `lambdas` are calibrated via `calibrate_lambda` using the Chapter 9 heuristic (Part I, "Choosing $\lambda$"): set $\lambda$ so that a typical physics violation costs about 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.
 
 Three constraints are active:
 1. **Operating bounds** — all five state variables within hard limits
@@ -428,7 +428,7 @@ If a constraint is violated on more than 20% of training transitions, either the
 
 ### Normalizing the 5D State
 
-Five variables with different physical scales and variances require per-dimension normalization. The provided `normalize_dataset` normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — centering the reward would remove the sign information that distinguishes good states from bad.
+Five variables with different physical scales and variances require per-dimension normalization. The provided `normalize_dataset` normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — the reward is structurally non-positive (a sum of negative squared errors), so zero marks a meaningful "perfect" anchor; with variable episode lengths and terminal flags, a constant offset would also accumulate differently across episodes.
 
 ---
 

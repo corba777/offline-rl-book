@@ -201,20 +201,20 @@ def expectile_loss(pred: torch.Tensor, target: torch.Tensor,
 
 ```python
 def iql_value_loss(V: ValueNetwork,
-                   Q1: QNetwork, Q2: QNetwork,
+                   Q1_tgt: QNetwork, Q2_tgt: QNetwork,
                    states: torch.Tensor,
                    actions: torch.Tensor,
                    tau: float = 0.7) -> Tuple[torch.Tensor, dict]:
     """
     V-network update via expectile regression.
 
-    Target: min(Q1(s,a), Q2(s,a)) for dataset (s,a) pairs.
+    Target: min(Q1_tgt(s,a), Q2_tgt(s,a)) for dataset (s,a) pairs.
     V(s) is pushed toward the tau-expectile of this target.
 
     No next states, no policy sampling — fully in-sample.
     """
     with torch.no_grad():
-        q_target = torch.min(Q1(states, actions), Q2(states, actions))
+        q_target = torch.min(Q1_tgt(states, actions), Q2_tgt(states, actions))
 
     v_pred = V(states)
     loss   = expectile_loss(v_pred, q_target, tau)
@@ -227,29 +227,24 @@ def iql_value_loss(V: ValueNetwork,
     }
 ```
 
-Блок `torch.no_grad()` важен: градиенты текут только через `V`, не через `Q1` и `Q2`. Q-сети служат чисто как регрессионные цели.
+Блок `torch.no_grad()` важен: градиенты текут только через `V`, не через таргетные Q-сети. Q-таргеты служат чисто как регрессионные цели.
 
 ### Q-обновление
 
 ```python
 def iql_q_loss(Q: QNetwork,
-               V_tgt: ValueNetwork,
+               V: ValueNetwork,
                states: torch.Tensor, actions: torch.Tensor,
                rewards: torch.Tensor, next_states: torch.Tensor,
                dones: torch.Tensor,
                gamma: float = 0.99) -> Tuple[torch.Tensor, dict]:
     """
-    Q-network update via standard TD backup — but using V(s') instead of max_a Q(s',a').
+    Q-network update via standard TD backup — using live V(s') instead of max_a Q(s',a').
 
     TD target: r + gamma * V(s')
-
-    This is the key IQL insight: replace max_a Q(s',a') with V(s').
-    V(s') was trained to approximate the upper expectile of Q at s',
-    so it acts as a conservative upper bound on next-state value.
-    No policy sampling at all.
     """
     with torch.no_grad():
-        v_next    = V_tgt(next_states)
+        v_next    = V(next_states)
         td_target = rewards + gamma * (1.0 - dones) * v_next
 
     q_pred = Q(states, actions)
@@ -262,7 +257,7 @@ def iql_q_loss(Q: QNetwork,
     }
 ```
 
-Сравните с Q-обновлением CQL: там `v_next` требовал `policy.sample(next_states)` и затем `Q_target(next_states, next_actions)`. Здесь — один прямой проход через `V_tgt`, без сэмплирования действий.
+Сравните с Q-обновлением CQL: там `v_next` требовал `policy.sample(next_states)` и затем `Q_target(next_states, next_actions)`. Здесь — один прямой проход через живую `V`, без сэмплирования действий.
 
 ### Извлечение политики через AWR
 
@@ -272,7 +267,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
                     V: ValueNetwork,
                     states: torch.Tensor,
                     actions: torch.Tensor,
-                    beta: float = 1.0,
+                    beta: float = 3.0,
                     clip_exp: float = 100.0) -> Tuple[torch.Tensor, dict]:
     """
     Policy extraction via Advantage-Weighted Regression (AWR).
@@ -320,17 +315,17 @@ def iql_policy_loss(policy: DeterministicPolicy,
 ### Полный шаг обновления
 
 ```python
-        v_loss, v_info = iql_value_loss(self.V, self.Q1, self.Q2, s, a, self.tau)
+        v_loss, v_info = iql_value_loss(self.V, self.Q1_tgt, self.Q2_tgt, s, a, self.tau)
         self.v_opt.zero_grad()
         v_loss.backward()
         self.v_opt.step()
         info.update(v_info)
 
-        # ── 2. Q update (TD with V as next-state value) ───────────────────
-        # Q(s,a) ← r + gamma * V_target(s')
-        q_loss1, q_info1 = iql_q_loss(self.Q1, self.V_tgt,
+        # ── 2. Q update (TD with live V as next-state value) ──────────────
+        # Q(s,a) ← r + gamma * V(s')
+        q_loss1, q_info1 = iql_q_loss(self.Q1, self.V,
                                        s, a, r, s2, d, self.gamma)
-        q_loss2, q_info2 = iql_q_loss(self.Q2, self.V_tgt,
+        q_loss2, q_info2 = iql_q_loss(self.Q2, self.V,
                                        s, a, r, s2, d, self.gamma)
         self.q_opt.zero_grad()
         (q_loss1 + q_loss2).backward()
@@ -340,7 +335,6 @@ def iql_policy_loss(policy: DeterministicPolicy,
         info['q_loss'] = (q_info1['q_loss'] + q_info2['q_loss']) / 2
 
         # ── 3. Policy update (advantage-weighted regression) ──────────────
-        # pi(s) ← argmin_a exp(beta * A(s,a)) * ||pi(s) - a||^2 over dataset
         pi_loss, pi_info = iql_policy_loss(
             self.policy, self.Q1, self.Q2, self.V, s, a, self.beta)
         self.pi_opt.zero_grad()
@@ -348,9 +342,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
         self.pi_opt.step()
         info.update(pi_info)
 
-        # ── 4. Soft target updates ────────────────────────────────────────
-        for p, pt in zip(self.V.parameters(), self.V_tgt.parameters()):
-            pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
+        # ── 4. Soft target updates (Q only) ───────────────────────────────
         for p, pt in zip(self.Q1.parameters(), self.Q1_tgt.parameters()):
             pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
         for p, pt in zip(self.Q2.parameters(), self.Q2_tgt.parameters()):
@@ -364,7 +356,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
 # ============================================================================
 ```
 
-Важно: в `iql_q_loss` используется `V_tgt` (таргет-сеть), а не `V`. Это предотвращает цикличную зависимость, при которой $V$ и $Q$ дестабилизируют друг друга.
+По статье IQL: value loss использует **таргетные** Q-сети (`Q1_tgt`, `Q2_tgt`), а Q-loss — **живую** `V` для bootstrap на $s'$.
 
 ---
 
@@ -452,7 +444,7 @@ IQL vs BC: +7.69 reward
 
 **Мониторьте V-Q разрыв.** Логируйте `v_q_gap = E[Q(s,a) - V(s)]` по датасетным парам. Должно быть слегка положительным (V чуть ниже среднего Q). Если становится сильно отрицательным — $\tau$ слишком мало.
 
-**Используйте таргет-сеть для V в Q-обновлении.** В `iql_q_loss` используется `V_tgt`, а не `V`. Если использовать живую `V`, Q и V формируют цикличную зависимость и обучение часто расходится.
+**Используйте таргетные Q-сети в value-обновлении.** Expectile-цель строится из `Q1_tgt` и `Q2_tgt`, а не из живых Q-сетей того же шага — как в референсной реализации IQL.
 
 **IQL быстрее сходится, чем CQL** на плотных датасетах — V-обновление очень стабильно (нет OOD-сэмплирования, нет logsumexp).
 
@@ -479,7 +471,7 @@ IQL vs BC: +7.69 reward
 | По сравнению с CQL | Стабильнее; нет OOD-сэмплирования; детерминированная политика |
 | Ограничение | Не может экстраполировать за пределы действий датасета |
 
-IQL — наиболее чистое решение задачи офлайн RL среди безмодельных методов: пессимизм структурный, встроенный в архитектуру. Следующий шаг: научиться моделировать мир и генерировать синтетические данные. Это позволяет рассуждать о переходах, которых нет в датасете — ценой ошибки модели. Об этом — в главе 5.
+IQL — наиболее чистое решение задачи офлайн RL среди безмодельных методов: пессимизм структурный, встроенный в архитектуру. Следующий шаг: научиться моделировать мир и генерировать синтетические данные. Это позволяет рассуждать о переходах, которых нет в датасете — ценой ошибки модели. Об этом — в главе 8.
 
 ---
 

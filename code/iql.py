@@ -228,20 +228,20 @@ def expectile_loss(pred: torch.Tensor, target: torch.Tensor,
 
 
 def iql_value_loss(V: ValueNetwork,
-                   Q1: QNetwork, Q2: QNetwork,
+                   Q1_tgt: QNetwork, Q2_tgt: QNetwork,
                    states: torch.Tensor,
                    actions: torch.Tensor,
                    tau: float = 0.7) -> Tuple[torch.Tensor, dict]:
     """
     V-network update via expectile regression.
 
-    Target: min(Q1(s,a), Q2(s,a)) for dataset (s,a) pairs.
+    Target: min(Q1_tgt(s,a), Q2_tgt(s,a)) for dataset (s,a) pairs.
     V(s) is pushed toward the tau-expectile of this target.
 
     No next states, no policy sampling — fully in-sample.
     """
     with torch.no_grad():
-        q_target = torch.min(Q1(states, actions), Q2(states, actions))
+        q_target = torch.min(Q1_tgt(states, actions), Q2_tgt(states, actions))
 
     v_pred = V(states)
     loss   = expectile_loss(v_pred, q_target, tau)
@@ -255,23 +255,18 @@ def iql_value_loss(V: ValueNetwork,
 
 
 def iql_q_loss(Q: QNetwork,
-               V_tgt: ValueNetwork,
+               V: ValueNetwork,
                states: torch.Tensor, actions: torch.Tensor,
                rewards: torch.Tensor, next_states: torch.Tensor,
                dones: torch.Tensor,
                gamma: float = 0.99) -> Tuple[torch.Tensor, dict]:
     """
-    Q-network update via standard TD backup — but using V(s') instead of max_a Q(s',a').
+    Q-network update via standard TD backup — using live V(s') instead of max_a Q(s',a').
 
     TD target: r + gamma * V(s')
-
-    This is the key IQL insight: replace max_a Q(s',a') with V(s').
-    V(s') was trained to approximate the upper expectile of Q at s',
-    so it acts as a conservative upper bound on next-state value.
-    No policy sampling at all.
     """
     with torch.no_grad():
-        v_next    = V_tgt(next_states)
+        v_next    = V(next_states)
         td_target = rewards + gamma * (1.0 - dones) * v_next
 
     q_pred = Q(states, actions)
@@ -289,7 +284,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
                     V: ValueNetwork,
                     states: torch.Tensor,
                     actions: torch.Tensor,
-                    beta: float = 1.0,
+                    beta: float = 3.0,
                     clip_exp: float = 100.0) -> Tuple[torch.Tensor, dict]:
     """
     Policy extraction via Advantage-Weighted Regression (AWR).
@@ -363,12 +358,10 @@ class IQLAgent:
         self.Q2      = QNetwork(state_dim, action_dim, hidden_dim).to(device)
         self.policy  = DeterministicPolicy(state_dim, action_dim, hidden_dim).to(device)
 
-        # Targets for V and Q (used in TD backup)
-        self.V_tgt   = deepcopy(self.V)
+        # Targets for Q (used in value loss expectile target)
         self.Q1_tgt  = deepcopy(self.Q1)
         self.Q2_tgt  = deepcopy(self.Q2)
-        for p in (list(self.V_tgt.parameters()) +
-                  list(self.Q1_tgt.parameters()) +
+        for p in (list(self.Q1_tgt.parameters()) +
                   list(self.Q2_tgt.parameters())):
             p.requires_grad_(False)
 
@@ -384,7 +377,7 @@ class IQLAgent:
 
         # ── 1. V update (expectile regression) ───────────────────────────
         # V(s) ← tau-expectile of min(Q1(s,a), Q2(s,a)) for dataset (s,a)
-        v_loss, v_info = iql_value_loss(self.V, self.Q1, self.Q2, s, a, self.tau)
+        v_loss, v_info = iql_value_loss(self.V, self.Q1_tgt, self.Q2_tgt, s, a, self.tau)
         self.v_opt.zero_grad()
         v_loss.backward()
         self.v_opt.step()
@@ -392,9 +385,9 @@ class IQLAgent:
 
         # ── 2. Q update (TD with V as next-state value) ───────────────────
         # Q(s,a) ← r + gamma * V_target(s')
-        q_loss1, q_info1 = iql_q_loss(self.Q1, self.V_tgt,
+        q_loss1, q_info1 = iql_q_loss(self.Q1, self.V,
                                        s, a, r, s2, d, self.gamma)
-        q_loss2, q_info2 = iql_q_loss(self.Q2, self.V_tgt,
+        q_loss2, q_info2 = iql_q_loss(self.Q2, self.V,
                                        s, a, r, s2, d, self.gamma)
         self.q_opt.zero_grad()
         (q_loss1 + q_loss2).backward()
@@ -413,8 +406,6 @@ class IQLAgent:
         info.update(pi_info)
 
         # ── 4. Soft target updates ────────────────────────────────────────
-        for p, pt in zip(self.V.parameters(), self.V_tgt.parameters()):
-            pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
         for p, pt in zip(self.Q1.parameters(), self.Q1_tgt.parameters()):
             pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
         for p, pt in zip(self.Q2.parameters(), self.Q2_tgt.parameters()):

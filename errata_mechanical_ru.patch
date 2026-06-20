@@ -1,0 +1,67 @@
+diff --git a/ru/chapter10.md b/ru/chapter10.md
+index a4bfa51..7d852a7 100644
+--- a/ru/chapter10.md
++++ b/ru/chapter10.md
+@@ -482,7 +482,7 @@ for g, lam in zip(constraints, lambdas):
+ 
+ ## Итог
+ 
+-Эта глава перевела инструменты из глав 1–6 в реалистичный промышленный pipeline. Процесс нанесения покрытия ввёл два вызова, отсутствующих в игрушечной среде: интегрирующую переменную уровня и транспортную задержку в динамике наполнителя. Оба потребовали инженерных знаний — в физической модели или в спецификации ограничений.
++Эта глава перевела инструменты из глав 1–9 в реалистичный промышленный pipeline. Процесс нанесения покрытия ввёл два вызова, отсутствующих в игрушечной среде: интегрирующую переменную уровня и транспортную задержку в динамике наполнителя. Оба потребовали инженерных знаний — в физической модели или в спецификации ограничений.
+ 
+ Сравнение четырёх алгоритмов выявляет чёткую иерархию:
+ 
+@@ -495,13 +495,13 @@ for g, lam in zip(constraints, lambdas):
+ 
+ Практическая рекомендация для промышленного внедрения: **начинайте с CQL+Physics** (низкая частота нарушений, просто конфигурировать, не нужна динамическая модель), и если производительность по награде недостаточна, **добавляйте гибридный ансамбль** как источник разнообразного синтетического опыта.
+ 
+-Глава 8 возвращается к теоретическим вопросам, которые поднимает этот кейс: когда можно доверять Offline RL при внедрении, какие гарантии доступны и какие открытые проблемы остаются нерешёнными.
++Глава 11 переходит к интерпретируемости: как с помощью SHAP исследовать Q-функцию, политику и модель динамики обученного агента, чтобы оператор понимал — а аудитор мог подтвердить — почему агент выбрал то или иное действие.
+ 
+ ---
+ 
+ ## Ссылки
+ 
+-- Все ссылки из глав 1–6 применимы к использованным здесь алгоритмам.
++- Все ссылки из глав 1–9 применимы к использованным здесь алгоритмам.
+ - Åström, K.J., & Wittenmark, B. (2013). *Computer-Controlled Systems.* Dover. *(ПИД-регулятор, модели первого порядка)*
+ - Seborg, D.E., Edgar, T.F., Mellichamp, D.A., & Doyle, F.J. (2016). *Process Dynamics and Control.* Wiley. *(промышленное управление процессами, транспортная задержка)*
+ - Rawlings, J.B., Mayne, D.Q., & Diehl, M. (2017). *Model Predictive Control.* Nob Hill. *(MPC как контекст сравнения)*
+diff --git a/ru/chapter12.md b/ru/chapter12.md
+index b941795..233a872 100644
+--- a/ru/chapter12.md
++++ b/ru/chapter12.md
+@@ -210,7 +210,7 @@ Offline RL — не решённая задача. Алгоритмы этой 
+ 
+ - Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., & Mordatch, I. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
+ - Janner, M., Li, Q., & Levine, S. (2021). *Offline Reinforcement Learning as One Big Sequence Modeling Problem.* NeurIPS. [arXiv:2106.02039](https://arxiv.org/abs/2106.02039).
+-- Yamagata, T., Khalil, A., & Santos-Rodriguez, R. (2023). *Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.* [arXiv:2309.10150](https://arxiv.org/abs/2309.10150).
++- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993). *(QDT)*
+ 
+ **Диффузионные модели для Offline RL**
+ 
+diff --git a/ru/chapter4.md b/ru/chapter4.md
+index d77d366..bf9ce9c 100644
+--- a/ru/chapter4.md
++++ b/ru/chapter4.md
+@@ -115,6 +115,7 @@ $$J(\hat\pi) \geq J(\pi_\beta) - \frac{\alpha}{1-\gamma} \cdot \mathbb{E}_{s \si
+ CQL обычно использует архитектуру в стиле SAC: два Q-networks (для снижения переоценки через double-Q), стохастический актор и регуляризацию энтропией.
+ 
+ ```python
++import math
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+diff --git a/ru/chapter9.md b/ru/chapter9.md
+index 59d6a6a..6b841c3 100644
+--- a/ru/chapter9.md
++++ b/ru/chapter9.md
+@@ -433,7 +433,7 @@ Physics-informed методы — это модульный слой, а не з
+ - Altman, E. (1999). *Constrained Markov Decision Processes.* CRC Press.
+ - Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* [arXiv:2309.01909](https://arxiv.org/abs/2309.01909).
+ - Paternain, S., Calvo-Fullana, M., Chamon, L., & Ribeiro, A. (2022). *Safe Policies for Factored MDPs.* JMLR. [arXiv:2106.09155](https://arxiv.org/abs/2106.09155).
+-- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1811.10561](https://arxiv.org/abs/1811.10561).
++- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1711.10561](https://arxiv.org/abs/1711.10561).
+ - Lusch, B., Kutz, J.N., & Brunton, S.L. (2018). *Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.* Nature Communications.
+ - Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).
+ 

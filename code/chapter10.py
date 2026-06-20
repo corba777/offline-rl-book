@@ -501,7 +501,7 @@ def make_coating_constraints(dataset: Dict,
 
     Returns:
       constraints: list of g(s, a, s') -> Tensor (batch,), violation ≥ 0
-      lambdas:     list of floats, calibrated via Theorem 6.1
+      lambdas:     list of floats, calibrated via Chapter 9 lambda heuristic
 
     Three constraints:
       1. Operating bounds: all state variables within hard limits
@@ -526,7 +526,7 @@ def make_coating_constraints(dataset: Dict,
             tau=CoatingProcessEnv.TAU_F, K=CoatingProcessEnv.K_F,
             dt=CoatingProcessEnv.DT, tol=0.05)
 
-    # Calibrate bounds lambda from Theorem 6.1
+    # Calibrate bounds lambda (Chapter 9 heuristic)
     def base_r(s, a, s2):
         return (
             -2.0 * (s2[:, 0] - CoatingProcessEnv.T_TARGET)**2
@@ -947,7 +947,7 @@ def run_industrial_benchmark(
         cql = CQLAgent(S, A, alpha_cql=1.0, device=device)
         train_cql_agent(cql, loader, n_cql_epochs)
         m = evaluator.evaluate(cql)
-        evaluator.print_results("CQL (Chapter 3)", m)
+        evaluator.print_results("CQL (Chapter 4)", m)
         results['CQL'] = m; agent_map['CQL'] = cql
 
     # CQL + Physics

@@ -54,7 +54,9 @@ The $\max(0, \cdot)$ activates the penalty only when the constraint is violated;
 
 **Monotone relationships.** Many physical relationships are guaranteed to be monotone. Viscosity of a liquid decreases with temperature (for most fluids in normal operating ranges). Conversion in a reactor increases with residence time up to some limit. If the learned dynamics model predicts the wrong sign, it is physically wrong.
 
-$$g_{mono}(s, s') = \max\Bigl(0,\ \text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\Bigr)$$
+$$g_{mono}(s, s') = \bigl|\text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\bigr|$$
+
+For a differentiable training loss (rather than pure reward shaping), use $g_{mono} = \max(0,\ -\hat{f} \cdot \text{sign}(f_{phys}))$, which penalizes a predicted change whose sign opposes the known physics.
 
 **Conservation laws.** Mass and energy must balance. For a mixing process with input flows $q_{in}$ and output flow $q_{out}$ and a tank of volume $V$:
 
@@ -436,7 +438,7 @@ The bottom-left cell (dense data, no physics) is the D4RL benchmark — where Ch
 
 Physics-informed methods are not a replacement for offline RL algorithms — they are a layer on top. Reward shaping plugs into CQL or IQL without modifying a line of algorithm code. The hybrid model replaces the ensemble in MOPO or MOReL while keeping everything else intact. The combination of a physically grounded dynamics model with a pessimistic offline RL algorithm (MOReL + hybrid ensemble) is the natural architecture for industrial settings where data is sparse but domain knowledge is rich.
 
-Chapter 9 works through an industrial case study showing how these pieces fit together in practice.
+Chapter 10 works through an industrial case study showing how these pieces fit together in practice.
 
 ---
 

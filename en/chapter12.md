@@ -160,7 +160,7 @@ The challenge: naively fine-tuning an offline policy online causes catastrophic 
 
 The Lagrangian approach of Chapter 9 provides constraint satisfaction in expectation — it minimizes expected violations but does not guarantee zero violations. For safety-critical applications, this is insufficient.
 
-**Conservative Safety Critics** (Le Cleac'h et al., 2023) and **CVPO** (Liu et al., 2022) provide stronger guarantees by training a separate safety Q-function that bounds the probability of constraint violation, not just its expected magnitude. The policy is constrained to keep the safety Q-function value above a threshold, providing a probabilistic safety certificate.
+**Conservative Safety Critics** (Bharadhwaj et al., 2021) and **CVPO** (Liu et al., 2022) provide stronger guarantees by training a separate safety Q-function that bounds the probability of constraint violation, not just its expected magnitude. The policy is constrained to keep the safety Q-function value above a threshold, providing a probabilistic safety certificate.
 
 Formal verification of neural network policies — proving that a policy satisfies a constraint for *all* states in a given set — remains computationally intractable for large networks. But for the low-dimensional state spaces typical of industrial process control (5–20 variables), recent work on Lyapunov-based verification (Berkenkamp et al., 2017; Chang et al., 2019) makes formal safety certificates increasingly feasible.
 
@@ -176,7 +176,7 @@ The reward specification problem — arguably the hardest unsolved problem in ap
 
 Based on the material in this book, a pragmatic deployment sequence for a new industrial application:
 
-**Step 1 — Start with CQL+Physics.** Collect the existing historical log, define the operating constraints from engineering knowledge, calibrate the physics penalty weights via Theorem 6.1, and train. This gives a safe baseline with minimal constraint violations and no dynamics model. Expected timeline: 2–4 weeks for a team with access to the process data.
+**Step 1 — Start with CQL+Physics.** Collect the existing historical log, define the operating constraints from engineering knowledge, calibrate the physics penalty weights using the Chapter 9 $\lambda$ heuristic, and train. This gives a safe baseline with minimal constraint violations and no dynamics model. Expected timeline: 2–4 weeks for a team with access to the process data.
 
 **Step 2 — Diagnose with DA and violation rate.** Use the `IndustrialEvaluator` metrics from Chapter 10. If DA > 0.80 and violation rate < 2%, the baseline policy is industrially deployable. If not, identify which variables are failing and whether the issue is data coverage, physics model accuracy, or constraint calibration.
 
@@ -238,7 +238,9 @@ The field will continue to develop — diffusion transformers will scale, offlin
 **Safe Offline RL**
 
 - Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., & Zhao, D. (2022). *Constrained Variational Policy Optimization for Safe Reinforcement Learning.* ICML. [arXiv:2201.11927](https://arxiv.org/abs/2201.11927). *(CVPO)*
+- Bharadhwaj, K., Choudhury, S., & Boots, B. (2021). *Conservative Safety Critics for Exploration.* ICLR. [arXiv:2010.14497](https://arxiv.org/abs/2010.14497). *(CSC)*
 - Berkenkamp, F., Turchetta, M., Schoellig, A., & Krause, A. (2017). *Safe Model-based Reinforcement Learning with Stability Guarantees.* NeurIPS. [arXiv:1705.08551](https://arxiv.org/abs/1705.08551).
+- Chang, Y.-C., Roohi, N., & Gao, S. (2019). *Neural Lyapunov Control.* NeurIPS. [arXiv:1905.09490](https://arxiv.org/abs/1905.09490).
 
 **LLM-Based Reward Design**
 

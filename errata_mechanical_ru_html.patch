@@ -1,0 +1,67 @@
+diff --git a/ru/chapter10.html b/ru/chapter10.html
+index f061778..4b83651 100644
+--- a/ru/chapter10.html
++++ b/ru/chapter10.html
+@@ -472,7 +472,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ <p>Так система использует лучшую политику, когда распределение совпадает с обучающим, и автоматически откатывается к безопасной офлайн или классической политике, когда нет. Вместе с периодическим переобучением (глава 12) детекция дрейфа и fallback делают офлайн RL применимым в промышленности, где процесс эволюционирует, а безопасность не подлежит обсуждению.</p>
+ <hr />
+ <h2>Итог</h2>
+-<p>Эта глава перевела инструменты из глав 1–6 в реалистичный промышленный pipeline. Процесс нанесения покрытия ввёл два вызова, отсутствующих в игрушечной среде: интегрирующую переменную уровня и транспортную задержку в динамике наполнителя. Оба потребовали инженерных знаний — в физической модели или в спецификации ограничений.</p>
++<p>Эта глава перевела инструменты из глав 1–9 в реалистичный промышленный pipeline. Процесс нанесения покрытия ввёл два вызова, отсутствующих в игрушечной среде: интегрирующую переменную уровня и транспортную задержку в динамике наполнителя. Оба потребовали инженерных знаний — в физической модели или в спецификации ограничений.</p>
+ <p>Сравнение четырёх алгоритмов выявляет чёткую иерархию:</p>
+ <table>
+ <thead>
+@@ -511,11 +511,11 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ </tbody>
+ </table>
+ <p>Практическая рекомендация для промышленного внедрения: <strong>начинайте с CQL+Physics</strong> (низкая частота нарушений, просто конфигурировать, не нужна динамическая модель), и если производительность по награде недостаточна, <strong>добавляйте гибридный ансамбль</strong> как источник разнообразного синтетического опыта.</p>
+-<p>Глава 8 возвращается к теоретическим вопросам, которые поднимает этот кейс: когда можно доверять Offline RL при внедрении, какие гарантии доступны и какие открытые проблемы остаются нерешёнными.</p>
++<p>Глава 11 переходит к интерпретируемости: как с помощью SHAP исследовать Q-функцию, политику и модель динамики обученного агента, чтобы оператор понимал — а аудитор мог подтвердить — почему агент выбрал то или иное действие.</p>
+ <hr />
+ <h2>Ссылки</h2>
+ <ul>
+-<li>Все ссылки из глав 1–6 применимы к использованным здесь алгоритмам.</li>
++<li>Все ссылки из глав 1–9 применимы к использованным здесь алгоритмам.</li>
+ <li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(ПИД-регулятор, модели первого порядка)</em></li>
+ <li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(промышленное управление процессами, транспортная задержка)</em></li>
+ <li>Rawlings, J.B., Mayne, D.Q., &amp; Diehl, M. (2017). <em>Model Predictive Control.</em> Nob Hill. <em>(MPC как контекст сравнения)</em></li>
+diff --git a/ru/chapter12.html b/ru/chapter12.html
+index 85ff68b..4620e06 100644
+--- a/ru/chapter12.html
++++ b/ru/chapter12.html
+@@ -194,7 +194,7 @@
+ <ul>
+ <li>Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., &amp; Mordatch, I. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
+ <li>Janner, M., Li, Q., &amp; Levine, S. (2021). <em>Offline Reinforcement Learning as One Big Sequence Modeling Problem.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.02039">arXiv:2106.02039</a>.</li>
+-<li>Yamagata, T., Khalil, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.</em> <a href="https://arxiv.org/abs/2309.10150">arXiv:2309.10150</a>.</li>
++<li>Yamagata, T., Ahmed, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.</em> ICML. <a href="https://arxiv.org/abs/2209.03993">arXiv:2209.03993</a>. <em>(QDT)</em></li>
+ </ul>
+ <p><strong>Диффузионные модели для Offline RL</strong></p>
+ <ul>
+diff --git a/ru/chapter4.html b/ru/chapter4.html
+index bde5528..33c92f6 100644
+--- a/ru/chapter4.html
++++ b/ru/chapter4.html
+@@ -117,7 +117,8 @@
+ </blockquote>
+ <h3>Сети</h3>
+ <p>CQL обычно использует архитектуру в стиле SAC: два Q-networks (для снижения переоценки через double-Q), стохастический актор и регуляризацию энтропией.</p>
+-<div class="codehilite"><pre><span></span><code><span class="kn">import</span> <span class="nn">torch</span>
++<div class="codehilite"><pre><span></span><code><span class="kn">import</span> <span class="nn">math</span>
++<span class="kn">import</span> <span class="nn">torch</span>
+ <span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+ <span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
+ <span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+diff --git a/ru/chapter9.html b/ru/chapter9.html
+index 1a87aa3..5c0ad8f 100644
+--- a/ru/chapter9.html
++++ b/ru/chapter9.html
+@@ -443,7 +443,7 @@
+ <li>Altman, E. (1999). <em>Constrained Markov Decision Processes.</em> CRC Press.</li>
+ <li>Banerjee, C., Nguyen, T., Fookes, C., &amp; Raissi, M. (2023). <em>A Survey on Physics Informed Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2309.01909">arXiv:2309.01909</a>.</li>
+ <li>Paternain, S., Calvo-Fullana, M., Chamon, L., &amp; Ribeiro, A. (2022). <em>Safe Policies for Factored MDPs.</em> JMLR. <a href="https://arxiv.org/abs/2106.09155">arXiv:2106.09155</a>.</li>
+-<li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1811.10561">arXiv:1811.10561</a>.</li>
++<li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1711.10561">arXiv:1711.10561</a>.</li>
+ <li>Lusch, B., Kutz, J.N., &amp; Brunton, S.L. (2018). <em>Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.</em> Nature Communications.</li>
+ <li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
+ </ul>

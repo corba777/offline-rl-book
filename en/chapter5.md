@@ -201,20 +201,20 @@ At `tau=0.7`: underestimation is penalized 2.3× more than overestimation, pushi
 
 ```python
 def iql_value_loss(V: ValueNetwork,
-                   Q1: QNetwork, Q2: QNetwork,
+                   Q1_tgt: QNetwork, Q2_tgt: QNetwork,
                    states: torch.Tensor,
                    actions: torch.Tensor,
                    tau: float = 0.7) -> Tuple[torch.Tensor, dict]:
     """
     V-network update via expectile regression.
 
-    Target: min(Q1(s,a), Q2(s,a)) for dataset (s,a) pairs.
+    Target: min(Q1_tgt(s,a), Q2_tgt(s,a)) for dataset (s,a) pairs.
     V(s) is pushed toward the tau-expectile of this target.
 
     No next states, no policy sampling — fully in-sample.
     """
     with torch.no_grad():
-        q_target = torch.min(Q1(states, actions), Q2(states, actions))
+        q_target = torch.min(Q1_tgt(states, actions), Q2_tgt(states, actions))
 
     v_pred = V(states)
     loss   = expectile_loss(v_pred, q_target, tau)
@@ -227,29 +227,24 @@ def iql_value_loss(V: ValueNetwork,
     }
 ```
 
-The `torch.no_grad()` block is important: gradients flow only through `V`, not through `Q1` and `Q2`. The Q-networks serve purely as regression targets here.
+The `torch.no_grad()` block is important: gradients flow only through `V`, not through the target Q-networks. The Q targets serve purely as regression targets here.
 
 ### Q Update
 
 ```python
 def iql_q_loss(Q: QNetwork,
-               V_tgt: ValueNetwork,
+               V: ValueNetwork,
                states: torch.Tensor, actions: torch.Tensor,
                rewards: torch.Tensor, next_states: torch.Tensor,
                dones: torch.Tensor,
                gamma: float = 0.99) -> Tuple[torch.Tensor, dict]:
     """
-    Q-network update via standard TD backup — but using V(s') instead of max_a Q(s',a').
+    Q-network update via standard TD backup — using live V(s') instead of max_a Q(s',a').
 
     TD target: r + gamma * V(s')
-
-    This is the key IQL insight: replace max_a Q(s',a') with V(s').
-    V(s') was trained to approximate the upper expectile of Q at s',
-    so it acts as a conservative upper bound on next-state value.
-    No policy sampling at all.
     """
     with torch.no_grad():
-        v_next    = V_tgt(next_states)
+        v_next    = V(next_states)
         td_target = rewards + gamma * (1.0 - dones) * v_next
 
     q_pred = Q(states, actions)
@@ -262,7 +257,7 @@ def iql_q_loss(Q: QNetwork,
     }
 ```
 
-Compare this to CQL's Q-update: there, `v_next` required `policy.sample(next_states)` followed by `Q_target(next_states, next_actions)`. Here it's a single forward pass through `V_tgt` — no action sampling at all.
+Compare this to CQL's Q-update: there, `v_next` required `policy.sample(next_states)` followed by `Q_target(next_states, next_actions)`. Here it's a single forward pass through live `V` — no action sampling at all.
 
 ### Policy Extraction via AWR
 
@@ -272,7 +267,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
                     V: ValueNetwork,
                     states: torch.Tensor,
                     actions: torch.Tensor,
-                    beta: float = 1.0,
+                    beta: float = 3.0,
                     clip_exp: float = 100.0) -> Tuple[torch.Tensor, dict]:
     """
     Policy extraction via Advantage-Weighted Regression (AWR).
@@ -322,17 +317,17 @@ The `adv - adv.max()` normalization is critical — without it, `exp(beta * adv)
 All three losses in sequence:
 
 ```python
-        v_loss, v_info = iql_value_loss(self.V, self.Q1, self.Q2, s, a, self.tau)
+        v_loss, v_info = iql_value_loss(self.V, self.Q1_tgt, self.Q2_tgt, s, a, self.tau)
         self.v_opt.zero_grad()
         v_loss.backward()
         self.v_opt.step()
         info.update(v_info)
 
-        # ── 2. Q update (TD with V as next-state value) ───────────────────
-        # Q(s,a) ← r + gamma * V_target(s')
-        q_loss1, q_info1 = iql_q_loss(self.Q1, self.V_tgt,
+        # ── 2. Q update (TD with live V as next-state value) ──────────────
+        # Q(s,a) ← r + gamma * V(s')
+        q_loss1, q_info1 = iql_q_loss(self.Q1, self.V,
                                        s, a, r, s2, d, self.gamma)
-        q_loss2, q_info2 = iql_q_loss(self.Q2, self.V_tgt,
+        q_loss2, q_info2 = iql_q_loss(self.Q2, self.V,
                                        s, a, r, s2, d, self.gamma)
         self.q_opt.zero_grad()
         (q_loss1 + q_loss2).backward()
@@ -350,9 +345,7 @@ All three losses in sequence:
         self.pi_opt.step()
         info.update(pi_info)
 
-        # ── 4. Soft target updates ────────────────────────────────────────
-        for p, pt in zip(self.V.parameters(), self.V_tgt.parameters()):
-            pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
+        # ── 4. Soft target updates (Q only) ───────────────────────────────
         for p, pt in zip(self.Q1.parameters(), self.Q1_tgt.parameters()):
             pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
         for p, pt in zip(self.Q2.parameters(), self.Q2_tgt.parameters()):
@@ -366,7 +359,7 @@ All three losses in sequence:
 # ============================================================================
 ```
 
-Notice that `iql_q_loss` uses `V_tgt` (target network), not `V` (the network being trained). This prevents a feedback loop where $V$ and $Q$ mutually destabilize each other.
+Following the IQL paper: the value loss uses **target** Q-networks (`Q1_tgt`, `Q2_tgt`), while the Q-loss uses the **live** `V` network for the bootstrap at $s'$.
 
 ---
 
@@ -430,7 +423,7 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 **Monitor $V$-$Q$ gap.** Log `v_q_gap = E[Q(s,a) - V(s)]` over dataset pairs. This should be slightly positive (V is below the average Q). If it becomes strongly negative, $\tau$ is too low. If it approaches zero, $\tau$ is too high or the dataset has very low variance.
 
-**Use target networks for $V$ in the Q-update.** The `V_tgt` (not `V`) is used in `iql_q_loss`. If you use the live `V`, the Q and V networks form a circular dependency and training often diverges.
+**Use target Q-networks in the value update.** The expectile target uses `Q1_tgt` and `Q2_tgt`, not the live Q-networks being updated in the same step — this matches the IQL reference implementation.
 
 **IQL converges faster than CQL** on dense datasets because the V-update is very stable (no OOD action sampling, no logsumexp approximation). On sparse datasets they are comparable.
 

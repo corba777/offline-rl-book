@@ -86,7 +86,7 @@
 <p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/decision_transformer.py"><code>decision_transformer.py</code></a></p>
 </blockquote>
 <h3>Эмбеддинги и модель</h3>
-<p>Чанки собираются в <code>ChunkDataset</code>; для каждой (траектория, шаг $t$) формируются массивы длины <code>context_len</code> по return-to-go, состояниям и действиям (действия до $t-1$; предсказываем $a_t$). Модель склеивает $(R, s, a)$ по шагам в один токен, эмбеддит одним линейным слоем, добавляет позиционное кодирование и прогоняет каузальный трансформер:</p>
+<p>Чанки собираются в <code>ChunkDataset</code>; для каждой (траектория, шаг $t$) формируются массивы длины <code>context_len</code> по return-to-go, состояниям и действиям (действия до $t-1$; предсказываем $a_t$). Модель склеивает $(R, s, a)$ по шагам в один токен, эмбеддит одним линейным слоем, добавляет позиционное кодирование и прогоняет каузальный трансформер. <em>Замечание:</em> канонический DT (Chen et al.) эмбеддит $R_t$, $s_t$ и $a_t$ как <strong>три отдельных токена</strong> на шаг ($3K$ позиций при контексте $K$); здесь — один объединённый токен на шаг для простоты.</p>
 <div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">DecisionTransformer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    GPT-style model. Input: context_len tokens, each (R, s, a) concatenated and embedded.</span>
@@ -154,8 +154,8 @@
 </tr>
 </tbody>
 </table>
-<p>Decision Transformers — альтернатива value-based offline RL: один supervised-объектив, без Bellman. Удобны при длинных траекториях и инфраструктуре под sequence modeling. Для непрерывного управления с сильными гарантиями по-прежнему стандарт — CQL, IQL и модельные методы (глава 7).</p>
-<p>Глава 7 — <strong>модельный</strong> offline RL: обучение динамики и генерация синтетических данных с штрафами за неопределённость (MOPO, MOReL).</p>
+<p>Decision Transformers — альтернатива value-based offline RL: один supervised-объектив, без Bellman. Удобны при длинных траекториях и инфраструктуре под sequence modeling. Для непрерывного управления с сильными гарантиями по-прежнему стандарт — CQL, IQL и модельные методы (глава 8).</p>
+<p>Глава 8 — <strong>модельный</strong> offline RL: обучение динамики и генерация синтетических данных с штрафами за неопределённость (MOPO, MOReL).</p>
 <hr />
 <h2>Литература</h2>
 <ul>

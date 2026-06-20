@@ -63,27 +63,27 @@ A minimal example fixes intuition. Consider a toy Q-function with three inputs: 
 
 **Which feature matters most?** The bar chart below shows mean $|\phi_i|$ over the explained instances. State_1 and state_2 dominate (they have larger coefficients), and SHAP recovers that.
 
-![Toy Q: mean |SHAP| per feature](../figures/ch8/toy_shap_bar.png)
+![Toy Q: mean |SHAP| per feature](../figures/ch11/toy_shap_bar.png)
 
 **Why is this one instance’s Q high?** The waterfall plot takes a single instance (e.g. high $s_1$, low $s_2$) and shows how each feature’s SHAP value moves the output from the baseline $\phi_0 = \mathbb{E}[Q]$ to the final $Q(x)$. Positive bars (state_1, action) push Q up; the negative bar (state_2) pushes it down.
 
-![Toy Q: waterfall for one instance](../figures/ch8/toy_shap_waterfall.png)
+![Toy Q: waterfall for one instance](../figures/ch11/toy_shap_waterfall.png)
 
 **Spread across instances.** A beeswarm plot shows one dot per instance per feature; the x-axis is SHAP value and the color is the feature’s value (blue = low, red = high). You see that high state_1 tends to go with positive SHAP (red dots on the right) and high state_2 with negative SHAP — the model’s monotone dependence is visible.
 
-![Toy Q: beeswarm of SHAP values](../figures/ch8/toy_shap_beeswarm.png)
+![Toy Q: beeswarm of SHAP values](../figures/ch11/toy_shap_beeswarm.png)
 
 **Toy policy: which state feature drives the action?** Next, take a toy policy $\pi(s_1, s_2) = \text{clip}(0.5 + 0.4 s_1 - 0.3 s_2)$ with a single action. State_1 pushes the action up, state_2 pushes it down. Policy SHAP attributes the scalar action to the two state inputs. The bar chart shows which state variable the policy "looks at" most; the waterfall for one state shows how each feature's contribution moves the output from the average action $\mathbb{E}[\pi]$ to $\pi(s)$. In the real coating setup (Level 2) we have two action dimensions (heat_input, flow_input); we explain each separately and get one such bar and waterfall per action.
 
-![Toy policy: mean |SHAP| per state feature](../figures/ch8/toy_policy_bar.png)
+![Toy policy: mean |SHAP| per state feature](../figures/ch11/toy_policy_bar.png)
 
-![Toy policy: waterfall for one state](../figures/ch8/toy_policy_waterfall.png)
+![Toy policy: waterfall for one state](../figures/ch11/toy_policy_waterfall.png)
 
 **Toy dynamics: which input drives the predicted next state?** Finally, a toy dynamics model with two next-state dimensions: $\hat{s}_1' = 0.7 s_1 + 0.2 a$ and $\hat{s}_2' = 0.6 s_2 + 0.15 a$. So the first output is driven by current $s_1$ and action $a$; the second by $s_2$ and $a$. We explain each output separately (as in Level 3). The two-panel bar chart shows mean $|\phi_i|$ for the three inputs $(s_1, s_2, a)$ when predicting $\hat{s}_1'$ and $\hat{s}_2'$ — SHAP recovers that $s_1$ and $a$ matter for next_s1, and $s_2$ and $a$ for next_s2. The waterfall for one $(s, a)$ instance shows how each input's SHAP adds up from the baseline prediction to $\hat{s}_1'$.
 
-![Toy dynamics: which inputs drive next_s1 and next_s2?](../figures/ch8/toy_dynamics_bar.png)
+![Toy dynamics: which inputs drive next_s1 and next_s2?](../figures/ch11/toy_dynamics_bar.png)
 
-![Toy dynamics: waterfall for one (s,a) → next_s1](../figures/ch8/toy_dynamics_waterfall.png)
+![Toy dynamics: waterfall for one (s,a) → next_s1](../figures/ch11/toy_dynamics_waterfall.png)
 
 All of these figures are produced by running `python code/chapter11_toy_figures.py` (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.
 
@@ -159,7 +159,7 @@ class DynamicsSingleOutputWrapper:
         return s_next[:, self.state_idx].cpu().numpy()
 ```
 
-**Physics sanity check:** `heat_input` must have positive mean SHAP for `next_temperature`; `flow_input` for `next_filler_frac`. These follow from first-order dynamics and hold for any physically reasonable model. If violated, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.
+**Physics sanity check:** `heat_input` should show a **positive dependence slope** with `next_temperature` (SHAP increases as heat rises); likewise `flow_input` with `next_filler_frac`. Test this via a feature-vs-SHAP correlation or the dependence plot — not via mean signed SHAP, which can sit near zero when instances straddle the background baseline. If the slope is inverted, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.
 
 ---
 
@@ -206,7 +206,7 @@ Beeswarm plot: each dot is one instance, colored by feature value (blue=low, red
 
 ```python
 plot_q_summary(results['q_shap'], SA_NAMES,
-               save_path='ch8_q_summary.png')
+               save_path='ch11_q_summary.png')
 ```
 
 Reading patterns:
@@ -220,10 +220,10 @@ Mean |SHAP| per feature — answers "which features matter most?"
 
 ```python
 plot_policy_bar(results['policy_shap'], STATE_NAMES,
-                save_path='ch8_policy_bar.png')
+                save_path='ch11_policy_bar.png')
 
 plot_dynamics_bar(results['dynamics_shap'], SA_NAMES, STATE_NAMES,
-                  save_path='ch8_dynamics_bar.png')
+                  save_path='ch11_dynamics_bar.png')
 ```
 
 ### Force Plot: Single Instance
@@ -236,7 +236,7 @@ plot_force_single(
     results['q_shap'][best], SA_NAMES,
     q_value=q_vals[best], q_base=results['q_base'],
     instance_label=f'Highest-Q instance (Q={q_vals[best]:.3f})',
-    save_path='ch8_force_best.png')
+    save_path='ch11_force_best.png')
 ```
 
 An operator can use this to answer: "why did the agent rate this moment as high-value?" If the answer is "temperature near setpoint, level stable" — sensible. If "viscosity unusually low" when the setpoint is on temperature — a spurious correlation to investigate.
@@ -353,7 +353,7 @@ Chapter 12 closes the book with a broader view: what the field has achieved, whe
 
 ---
 
-## Appendix 8.A: Choosing Between SHAP Variants
+## Appendix 11.A: Choosing Between SHAP Variants
 
 | Explainer | Best for | Speed | Notes |
 |---|---|---|---|

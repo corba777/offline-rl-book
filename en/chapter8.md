@@ -87,7 +87,7 @@ The theoretical guarantee from Yu et al. (2020):
 
 $$J(\pi) \geq \hat{J}_{\tilde{\mathcal{M}}}(\pi) - C \cdot \mathbb{E}_{s \sim d^\pi} \left[ \max_a u(s, a) \right]$$
 
-where $J(\pi)$ is the true return and $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ is the return in the pessimistic model. The bound says: optimizing in the penalized model gives a lower bound on real performance, with a gap proportional to the remaining model error.
+where $J(\pi)$ is the true return and $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ is the return in the pessimistic model. The bound says: optimizing in the penalized model gives a lower bound on real performance, with a gap proportional to the remaining model error. *Note:* the original MOPO paper defines $u(s,a)$ as the max over the ensemble of the learned (aleatoric) standard-deviation norm; this book uses **ensemble disagreement** (std of predicted means) instead — a common reimplementation choice, closer to MOReL's USAD.
 
 #### Branched Rollouts
 
@@ -252,35 +252,46 @@ epsilon = ensemble.calibrate_epsilon(dataset, percentile=80.0)
 ```python
 # Inside MOReLAgent.generate_synthetic_data():
 for step in range(self.rollout_horizon):
-    action, _ = self.policy.sample(state[active])
-    next_state, uncertainty = self.ensemble.predict_with_uncertainty(
-        state[active], action)
+    if not active.any():
+        break
 
-    # Hard boundary: if OOD, terminate with penalty
-    ood = uncertainty > self.epsilon          # (batch,) bool
+    s_active = state[active]
+    action, _ = self.policy.sample(s_active)
+    next_state, uncertainty = self.ensemble.predict_with_uncertainty(
+        s_active, action)
+
+    ood = uncertainty > self.epsilon          # (n_active,) bool
 
     reward = torch.where(
         ood,
         -self.kappa * torch.ones(ood.shape[0], device=device),
-        self._model_reward(state[active], action, next_state)
+        self._model_reward(s_active, action, next_state)
     )
     done = ood.float()
 
-    # Absorbing: halted rollouts stay at current state
     next_state_out = torch.where(
-        ood.unsqueeze(-1), state[active], next_state)
+        ood.unsqueeze(-1), s_active, next_state)
 
-    # Mark halted rollouts as inactive — they stop here
-    active[active.nonzero(as_tuple=True)[0][ood]] = False
+    syn_s.append(s_active)
+    syn_a.append(action)
+    syn_r.append(reward)
+    syn_s2.append(next_state_out)
+    syn_d.append(done)
 
-        transitions.append((state, action, reward, next_state, done))
-        # Only continue non-terminated rollouts
-        state = torch.where(ood_mask.unsqueeze(-1), state, next_state)
+    active_indices = active.nonzero(as_tuple=True)[0]
+    active[active_indices[ood]] = False
+    state[active_indices[~ood]] = next_state[~ood].to(state.dtype)
 
-    return transitions
+return {
+    'states': torch.cat(syn_s, dim=0),
+    'actions': torch.cat(syn_a, dim=0),
+    'rewards': torch.cat(syn_r, dim=0),
+    'next_states': torch.cat(syn_s2, dim=0),
+    'dones': torch.cat(syn_d, dim=0),
+}
 ```
 
-The `ood_mask` is the key difference from MOPO. Instead of subtracting a continuous penalty, OOD transitions are terminated immediately with `done=True` and reward $-\kappa$. The Q-learning target then sees zero future value after OOD transitions, which strongly discourages entering the unknown region.
+The `ood` mask is the key difference from MOPO. Instead of subtracting a continuous penalty, OOD transitions are terminated immediately with `done=True` and reward $-\kappa$. The Q-learning target then sees zero future value after OOD transitions, which strongly discourages entering the unknown region.
 
 ### Choosing $\epsilon$
 

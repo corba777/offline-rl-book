@@ -942,16 +942,16 @@ def run_shap_analysis(device:     str  = 'cpu',
     plot_q_summary(
         results['q_shap'], SA_NAMES,
         title='Q-function SHAP: what drives Q-value?',
-        save_path=os.path.join(save_dir, 'ch8_q_summary.png'))
+        save_path=os.path.join(save_dir, 'ch11_q_summary.png'))
 
     plot_policy_bar(
         results['policy_shap'], STATE_NAMES,
-        save_path=os.path.join(save_dir, 'ch8_policy_bar.png'))
+        save_path=os.path.join(save_dir, 'ch11_policy_bar.png'))
 
     if results['dynamics_shap']:
         plot_dynamics_bar(
             results['dynamics_shap'], SA_NAMES, STATE_NAMES,
-            save_path=os.path.join(save_dir, 'ch8_dynamics_bar.png'))
+            save_path=os.path.join(save_dir, 'ch11_dynamics_bar.png'))
 
     # Force plot for highest-Q instance
     q_fn   = QFunctionWrapper(agent.Q1, CoatingProcessEnv.STATE_DIM,
@@ -963,7 +963,7 @@ def run_shap_analysis(device:     str  = 'cpu',
         results['q_shap'][best], SA_NAMES,
         q_value=q_vals[best], q_base=results['q_base'],
         instance_label=f'Highest-Q instance (Q={q_vals[best]:.3f})',
-        save_path=os.path.join(save_dir, 'ch8_force_best.png'))
+        save_path=os.path.join(save_dir, 'ch11_force_best.png'))
 
     # Dependence plot: temperature SHAP vs temperature, colored by filler
     plot_shap_dependence(
@@ -972,7 +972,7 @@ def run_shap_analysis(device:     str  = 'cpu',
         feature_idx=0, interaction_idx=1,
         feature_names=STATE_NAMES,
         title='Q-SHAP dependence: temperature (colored by filler_frac)',
-        save_path=os.path.join(save_dir, 'ch8_dependence_temp.png'))
+        save_path=os.path.join(save_dir, 'ch11_dependence_temp.png'))
 
     # Summary and consistency
     print_shap_summary(results)

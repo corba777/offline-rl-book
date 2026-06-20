@@ -1,0 +1,82 @@
+diff --git a/en/chapter10.md b/en/chapter10.md
+index d5d42d2..eba1031 100644
+--- a/en/chapter10.md
++++ b/en/chapter10.md
+@@ -482,7 +482,7 @@ This way, the system uses the best policy when the distribution matches training
+ 
+ ## Summary
+ 
+-This chapter translated the tools from Chapters 1–8 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.
++This chapter translated the tools from Chapters 1–9 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.
+ 
+ The comparison across four algorithms reveals a clean hierarchy:
+ 
+@@ -495,13 +495,13 @@ The comparison across four algorithms reveals a clean hierarchy:
+ 
+ The practical recommendation for industrial deployment: **start with CQL+Physics** (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, **add the hybrid ensemble** as a source of diverse synthetic experience.
+ 
+-Chapter 11 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.
++Chapter 11 turns to explainability: how to interrogate a trained agent's Q-function, policy, and dynamics model with SHAP so an operator can understand — and an auditor can certify — why the agent chose a given action.
+ 
+ ---
+ 
+ ## References
+ 
+-- All references from Chapters 1–8 apply to the algorithms used here.
++- All references from Chapters 1–9 apply to the algorithms used here.
+ - Åström, K.J., & Wittenmark, B. (2013). *Computer-Controlled Systems.* Dover. *(PID baseline, first-order process models)*
+ - Seborg, D.E., Edgar, T.F., Mellichamp, D.A., & Doyle, F.J. (2016). *Process Dynamics and Control.* Wiley. *(industrial process control, transport delay)*
+ - Rawlings, J.B., Mayne, D.Q., & Diehl, M. (2017). *Model Predictive Control.* Nob Hill. *(MPC for comparison context)*
+diff --git a/en/chapter12.md b/en/chapter12.md
+index c243234..92ab9b4 100644
+--- a/en/chapter12.md
++++ b/en/chapter12.md
+@@ -210,7 +210,7 @@ The field will continue to develop — diffusion transformers will scale, offlin
+ 
+ - Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., & Mordatch, I. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
+ - Janner, M., Li, Q., & Levine, S. (2021). *Offline Reinforcement Learning as One Big Sequence Modeling Problem.* NeurIPS. [arXiv:2106.02039](https://arxiv.org/abs/2106.02039). *(Trajectory Transformer)*
+-- Yamagata, T., Khalil, A., & Santos-Rodriguez, R. (2023). *Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.* [arXiv:2309.10150](https://arxiv.org/abs/2309.10150).
++- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993). *(QDT)*
+ 
+ **Diffusion Models for Offline RL**
+ 
+diff --git a/en/chapter4.md b/en/chapter4.md
+index 18cd8e0..a0c783c 100644
+--- a/en/chapter4.md
++++ b/en/chapter4.md
+@@ -115,6 +115,7 @@ where $D_{CQL}$ is a divergence term that measures how far the learned policy dr
+ CQL typically uses a SAC-style architecture: two Q-networks (to reduce overestimation via double-Q), a stochastic actor, and entropy regularization.
+ 
+ ```python
++import math
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+diff --git a/en/chapter6.md b/en/chapter6.md
+index b7b31a4..3a4215f 100644
+--- a/en/chapter6.md
++++ b/en/chapter6.md
+@@ -191,8 +191,8 @@ Start with $\lambda = 0.25$ or use the paper's adaptive scaling. If the policy i
+ |---|---|---|---|
+ | TD3+BC | Actor loss (BC penalty) | Yes (actor outputs fed to Q) | No |
+ | AWAC | Actor loss (advantage weights) | No | No |
+-| CQL (Ch3) | Q-function | Yes (penalized) | Lower bound |
+-| IQL (Ch4) | V + policy extraction | No | Implicit pessimism |
++| CQL (Ch4) | Q-function | Yes (penalized) | Lower bound |
++| IQL (Ch5) | V + policy extraction | No | Implicit pessimism |
+ 
+ Policy-constraint and actor-critic methods offer a simple way to improve over the behavior policy while staying close to the data. TD3+BC is the lightest to implement; AWAC (and IQL) avoid OOD actor queries entirely. For industrial applications where simplicity matters, TD3+BC is a good first try; for maximum safety and performance, CQL and IQL remain the preferred choice.
+ 
+diff --git a/en/chapter9.md b/en/chapter9.md
+index 26321ac..fe6d9e8 100644
+--- a/en/chapter9.md
++++ b/en/chapter9.md
+@@ -443,7 +443,7 @@ Chapter 9 works through an industrial case study showing how these pieces fit to
+ ## References
+ 
+ - Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* Expert Systems with Applications. [arXiv:2309.01909](https://arxiv.org/abs/2309.01909).
+-- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1811.10561](https://arxiv.org/abs/1811.10561).
++- Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1711.10561](https://arxiv.org/abs/1711.10561).
+ - Liu, Y., & Wang, X. (2021). *Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.* [arXiv:2008.05598](https://arxiv.org/abs/2008.05598).
+ - Lusch, B., Kutz, J.N., & Brunton, S.L. (2018). *Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.* Nature Communications. *(Koopman)*
+ - García, J., & Fernández, F. (2015). *A Comprehensive Survey on Safe Reinforcement Learning.* JMLR. *(constraint methods)*

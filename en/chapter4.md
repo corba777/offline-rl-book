@@ -289,12 +289,12 @@ This is a constrained optimization: minimize the Bellman error subject to keepin
 # Automatic alpha tuning via dual gradient descent
 log_alpha_cql = torch.zeros(1, requires_grad=True, device=device)
 alpha_opt = optim.Adam([log_alpha_cql], lr=1e-4)
-target_penalty = -2.0   # τ: target value of E_μ[Q] - E_D[Q]
+target_gap = 10.0   # τ: target CQL penalty (logsumexp gap, ≥ 0)
 
 # In the update step:
 alpha_cql = log_alpha_cql.exp().item()
-# ... compute cql_penalty ...
-alpha_loss = -log_alpha_cql * (cql_penalty - target_penalty)
+# ... compute cql_penalty (should be ≥ 0 for the logsumexp form) ...
+alpha_loss = -log_alpha_cql * (cql_penalty - target_gap)
 alpha_opt.zero_grad()
 alpha_loss.backward()
 alpha_opt.step()

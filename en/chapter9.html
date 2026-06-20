@@ -84,7 +84,8 @@
 <p>The $\max(0, \cdot)$ activates the penalty only when the constraint is violated; inside the feasible region it contributes nothing. $\lambda$ controls the trade-off between reward maximization and constraint satisfaction.</p>
 <h3>Types of Physical Constraints</h3>
 <p><strong>Monotone relationships.</strong> Many physical relationships are guaranteed to be monotone. Viscosity of a liquid decreases with temperature (for most fluids in normal operating ranges). Conversion in a reactor increases with residence time up to some limit. If the learned dynamics model predicts the wrong sign, it is physically wrong.</p>
-<p><div class="math-display">$$g_{mono}(s, s') = \max\Bigl(0,\ \text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\Bigr)$$</div></p>
+<p><div class="math-display">$$g_{mono}(s, s') = \bigl|\text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\bigr|$$</div></p>
+<p>For a differentiable training loss (rather than pure reward shaping), use $g_{mono} = \max(0,\ -\hat{f} \cdot \text{sign}(f_{phys}))$, which penalizes a predicted change whose sign opposes the known physics.</p>
 <p><strong>Conservation laws.</strong> Mass and energy must balance. For a mixing process with input flows $q_{in}$ and output flow $q_{out}$ and a tank of volume $V$:</p>
 <p><div class="math-display">$$\frac{dV}{dt} = q_{in} - q_{out}$$</div></p>
 <p>If a discrete-time model predicts $V_{t+1}$ inconsistent with this, the violation magnitude is:</p>
@@ -412,7 +413,7 @@ Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
 </tbody>
 </table>
 <p>Physics-informed methods are not a replacement for offline RL algorithms — they are a layer on top. Reward shaping plugs into CQL or IQL without modifying a line of algorithm code. The hybrid model replaces the ensemble in MOPO or MOReL while keeping everything else intact. The combination of a physically grounded dynamics model with a pessimistic offline RL algorithm (MOReL + hybrid ensemble) is the natural architecture for industrial settings where data is sparse but domain knowledge is rich.</p>
-<p>Chapter 9 works through an industrial case study showing how these pieces fit together in practice.</p>
+<p>Chapter 10 works through an industrial case study showing how these pieces fit together in practice.</p>
 <hr />
 <h2>References</h2>
 <ul>

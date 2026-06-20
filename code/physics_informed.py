@@ -181,7 +181,7 @@ class PhysicsRewardWrapper:
     Compatible with any offline RL algorithm: apply to the dataset's
     reward column or inside synthetic rollouts.
 
-    Theorem 6.1: the optimality gap ≤ 2*C_max / ((1-γ)*λ).
+    Chapter 9 heuristic: the optimality gap ≤ 2*C_max / ((1-γ)*λ).
     Use calibrate_lambda() to set λ from data.
     """
 
@@ -226,7 +226,7 @@ def calibrate_lambda(
     device:         str   = 'cpu',
 ) -> float:
     """
-    Calibrate λ so Theorem 6.1 gap ≤ target_gap_fraction * mean_return.
+    Calibrate λ using the Chapter 9 heuristic so gap ≤ target_gap_fraction * mean_return.
 
     From the theorem: gap ≤ 2 * C_max / ((1-γ) * λ)
     Solving: λ = 2 * C_max / ((1-γ) * target_gap)

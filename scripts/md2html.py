@@ -118,19 +118,31 @@ def parse_front_matter(text):
 
 
 def protect_math(body):
-    """Replace $$...$$ with placeholder; return (new_body, list of math blocks)."""
+    """Replace display and inline $...$ math with placeholders."""
     blocks = []
-    def repl(m):
-        blocks.append(m.group(0))
+
+    def repl_display(m):
+        blocks.append(("display", m.group(0)))
         return f"\n@@MATH{len(blocks)-1}@@\n"
-    new_body = re.sub(r"\$\$[\s\S]*?\$\$", repl, body)
+
+    new_body = re.sub(r"\$\$[\s\S]*?\$\$", repl_display, body)
+
+    def repl_inline(m):
+        blocks.append(("inline", m.group(0)))
+        return f"@@MATH{len(blocks)-1}@@"
+
+    new_body = re.sub(r"(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)", repl_inline, new_body)
     return new_body, blocks
 
 
 def restore_math(html, blocks):
-    """Replace @@MATHi@@ with <div class="math-display">...</div>"""
-    for i, math in enumerate(blocks):
-        html = html.replace(f"@@MATH{i}@@", f'<div class="math-display">{math}</div>')
+    """Replace @@MATHi@@ with preserved math (display or inline)."""
+    for i, (kind, math) in enumerate(blocks):
+        if kind == "display":
+            replacement = f'<div class="math-display">{math}</div>'
+        else:
+            replacement = math
+        html = html.replace(f"@@MATH{i}@@", replacement)
     return html
 
 

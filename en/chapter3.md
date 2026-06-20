@@ -105,7 +105,7 @@ Combines IS and DM so that the estimator is **unbiased** if either (a) the impor
 
 $$\hat{J}_{DR} = \frac{1}{n}\sum_{i=1}^n \left[ \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)})) + \sum_{t\ge 0} \gamma^t \rho_{0:t}^{(i)} \left( r_t^{(i)} + \gamma \hat{Q}(s_{t+1}^{(i)}, \pi(s_{t+1}^{(i)})) - \hat{Q}(s_t^{(i)}, a_t^{(i)}) \right) \right]$$
 
-where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^*$, the trailing terms have expectation zero; if $\pi_\beta = \pi$, the weights are 1 and the estimator reduces to DM. In practice DR often has lower variance than IS and lower bias than DM alone. **Caveat:** on long horizons the cumulative weight $\rho_{0:t}$ can still explode or vanish as $t$ grows, so classical DR still suffers from high variance on long trajectories; variants such as **Marginalized IS** (state-marginal importance weights) are used to mitigate this.
+where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^\pi$, the trailing terms have expectation zero; if $\pi_\beta = \pi$, the weights are 1 and the estimator reduces to DM. In practice DR often has lower variance than IS and lower bias than DM alone. **Caveat:** on long horizons the cumulative weight $\rho_{0:t}$ can still explode or vanish as $t$ grows, so classical DR still suffers from high variance on long trajectories; variants such as **Marginalized IS** (state-marginal importance weights) are used to mitigate this.
 
 ---
 

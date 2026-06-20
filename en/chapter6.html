@@ -80,9 +80,9 @@
 </ul>
 <p>The hyperparameter $\lambda$ balances the two. Small $\lambda$ → policy is almost pure BC. Large $\lambda$ → policy chases Q and may go OOD. In practice, $\lambda$ is set by normalizing Q so that the two terms have comparable scale.</p>
 <h3>Normalization of Q</h3>
-<p>If raw Q-values are large (e.g. in the hundreds), the gradient from the Q-term dominates and the BC term has little effect. TD3+BC normalizes the Q-values in the batch before forming the actor loss:</p>
-<p><div class="math-display">$$\tilde{Q}(s, a) = \frac{Q(s, a) - \mathbb{E}_{(s,a) \sim \mathcal{D}}[Q(s,a)]}{\sigma_{\mathcal{D}}(Q) + 10^{-6}}$$</div></p>
-<p>Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\pi(s) - a)^2 \bigr]$. With this normalization, a typical choice is $\lambda \in [0.1, 2.0]$; the paper uses $\alpha / |\nabla_a Q(s,a)|$ with $\alpha = 2.5$ for the scaling, which is equivalent in spirit.</p>
+<p>If raw Q-values are large (e.g. in the hundreds), the gradient from the Q-term dominates and the BC term has little effect. TD3+BC scales Q-values in the batch before forming the actor loss:</p>
+<p><div class="math-display">$$\tilde{Q}(s, a) = \frac{Q(s, a)}{\mathbb{E}_{(s,a) \sim \mathcal{B}} |Q(s,a)| + 10^{-6}}$$</div></p>
+<p>Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\pi(s) - a)^2 \bigr]$. With this scaling, a typical choice is $\lambda \in [0.1, 2.0]$; the paper uses $\alpha = 2.5$ with the same mean-$|Q|$ normalization.</p>
 <h3>Formalization</h3>
 <p><strong>Critic (Q):</strong> Standard TD3. Two Q-networks $Q_1, Q_2$; target networks; TD loss with $\min(Q_1', Q_2')$ at next state and delayed policy updates.</p>
 <p><strong>Actor:</strong> Deterministic policy $\pi_\phi(s)$. Loss:</p>
@@ -95,7 +95,7 @@
 <h3>The Idea</h3>
 <p>Instead of training the actor to maximize $Q(s, \pi(s))$ (which requires evaluating $\pi(s)$, potentially OOD), AWAC trains the actor to <strong>imitate dataset actions, weighted by how much better they were than average</strong>:</p>
 <p><div class="math-display">$$\mathcal{L}_\pi(\phi) = -\mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \exp\!\left( \frac{1}{\beta} \bigl( Q(s,a) - V(s) \bigr) \right) \cdot \log \pi_\phi(a | s) \right]$$</div></p>
-<p>Here $V(s)$ is the state value function (e.g. $\mathbb{E}<em>{a \sim \pi</em>\beta}[Q(s,a)]$ or a learned V-network). The <strong>advantage</strong> $A(s,a) = Q(s,a) - V(s)$ measures how much better action $a$ is than the average at state $s$. The exponential weight $\exp(A(s,a)/\beta)$ upweights good actions and downweights bad ones; $\beta$ is a temperature that controls how sharply we focus on the best actions.</p>
+<p>Here $V(s)$ is the state value function (e.g. $\mathbb{E}_{a \sim \pi_\beta}[Q(s,a)]$ or a learned V-network). The <strong>advantage</strong> $A(s,a) = Q(s,a) - V(s)$ measures how much better action $a$ is than the average at state $s$. The exponential weight $\exp(A(s,a)/\beta)$ upweights good actions and downweights bad ones; $\beta$ is a temperature that controls how sharply we focus on the best actions.</p>
 <p>So: <strong>no OOD actor queries</strong>. The critic (Q, and optionally V) is trained with standard TD; the actor is trained with weighted maximum likelihood on the dataset. This is similar in spirit to IQL's policy extraction, but AWAC was proposed earlier and uses a different critic setup (e.g. on-policy or off-policy TD with optional V).</p>
 <h3>Relation to IQL</h3>
 <p>IQL (Chapter 5) also uses advantage-weighted regression for the policy and avoids OOD queries. IQL goes further by replacing $\max_{a'} Q(s', a')$ with expectile regression on $V(s')$. AWAC can be seen as a predecessor: same idea of weighting dataset actions by advantage, with a simpler (and potentially less safe) critic. For a unified implementation, the policy loss of IQL and AWAC are the same up to how $Q$ and $V$ are learned.</p>

@@ -1,0 +1,87 @@
+diff --git a/en/chapter10.html b/en/chapter10.html
+index 801af0c..6b55f0d 100644
+--- a/en/chapter10.html
++++ b/en/chapter10.html
+@@ -472,7 +472,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ <p>This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 12), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.</p>
+ <hr />
+ <h2>Summary</h2>
+-<p>This chapter translated the tools from Chapters 1–8 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
++<p>This chapter translated the tools from Chapters 1–9 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
+ <p>The comparison across four algorithms reveals a clean hierarchy:</p>
+ <table>
+ <thead>
+@@ -511,11 +511,11 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ </tbody>
+ </table>
+ <p>The practical recommendation for industrial deployment: <strong>start with CQL+Physics</strong> (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, <strong>add the hybrid ensemble</strong> as a source of diverse synthetic experience.</p>
+-<p>Chapter 11 returns to the theoretical questions this case study raises: when can offline RL be trusted in deployment, what guarantees are available, and what open problems remain unsolved.</p>
++<p>Chapter 11 turns to explainability: how to interrogate a trained agent's Q-function, policy, and dynamics model with SHAP so an operator can understand — and an auditor can certify — why the agent chose a given action.</p>
+ <hr />
+ <h2>References</h2>
+ <ul>
+-<li>All references from Chapters 1–8 apply to the algorithms used here.</li>
++<li>All references from Chapters 1–9 apply to the algorithms used here.</li>
+ <li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(PID baseline, first-order process models)</em></li>
+ <li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(industrial process control, transport delay)</em></li>
+ <li>Rawlings, J.B., Mayne, D.Q., &amp; Diehl, M. (2017). <em>Model Predictive Control.</em> Nob Hill. <em>(MPC for comparison context)</em></li>
+diff --git a/en/chapter12.html b/en/chapter12.html
+index 40060c4..a319b19 100644
+--- a/en/chapter12.html
++++ b/en/chapter12.html
+@@ -194,7 +194,7 @@
+ <ul>
+ <li>Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., &amp; Mordatch, I. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
+ <li>Janner, M., Li, Q., &amp; Levine, S. (2021). <em>Offline Reinforcement Learning as One Big Sequence Modeling Problem.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.02039">arXiv:2106.02039</a>. <em>(Trajectory Transformer)</em></li>
+-<li>Yamagata, T., Khalil, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.</em> <a href="https://arxiv.org/abs/2309.10150">arXiv:2309.10150</a>.</li>
++<li>Yamagata, T., Ahmed, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.</em> ICML. <a href="https://arxiv.org/abs/2209.03993">arXiv:2209.03993</a>. <em>(QDT)</em></li>
+ </ul>
+ <p><strong>Diffusion Models for Offline RL</strong></p>
+ <ul>
+diff --git a/en/chapter4.html b/en/chapter4.html
+index a9e7108..d839c66 100644
+--- a/en/chapter4.html
++++ b/en/chapter4.html
+@@ -117,7 +117,8 @@
+ </blockquote>
+ <h3>Networks</h3>
+ <p>CQL typically uses a SAC-style architecture: two Q-networks (to reduce overestimation via double-Q), a stochastic actor, and entropy regularization.</p>
+-<div class="codehilite"><pre><span></span><code><span class="kn">import</span> <span class="nn">torch</span>
++<div class="codehilite"><pre><span></span><code><span class="kn">import</span> <span class="nn">math</span>
++<span class="kn">import</span> <span class="nn">torch</span>
+ <span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+ <span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
+ <span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+diff --git a/en/chapter6.html b/en/chapter6.html
+index aae0886..1c4ca13 100644
+--- a/en/chapter6.html
++++ b/en/chapter6.html
+@@ -244,13 +244,13 @@
+ <td>No</td>
+ </tr>
+ <tr>
+-<td>CQL (Ch3)</td>
++<td>CQL (Ch4)</td>
+ <td>Q-function</td>
+ <td>Yes (penalized)</td>
+ <td>Lower bound</td>
+ </tr>
+ <tr>
+-<td>IQL (Ch4)</td>
++<td>IQL (Ch5)</td>
+ <td>V + policy extraction</td>
+ <td>No</td>
+ <td>Implicit pessimism</td>
+diff --git a/en/chapter9.html b/en/chapter9.html
+index 9881413..11a51d5 100644
+--- a/en/chapter9.html
++++ b/en/chapter9.html
+@@ -417,7 +417,7 @@ Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
+ <h2>References</h2>
+ <ul>
+ <li>Banerjee, C., Nguyen, T., Fookes, C., &amp; Raissi, M. (2023). <em>A Survey on Physics Informed Reinforcement Learning.</em> Expert Systems with Applications. <a href="https://arxiv.org/abs/2309.01909">arXiv:2309.01909</a>.</li>
+-<li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1811.10561">arXiv:1811.10561</a>.</li>
++<li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1711.10561">arXiv:1711.10561</a>.</li>
+ <li>Liu, Y., &amp; Wang, X. (2021). <em>Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2008.05598">arXiv:2008.05598</a>.</li>
+ <li>Lusch, B., Kutz, J.N., &amp; Brunton, S.L. (2018). <em>Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.</em> Nature Communications. <em>(Koopman)</em></li>
+ <li>García, J., &amp; Fernández, F. (2015). <em>A Comprehensive Survey on Safe Reinforcement Learning.</em> JMLR. <em>(constraint methods)</em></li>
