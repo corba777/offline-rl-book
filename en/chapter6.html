@@ -85,9 +85,9 @@
 <p>Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\pi(s) - a)^2 \bigr]$. With this scaling, a typical choice is $\lambda \in [0.1, 2.0]$; the paper uses $\alpha = 2.5$ with the same mean-$|Q|$ normalization.</p>
 <h3>Formalization</h3>
 <p><strong>Critic (Q):</strong> Standard TD3. Two Q-networks $Q_1, Q_2$; target networks; TD loss with $\min(Q_1', Q_2')$ at next state and delayed policy updates.</p>
-<p><strong>Actor:</strong> Deterministic policy $\pi_\phi(s)$. Loss:</p>
-<p><div class="math-display">$$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ -\lambda \, \frac{\tilde{Q}(s, \pi_\phi(s))}{\sum_{(s,a)} |Q(s,a)| / |\mathcal{B}|} + \bigl(\pi_\phi(s) - a\bigr)^2 \right]$$</div></p>
-<p>The paper uses a slightly different normalizer (average of $|Q|$ over the batch) so that the coefficient in front of $Q$ is $\alpha / \bigl( \frac{1}{|\mathcal{B}|} \sum_i |Q(s_i, a_i)| \bigr)$ with $\alpha = 2.5$. This keeps the Q-term and BC-term on similar scale across batches.</p>
+<p><strong>Actor:</strong> Deterministic policy $\pi_\phi(s)$. Loss (using the normalized $\tilde{Q}$ defined above — <strong>one</strong> scaling step, not two):</p>
+<p><div class="math-display">$$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ -\lambda \, \tilde{Q}(s, \pi_\phi(s)) + \bigl(\pi_\phi(s) - a\bigr)^2 \right]$$</div></p>
+<p>Equivalently, with $\alpha = \lambda$ and batch mean $|Q|$: minimize $-\alpha \, Q(s,\pi_\phi(s)) / \bigl(\mathbb{E}_{\mathcal{B}}|Q| + \epsilon\bigr) + (\pi_\phi(s)-a)^2$. The paper uses $\alpha = 2.5$. This keeps the Q-term and BC-term on similar scale across batches.</p>
 <p><strong>No theoretical guarantee</strong> — unlike CQL, TD3+BC does not provide a lower bound on the true Q-function. It is an empirical, minimalist fix that works well in practice and is very easy to implement.</p>
 <hr />
 <h2>AWAC: Advantage-Weighted Actor-Critic</h2>
@@ -124,9 +124,11 @@
 
 <span class="k">def</span> <span class="nf">td3bc_actor_loss</span><span class="p">(</span><span class="n">actor</span><span class="p">,</span> <span class="n">Q1</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">lambda_</span><span class="o">=</span><span class="mf">0.25</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.</span>
-<span class="sd">    Q is normalized by mean absolute value over the batch (Fujimoto &amp; Gu):</span>
-<span class="sd">    q_norm = q / (|B|^{-1} sum |Q(s,a)|), so the Q-term and BC-term scale similarly.</span>
+<span class="sd">    TD3+BC actor loss (minimize):</span>
+<span class="sd">      -lambda_ * Q_norm(s, pi(s)) + ||pi(s) - a||^2</span>
+<span class="sd">    Equivalent maximization:</span>
+<span class="sd">      lambda_ * Q_norm(s, pi(s)) - ||pi(s) - a||^2</span>
+<span class="sd">    Q_norm = Q / mean|Q| over the batch (Fujimoto &amp; Gu, 2021).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">pi</span> <span class="o">=</span> <span class="n">actor</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
     <span class="n">q</span> <span class="o">=</span> <span class="n">Q1</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">pi</span><span class="p">)</span>

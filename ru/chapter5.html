@@ -287,7 +287,7 @@
         <span class="c1"># Normalize advantage for numerical stability, then exponentiate</span>
         <span class="n">adv_norm</span>   <span class="o">=</span> <span class="n">adv</span> <span class="o">-</span> <span class="n">adv</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>                         <span class="c1"># subtract max</span>
         <span class="n">weights</span>    <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">beta</span> <span class="o">*</span> <span class="n">adv_norm</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">max</span><span class="o">=</span><span class="n">clip_exp</span><span class="p">)</span>
-        <span class="n">weights</span>    <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="n">weights</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>                  <span class="c1"># normalize</span>
+        <span class="n">weights</span>    <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="p">(</span><span class="n">weights</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">+</span> <span class="mf">1e-8</span><span class="p">)</span>          <span class="c1"># mean-normalized weights</span>
 
     <span class="c1"># Weighted MSE: push policy toward high-advantage dataset actions</span>
     <span class="n">pi_pred</span> <span class="o">=</span> <span class="n">policy</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
@@ -451,7 +451,7 @@ IQL vs BC: +7.69 reward
 <hr />
 <h2>Практические советы</h2>
 <p><strong>IQL чувствителен к нормализации наград.</strong> Нормализуйте награды к нулевому среднему или диапазону $[0, 1]$. Advantage $A = Q - V$ вычисляется в том же масштабе, и <code>exp(beta * A)</code> в лоссе политики взрывается при больших значениях.</p>
-<p><strong>Мониторьте V-Q разрыв.</strong> Логируйте <code>v_q_gap = E[Q(s,a) - V(s)]</code> по датасетным парам. Должно быть слегка положительным (V чуть ниже среднего Q). Если становится сильно отрицательным — $\tau$ слишком мало.</p>
+<p><strong>Мониторьте V-Q разрыв.</strong> Логируйте <code>v_q_gap = E[Q(s,a) - V(s)]</code> по датасетным парам. При $\tau > 0.5$ значение $V(s)$ обычно <strong>выше</strong> среднего Q по действиям датасета в этом состоянии и ниже лучших действий, поэтому <code>v_q_gap</code> часто <strong>слегка отрицателен</strong>. Если становится сильно <strong>положительным</strong> — $V$ слишком низкая / слишком консервативна. Если очень отрицательный — $\tau$ может быть слишком высоким или $Q$ переоценена.</p>
 <p><strong>Используйте таргетные Q-сети в value-обновлении.</strong> Expectile-цель строится из <code>Q1_tgt</code> и <code>Q2_tgt</code>, а не из живых Q-сетей того же шага — как в референсной реализации IQL.</p>
 <p><strong>IQL быстрее сходится, чем CQL</strong> на плотных датасетах — V-обновление очень стабильно (нет OOD-сэмплирования, нет logsumexp).</p>
 <hr />

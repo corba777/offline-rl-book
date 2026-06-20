@@ -248,10 +248,14 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 <h2>SHAP in Production: Practical Considerations</h2>
 <p><strong>Computational cost.</strong> KernelExplainer makes $n\_\text{explain} \times n\_\text{samples} \times n\_\text{background}$ model evaluations. For 150 × 80 × 80 = 960,000 calls this takes minutes on CPU. Practical strategy: run offline before deployment on a held-out validation set; re-run monthly on recent operating data to detect distribution shift.</p>
 <p><strong>Background dataset choice</strong> is the most important hyperparameter. Full dataset background answers "difference from typical operation." Constraint-region background answers "what distinguishes near-violations from typical near-violations?" — useful for diagnosing why the agent approaches boundaries.</p>
-<p><strong>Physical units.</strong> States are normalized. To communicate with operators:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Convert SHAP back to physical units</span>
-<span class="n">shap_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][:,</span> <span class="p">:</span><span class="n">S</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span>
-<span class="c1"># SHAP of 0.04 on normalized temperature = 0.04 × σ_T physical degrees</span>
+<p><strong>Physical units.</strong> States are normalized for training. To communicate feature values with operators, convert <strong>states</strong> back to physical units — not SHAP values:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Convert feature values back to physical units for display</span>
+<span class="n">states_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span> <span class="o">+</span> <span class="n">s_mean</span>
+<span class="c1"># Do NOT multiply SHAP values by s_std.</span>
+<span class="c1"># SHAP values remain in the units of the model output:</span>
+<span class="c1"># - Q-SHAP: Q-value / return units</span>
+<span class="c1"># - policy-SHAP: action-output units</span>
+<span class="c1"># - dynamics-SHAP: next-state prediction units</span>
 </code></pre></div>
 
 <hr />

@@ -57,11 +57,11 @@ Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\p
 
 **Critic (Q):** Standard TD3. Two Q-networks $Q_1, Q_2$; target networks; TD loss with $\min(Q_1', Q_2')$ at next state and delayed policy updates.
 
-**Actor:** Deterministic policy $\pi_\phi(s)$. Loss:
+**Actor:** Deterministic policy $\pi_\phi(s)$. Loss (using the normalized $\tilde{Q}$ defined above — **one** scaling step, not two):
 
-$$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ -\lambda \, \frac{\tilde{Q}(s, \pi_\phi(s))}{\sum_{(s,a)} |Q(s,a)| / |\mathcal{B}|} + \bigl(\pi_\phi(s) - a\bigr)^2 \right]$$
+$$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ -\lambda \, \tilde{Q}(s, \pi_\phi(s)) + \bigl(\pi_\phi(s) - a\bigr)^2 \right]$$
 
-The paper uses a slightly different normalizer (average of $|Q|$ over the batch) so that the coefficient in front of $Q$ is $\alpha / \bigl( \frac{1}{|\mathcal{B}|} \sum_i |Q(s_i, a_i)| \bigr)$ with $\alpha = 2.5$. This keeps the Q-term and BC-term on similar scale across batches.
+Equivalently, with $\alpha = \lambda$ and batch mean $|Q|$: minimize $-\alpha \, Q(s,\pi_\phi(s)) / \bigl(\mathbb{E}_{\mathcal{B}}|Q| + \epsilon\bigr) + (\pi_\phi(s)-a)^2$. The paper uses $\alpha = 2.5$. This keeps the Q-term and BC-term on similar scale across batches.
 
 **No theoretical guarantee** — unlike CQL, TD3+BC does not provide a lower bound on the true Q-function. It is an empirical, minimalist fix that works well in practice and is very easy to implement.
 
@@ -114,9 +114,11 @@ class Actor(nn.Module):
 
 def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
     """
-    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.
-    Q is normalized by mean absolute value over the batch (Fujimoto & Gu):
-    q_norm = q / (|B|^{-1} sum |Q(s,a)|), so the Q-term and BC-term scale similarly.
+    TD3+BC actor loss (minimize):
+      -lambda_ * Q_norm(s, pi(s)) + ||pi(s) - a||^2
+    Equivalent maximization:
+      lambda_ * Q_norm(s, pi(s)) - ||pi(s) - a||^2
+    Q_norm = Q / mean|Q| over the batch (Fujimoto & Gu, 2021).
     """
     pi = actor(states)
     q = Q1(states, pi)

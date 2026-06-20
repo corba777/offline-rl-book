@@ -308,7 +308,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
         # Normalize advantage for numerical stability, then exponentiate
         adv_norm   = adv - adv.max()                         # subtract max
         weights    = torch.exp(beta * adv_norm).clamp(max=clip_exp)
-        weights    = weights / weights.sum()                  # normalize
+        weights    = weights / (weights.mean() + 1e-8)          # mean-normalized weights
 
     # Weighted MSE: push policy toward high-advantage dataset actions
     pi_pred = policy(states)

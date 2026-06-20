@@ -83,7 +83,10 @@ class Actor(nn.Module):
 
 def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
     """
-    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.
+    TD3+BC actor loss (minimize):
+      -lambda_ * Q_norm(s, pi(s)) + ||pi(s) - a||^2
+    Эквивалентная максимизация:
+      lambda_ * Q_norm(s, pi(s)) - ||pi(s) - a||^2
     Q нормализуется по среднему абсолютному значению по батчу (Fujimoto & Gu).
     """
     pi = actor(states)

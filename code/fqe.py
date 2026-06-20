@@ -189,8 +189,9 @@ class FQEAgent:
 
     def estimate_J(self, states, batch_size=4096) -> float:
         """
-        FQE estimate: (1/n) Σ Q(s, π(s)) over the given states.
-        Can be initial states, or all states in the dataset (as here).
+        FQE proxy: (1/n) Σ Q(s, π(s)) over the given states.
+        For true J(π), pass initial states s0 only; averaging over all
+        dataset states is a coverage-weighted proxy, not episode return.
         """
         states = torch.FloatTensor(states).to(self.device)
         self.Q.eval()
@@ -313,8 +314,8 @@ def main():
                 s.cpu().numpy(), a.cpu().numpy(),
                 r.cpu().numpy(), s2.cpu().numpy(), d.cpu().numpy(),
             )
-    J_fqe = fqe.estimate_J(dataset['states'])
-    print(f"FQE estimate J(BC) = {J_fqe:.4f} (normalized reward scale)")
+    J_fqe_proxy = fqe.estimate_J(dataset['states'])
+    print(f"FQE proxy over dataset states = {J_fqe_proxy:.4f} (normalized reward scale)")
 
     # 3) True return via rollout (raw rewards, not normalized)
     mean_ret, std_ret = evaluate(env, bc, n_episodes=20, seed=100,

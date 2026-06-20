@@ -291,7 +291,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
         # Normalize advantage for numerical stability, then exponentiate
         adv_norm   = adv - adv.max()                         # subtract max
         weights    = torch.exp(beta * adv_norm).clamp(max=clip_exp)
-        weights    = weights / weights.sum()                  # normalize
+        weights    = weights / (weights.mean() + 1e-8)          # mean-normalized weights
 
     # Weighted MSE: push policy toward high-advantage dataset actions
     pi_pred = policy(states)
@@ -442,7 +442,7 @@ IQL vs BC: +7.69 reward
 
 **IQL чувствителен к нормализации наград.** Нормализуйте награды к нулевому среднему или диапазону $[0, 1]$. Advantage $A = Q - V$ вычисляется в том же масштабе, и `exp(beta * A)` в лоссе политики взрывается при больших значениях.
 
-**Мониторьте V-Q разрыв.** Логируйте `v_q_gap = E[Q(s,a) - V(s)]` по датасетным парам. Должно быть слегка положительным (V чуть ниже среднего Q). Если становится сильно отрицательным — $\tau$ слишком мало.
+**Мониторьте V-Q разрыв.** Логируйте `v_q_gap = E[Q(s,a) - V(s)]` по датасетным парам. При $\tau > 0.5$ значение $V(s)$ обычно **выше** среднего Q по действиям датасета в этом состоянии и ниже лучших действий, поэтому `v_q_gap` часто **слегка отрицателен**. Если становится сильно **положительным** — $V$ слишком низкая / слишком консервативна. Если очень отрицательный — $\tau$ может быть слишком высоким или $Q$ переоценена.
 
 **Используйте таргетные Q-сети в value-обновлении.** Expectile-цель строится из `Q1_tgt` и `Q2_tgt`, а не из живых Q-сетей того же шага — как в референсной реализации IQL.
 

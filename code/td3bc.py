@@ -7,8 +7,9 @@ Referenced from Chapter 5 of "Offline RL: From Theory to Industrial Practice".
 Fujimoto & Gu, "A Minimalist Approach to Offline Reinforcement Learning (TD3+BC)", NeurIPS 2021.
 arXiv:2106.06860
 
-Idea: actor loss = -lambda * Q(s, pi(s)) + (pi(s) - a)^2.
-      Q is normalized over the batch so the two terms are comparable.
+Idea: actor loss = minimize -lambda_ * Q_norm(s, pi(s)) + ||pi(s) - a||^2
+      (equivalently maximize lambda_ * Q_norm - ||pi(s) - a||^2).
+      Q_norm = Q / mean|Q| over the batch so the two terms are comparable.
 No theoretical guarantee; simple and effective in practice.
 
 Contents:
@@ -168,9 +169,11 @@ class Actor(nn.Module):
 
 def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
     """
-    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.
-    Per Fujimoto & Gu (2021), Q is normalized by mean absolute value over the batch:
-    q_norm = q / (|B|^{-1} sum |Q(s,a)|), so the Q-term and BC-term have comparable scale.
+    TD3+BC actor loss (minimize):
+      -lambda_ * Q_norm(s, pi(s)) + ||pi(s) - a||^2
+    Equivalent maximization:
+      lambda_ * Q_norm(s, pi(s)) - ||pi(s) - a||^2
+    Per Fujimoto & Gu (2021), Q_norm = Q / mean|Q| over the batch.
     """
     pi = actor(states)
     q = Q1(states, pi)
@@ -277,14 +280,15 @@ class BCAgent:
         return self.policy.act(torch.FloatTensor(state).unsqueeze(0).to(self.device))
 
 
-def evaluate(env, agent, n_episodes=20, seed=100):
+def evaluate(env, agent, s_mean, s_std, n_episodes=20, seed=100):
     returns = []
     for ep in range(n_episodes):
         obs = env.reset(seed=seed + ep)
         total = 0.0
         done = False
         while not done:
-            act = agent.act(obs)
+            obs_norm = (obs - s_mean) / s_std
+            act = agent.act(obs_norm)
             obs, r, done, _ = env.step(act)
             total += r
         returns.append(total)
@@ -304,9 +308,6 @@ def main():
 
     dataset = collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0)
     s_mean, s_std, r_scale = normalize_dataset(dataset)
-    # Denormalize for env (eval runs in raw state space)
-    def denorm(s):
-        return s * s_std + s_mean
 
     loader = DataLoader(
         TensorDataset(
@@ -332,9 +333,8 @@ def main():
             bc.update(s.cpu().numpy(), a.cpu().numpy(), r.cpu().numpy(),
                       s2.cpu().numpy(), d.cpu().numpy())
         if (epoch + 1) % 20 == 0:
-            # Eval in raw env (states not normalized in env)
-            mean_td3bc, std_td3bc = evaluate(env, td3bc, n_episodes=20, seed=100)
-            mean_bc, std_bc = evaluate(env, bc, n_episodes=20, seed=100)
+            mean_td3bc, std_td3bc = evaluate(env, td3bc, s_mean, s_std, n_episodes=20, seed=100)
+            mean_bc, std_bc = evaluate(env, bc, s_mean, s_std, n_episodes=20, seed=100)
             print(f"Epoch {epoch+1} | TD3+BC return: {mean_td3bc:.2f} ± {std_td3bc:.2f} | "
                   f"BC return: {mean_bc:.2f} ± {std_bc:.2f}")
 

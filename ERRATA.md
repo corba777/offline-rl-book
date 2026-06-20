@@ -7,17 +7,11 @@ Severity legend: 🔴 substantive (wrong math / contradiction) · 🟠 code bug 
 
 ---
 
-## 🔴 A. Ch. 2 — TD3+BC actor objective is wrong (contradicts Ch. 4 & Ch. 6)
+## ✅ A. Ch. 2 — TD3+BC actor objective *(fixed)*
 
-**Where:** Ch. 2, "Policy-constraint and Actor-Critic methods" paragraph.
+**Was:** Ch. 2 described TD3+BC as maximizing $Q + \lambda \log \pi_\beta(a|s)$.
 
-**Now:**
-> **TD3+BC** … adds a behavioral cloning term to the actor loss: $\pi$ maximizes $Q(s, \pi(s)) + \lambda \cdot \log \pi_\beta(a|s)$ …
-
-Two problems: (1) $\log\pi_\beta(a\mid s)$ is the likelihood under the *behavior* policy — it does not depend on $\pi$ and cannot be maximized over $\pi$; the BC term must be the squared deviation of the *learned* action from the dataset action. (2) In real TD3+BC, $\lambda$ scales the **Q-term**, not the BC term. Ch. 4 and Ch. 6 both give the correct form, so Ch. 2 is internally inconsistent with the rest of the book.
-
-**Fix:**
-> **TD3+BC** (Fujimoto & Gu, 2021) adds a behavioral-cloning term to the actor loss: $\pi$ maximizes $\lambda\,Q(s,\pi(s)) - \big(\pi(s)-a\big)^2$, so it stays near the data while improving on it.
+**Now (EN + RU Ch. 2):** $\pi$ maximizes $\lambda Q(s,\pi(s)) - (\pi(s)-a)^2$ with Q scaled by batch mean $|Q|$.
 
 ---
 
@@ -301,6 +295,21 @@ The Ch. 12 entry pins QDT's authors onto Q-Transformer's title and arXiv ID. Fix
 ## 🟡 Y. Ch. 12 — "Conservative Safety Critics" misattributed + body-only citations
 
 Body (Safe Offline RL): "**Conservative Safety Critics** (Le Cleac'h et al., 2023)". CSC is **Bharadhwaj et al., 2021** (*Conservative Safety Critics for Exploration*, `arXiv:2010.14497`); Le Cleac'h works on differentiable physics / trajectory optimization, not CSC. Also, this CSC cite and **Chang et al., 2019** (Neural Lyapunov Control) appear only in the prose — neither is in the chapter's reference list. Fix the attribution and add both to the bibliography (CVPO and Berkenkamp are already there).
+
+---
+
+## ✅ Batch fix (review pass, 2026-06)
+
+| Item | Fix applied |
+|------|-------------|
+| EN Ch. 3 DR | Removed "reduces to DM when πβ=π"; corrected to residual-correction wording |
+| `td3bc.py` | `evaluate()` normalizes obs with `s_mean`/`s_std`; docstrings aligned with code |
+| EN/RU Ch. 4 CQL | Softened "guaranteed not to exploit" overclaims |
+| EN Ch. 6 TD3+BC | Removed double Q normalization in formal actor loss |
+| EN/RU Ch. 11 SHAP | Do not multiply SHAP by `s_std`; convert states only |
+| EN/RU Ch. 5 IQL | V–Q gap sign corrected for τ > 0.5 |
+| `iql.py` | Policy weights: mean-normalize (`/ weights.mean()`) not sum-normalize + mean |
+| `fqe.py` | Label proxy estimate explicitly; docstring clarifies s₀ vs all states |
 
 ---
 

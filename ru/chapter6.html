@@ -106,7 +106,10 @@
 
 <span class="k">def</span> <span class="nf">td3bc_actor_loss</span><span class="p">(</span><span class="n">actor</span><span class="p">,</span> <span class="n">Q1</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">lambda_</span><span class="o">=</span><span class="mf">0.25</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    TD3+BC actor loss: maximize Q(s, pi(s)) - lambda * (pi(s) - a)^2.</span>
+<span class="sd">    TD3+BC actor loss (minimize):</span>
+<span class="sd">      -lambda_ * Q_norm(s, pi(s)) + ||pi(s) - a||^2</span>
+<span class="sd">    Эквивалентная максимизация:</span>
+<span class="sd">      lambda_ * Q_norm(s, pi(s)) - ||pi(s) - a||^2</span>
 <span class="sd">    Q нормализуется по среднему абсолютному значению по батчу (Fujimoto &amp; Gu).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">pi</span> <span class="o">=</span> <span class="n">actor</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>

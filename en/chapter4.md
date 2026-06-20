@@ -96,13 +96,13 @@ $$\hat{Q}^\pi(s, a) \leq Q^\pi(s, a) \quad \forall (s, a) \in \mathcal{D}$$
 
 under appropriate conditions on $\alpha$.
 
-In other words: **CQL is a lower bound on the true Q-function at dataset points**. The policy trained on this pessimistic Q-function is guaranteed not to exploit overestimated values.
+In other words: **under the assumptions of the CQL analysis and sufficient optimization, CQL learns a conservative estimate whose expected value for the evaluated policy lower-bounds the true policy value at dataset points**. This reduces the incentive to exploit overestimated OOD actions, but does not guarantee safety or eliminate all overestimation in arbitrary neural implementations.
 
-More practically, the expected policy performance satisfies:
+More practically (under the same assumptions), the expected policy performance satisfies:
 
 $$J(\hat\pi) \geq J(\pi_\beta) - \frac{\alpha}{1-\gamma} \cdot \mathbb{E}_{s \sim d^{\pi_\beta}} \left[ D_{CQL}(\hat\pi, \pi_\beta)(s) \right]$$
 
-where $D_{CQL}$ is a divergence term that measures how far the learned policy drifts from the behavior policy. The bound says: CQL is at least as good as BC, up to a penalty proportional to policy divergence.
+where $D_{CQL}$ is a divergence term that measures how far the learned policy drifts from the behavior policy. Under the theorem's assumptions, this bound relates CQL performance to BC plus a penalty proportional to policy divergence — not a blanket guarantee in every practical setting.
 
 ---
 

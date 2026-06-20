@@ -248,10 +248,14 @@ SHAP признаков действия отвечает: «было ли эт�
 <h2>SHAP в производстве: практические соображения</h2>
 <p><strong>Вычислительная стоимость.</strong> KernelExplainer делает $n\_\text{explain} \times n\_\text{samples} \times n\_\text{background}$ обращений к модели. Для 150 × 80 × 80 = 960,000 вызовов на CPU это занимает минуты. Практическая стратегия: запускать офлайн перед развёртыванием на отложенной валидационной выборке; ежемесячно перезапускать на свежих эксплуатационных данных для обнаружения дрейфа распределения.</p>
 <p><strong>Выбор фонового датасета</strong> — важнейший гиперпараметр. Полный датасет в качестве фона отвечает «отличие от типичной работы». Фон из зоны ограничений отвечает «что отличает приближение к нарушению от типичного приближения» — полезно для диагностики, почему агент приближается к границам.</p>
-<p><strong>Физические единицы.</strong> Состояния нормированы. Для коммуникации с операторами:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Перевод SHAP обратно в физические единицы</span>
-<span class="n">shap_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][:,</span> <span class="p">:</span><span class="n">S</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span>
-<span class="c1"># SHAP 0.04 на нормированной температуре = 0.04 × σ_T физических градусов</span>
+<p><strong>Физические единицы.</strong> Состояния нормированы для обучения. Для коммуникации с операторами переводите <strong>состояния</strong> обратно в физические единицы — не SHAP-значения:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Перевод значений признаков обратно в физические единицы (для отображения)</span>
+<span class="n">states_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span> <span class="o">+</span> <span class="n">s_mean</span>
+<span class="c1"># НЕ умножайте SHAP-значения на s_std.</span>
+<span class="c1"># SHAP остаётся в единицах выхода модели:</span>
+<span class="c1"># - Q-SHAP: единицы Q / return</span>
+<span class="c1"># - policy-SHAP: единицы выхода политики (действия)</span>
+<span class="c1"># - dynamics-SHAP: единицы предсказания следующего состояния</span>
 </code></pre></div>
 
 <hr />

@@ -285,12 +285,16 @@ Expected output:
 
 **Background dataset choice** is the most important hyperparameter. Full dataset background answers "difference from typical operation." Constraint-region background answers "what distinguishes near-violations from typical near-violations?" — useful for diagnosing why the agent approaches boundaries.
 
-**Physical units.** States are normalized. To communicate with operators:
+**Physical units.** States are normalized for training. To communicate feature values with operators, convert **states** back to physical units — not SHAP values:
 
 ```python
-# Convert SHAP back to physical units
-shap_physical = results['q_shap'][:, :S] * s_std
-# SHAP of 0.04 on normalized temperature = 0.04 × σ_T physical degrees
+# Convert feature values back to physical units for display
+states_physical = results['states'] * s_std + s_mean
+# Do NOT multiply SHAP values by s_std.
+# SHAP values remain in the units of the model output:
+# - Q-SHAP: Q-value / return units
+# - policy-SHAP: action-output units
+# - dynamics-SHAP: next-state prediction units
 ```
 
 ---

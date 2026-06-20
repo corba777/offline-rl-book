@@ -291,7 +291,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
         # Normalize advantage for numerical stability, then exponentiate
         adv_norm   = adv - adv.max()                         # subtract max
         weights    = torch.exp(beta * adv_norm).clamp(max=clip_exp)
-        weights    = weights / weights.sum()                  # normalize
+        weights    = weights / (weights.mean() + 1e-8)          # mean-normalized weights
 
     # Weighted MSE: push policy toward high-advantage dataset actions
     pi_pred = policy(states)
@@ -421,7 +421,7 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 **IQL is sensitive to reward normalization.** Normalize rewards to zero mean or $[0, 1]$ range. The advantage $A = Q - V$ is computed on the same scale as rewards, and the `exp(beta * A)` in the policy loss explodes if $A$ is large.
 
-**Monitor $V$-$Q$ gap.** Log `v_q_gap = E[Q(s,a) - V(s)]` over dataset pairs. This should be slightly positive (V is below the average Q). If it becomes strongly negative, $\tau$ is too low. If it approaches zero, $\tau$ is too high or the dataset has very low variance.
+**Monitor $V$-$Q$ gap.** Log `v_q_gap = E[Q(s,a) - V(s)]` over dataset pairs. For $\tau > 0.5$, $V(s)$ should generally lie above the mean dataset-action $Q$ at that state and below the best dataset actions, so `v_q_gap` will often be **slightly negative**. If it becomes strongly **positive**, $V$ is too low / too conservative. If it becomes very negative, $\tau$ may be too high or $Q$ may be overestimated.
 
 **Use target Q-networks in the value update.** The expectile target uses `Q1_tgt` and `Q2_tgt`, not the live Q-networks being updated in the same step — this matches the IQL reference implementation.
 
