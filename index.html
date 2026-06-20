@@ -43,7 +43,9 @@
     .ch-num { font-size: 0.78rem; color: var(--text-light); font-weight: 400; margin-right: 0.75rem; flex-shrink: 0; }
     .ch-status { font-size: 0.75rem; color: var(--text-light); background: var(--bg-code); border: 1px solid var(--border); padding: 0.15rem 0.5rem; border-radius: 20px; flex-shrink: 0; }
     .ch-status.ready { background: #dcfce7; border-color: #86efac; color: #166534; }
-    .site-footer { border-top: 1px solid var(--border); padding: 2rem 0; text-align: center; font-family: var(--sans); font-size: 0.8rem; color: var(--text-light); }
+    .byline { font-family: var(--sans); font-size: 0.9rem; color: var(--text-light); margin-bottom: 0.5rem; }
+    .disclaimer { font-family: var(--sans); font-size: 0.88rem; color: var(--text-light); background: var(--bg-code); border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; margin: 1.25rem 0 1.5rem; line-height: 1.55; }
+    .site-footer { border-top: 1px solid var(--border); padding: 2rem 0; text-align: center; font-family: var(--sans); font-size: 0.8rem; color: var(--text-light); line-height: 1.6; }
     .site-footer a { color: var(--accent); }
   </style>
 </head>
@@ -58,6 +60,10 @@
 
 <main>
   <h1>Offline RL: From Theory to Industrial Practice</h1>
+
+  <p class="byline">Created and maintained by <strong>Artem Zvyagintsev</strong></p>
+
+  <p class="disclaimer">Applied learning notes on offline deep reinforcement learning — not an authoritative textbook. The material summarizes algorithms, implementation patterns, and practical caveats; linked code is educational scaffolding.</p>
 
   <p>A practical guide to offline reinforcement learning — for practitioners who know ML and want to apply RL to real-world systems without live experiments.</p>
   <p>Each chapter: <strong>idea → formalization → code → limitations</strong>.</p>
@@ -139,13 +145,21 @@
         <span class="ch-status ready">ready</span>
       </a>
     </li>
+    <li>
+      <a href="/offline-rl-book/en/appendix.html">
+        <span><span class="ch-num">App.</span>Algorithm Selection Guide</span>
+        <span class="ch-status ready">ready</span>
+      </a>
+    </li>
   </ul>
 </main>
 
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">
-    Offline RL: From Theory to Industrial Practice ·
-    <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+    Offline RL: From Theory to Industrial Practice<br>
+    Created and maintained by Artem Zvyagintsev ·
+    <a href="https://github.com/corba777/offline-rl-book">GitHub</a><br>
+    <span style="font-size:0.75rem;margin-top:0.5rem;display:block">© 2026 Artem Zvyagintsev. Educational notes on offline deep reinforcement learning.</span>
   </div>
 </footer>
 

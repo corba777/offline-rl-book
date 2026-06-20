@@ -72,6 +72,26 @@
 <p><strong>Физически-информированные методы</strong> (глава 9) отвечают заимствованием структуры: заменяют неизвестные части модели известной физикой, ограничивают сигнал награды физическими законами и обеспечивают жёсткие ограничения через двойственность Лагранжа. Этот подход возможен только при наличии инженерных знаний — но когда они есть, он наиболее эффективен по данным.</p>
 <p><strong>Промышленный кейс</strong> (глава 10) показал, как эти инструменты компонуются в условиях, когда ставки реальны: пятипеременный процесс с интегрирующей динамикой, транспортной задержкой, неравномерным покрытием данных и жёсткими ограничениями оборудования. Ни один алгоритм не доминировал. Практическая рекомендация — CQL+Physics для минимальных нарушений ограничений, HybridMOReL когда нужна более высокая награда — отражает не победителя, а комплементарную структуру между безмодельным соблюдением ограничений и модельно-основанным разнообразием.</p>
 <hr />
+<h2>Когда не стоит использовать Offline RL</h2>
+<p>Offline RL — не инструмент по умолчанию для любой задачи последовательных решений. <strong>Улучшение политики при ограничениях support данных</strong> имеет смысл только когда задача действительно RL-формата и логи поддерживают амбицию.</p>
+<p><strong>Не используйте</strong> offline RL (или отложите), если:</p>
+<ul>
+<li><strong>BC уже достаточен</strong> — безопасное улучшение над поведенческой политикой не нужно или не измеримо.</li>
+<li><strong>Награда плохо определена</strong> — задержанная, proxy или confounded; «максимизировать return» бессмысленно.</li>
+<li><strong>Логи от одной узкой политики</strong> — мало разнообразия действий/состояний; нечего извлекать.</li>
+<li><strong>Пространство действий недоинструментировано</strong> — нет рычагов, которые реально управляют процессом.</li>
+<li><strong>Confounders отсутствуют в state</strong> — причинная структура неверна.</li>
+<li><strong>Высокий риск deploy и слабый OPE</strong> — оценки расходятся или нет покрытия для целевой политики.</li>
+<li><strong>Задача ближе к</strong> supervised forecasting, MPC, constrained optimization, Bayesian optimization, contextual bandits или causal evaluation — не long-horizon RL по логам.</li>
+</ul>
+<p>В manufacturing / process control спросите: <em>узкое место — данные, динамика, награда или риск вмешательства?</em> Часто сначала нужен более простой baseline.</p>
+<p><strong>Альтернативы:</strong> сильный BC + правила; MPC; surrogate + optimizer; offline bandits при коротком горизонте; OPE до value-based методов.</p>
+<p>См. <a href="/offline-rl-book/ru/appendix.html">Приложение: выбор алгоритма</a>.</p>
+<hr />
+<h2>О коде в этой книге</h2>
+<p>Python-файлы в главах — <strong>учебные скелеты</strong> на игрушечной среде, не benchmark-grade реализации.</p>
+<p>Нормализация, протокол eval и initial states в OPE легко ломаются незаметно. При расхождении snippet и <code>code/*.py</code> <strong>доверяйте raw-коду</strong>. Материал суммирует методы и caveats; не заменяет статьи и production-библиотеки (d3rlpy, CleanRL, релизы авторов).</p>
+<hr />
 <h2>Что Offline RL пока не может гарантировать</h2>
 <p>Честность требует назвать то, что в этой области не решено.</p>
 <p><strong>Сдвиг распределения при развёртывании.</strong> Каждый алгоритм Offline RL обучает политику $\pi$, предполагая, что развёртываемая среда соответствует обучающей. Когда процесс меняется — оборудование изнашивается, состав сырья смещается, внешние условия меняются — офлайн-обученная политика не имеет механизма обнаружения или адаптации. Теоретические гарантии глав 4–9 справедливы только пока тестовое распределение напоминает обучающее. На практике это вопрос времени: как скоро разрыв станет опасным?</p>
@@ -237,11 +257,14 @@
 </ul></main>
 <nav class="chapter-nav">
 <a href="/offline-rl-book/ru/chapter11.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Объяснимость в Offline RL</span></a>
-    
+    <a href="/offline-rl-book/ru/appendix.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Приложение: выбор алгоритма</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">
-    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+    Offline RL: From Theory to Industrial Practice<br>
+    Created and maintained by Artem Zvyagintsev ·
+    <a href="https://github.com/corba777/offline-rl-book">GitHub</a><br>
+    <span style="font-size:0.75rem;margin-top:0.5rem;display:block">© 2026 Artem Zvyagintsev. Educational notes on offline deep reinforcement learning.</span>
   </div>
 </footer>
 </body>

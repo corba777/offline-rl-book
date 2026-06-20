@@ -72,6 +72,26 @@
 <p><strong>Physics-informed methods</strong> (Chapter 9) answer it by borrowing structure: replace the unknown parts of the model with known physics, constrain the reward signal to respect physical laws, and enforce hard constraints via Lagrangian duality. This approach is only possible when engineering knowledge exists — but when it does, it is the most data-efficient of all.</p>
 <p><strong>The industrial case study</strong> (Chapter 10) showed these tools composing in a setting where the stakes are real: a five-variable process with integrating dynamics, transport delay, non-uniform data coverage, and hard equipment constraints. No single algorithm dominated. The practical recommendation — CQL+Physics for minimal constraint violations, HybridMOReL when higher reward is needed — reflects not a winner but a complementary structure between model-free constraint enforcement and model-based diversity.</p>
 <hr />
+<h2>When Not to Use Offline RL</h2>
+<p>Offline RL is not the default tool for every sequential decision problem. <strong>Policy improvement under data support constraints</strong> only helps when the problem is genuinely RL-shaped and the logs support the ambition.</p>
+<p>Consider <strong>not</strong> using offline RL (or deferring it) when:</p>
+<ul>
+<li><strong>BC already meets the bar</strong> — safe improvement over the behavior policy is unnecessary or unmeasurable.</li>
+<li><strong>The reward is poorly defined</strong> — delayed, proxy, or confounded signals make “optimize return” meaningless.</li>
+<li><strong>Logs come from one narrow policy</strong> — little diversity in actions or states; no better modes to extract.</li>
+<li><strong>The action space is under-instrumented</strong> — you cannot act on the levers that matter; logs miss key controls.</li>
+<li><strong>Confounders are missing from the state</strong> — causal structure is wrong; any policy will inherit spurious correlations.</li>
+<li><strong>Deployment risk is high and OPE is weak</strong> — estimators disagree or coverage for the target policy is poor.</li>
+<li><strong>The real task is closer to</strong> supervised forecasting, MPC with a known model, constrained optimization, Bayesian optimization, contextual bandits, or causal policy evaluation — not long-horizon RL from logs.</li>
+</ul>
+<p>In manufacturing and process control, ask first: <em>Is the bottleneck data, dynamics, reward design, or intervention risk?</em> Often the answer points to a simpler baseline before CQL/IQL.</p>
+<p><strong>Alternatives worth trying first:</strong> strong BC + rules; model predictive control; surrogate model + constrained optimizer; offline contextual bandits when horizon is short; rigorous OPE before any value-based method.</p>
+<p>See the <a href="/offline-rl-book/en/appendix.html">Appendix: Algorithm Selection Guide</a> for method-by-method anchors.</p>
+<hr />
+<h2>About the Code in This Book</h2>
+<p>The Python files linked from chapters are <strong>educational scaffolding</strong> — they clarify algorithmic skeletons on a toy environment. They are <strong>not</strong> benchmark-grade reference code.</p>
+<p>Treat them accordingly: normalization, evaluation protocol, and OPE initial-state handling are easy to get subtly wrong. When embedded snippets and <code>code/*.py</code> disagree, <strong>trust the raw code</strong> (or fix the snippet). This resource summarizes methods and caveats; it does not replace reading the original papers or production-grade libraries (d3rlpy, CleanRL, author releases).</p>
+<hr />
 <h2>What Offline RL Cannot Yet Guarantee</h2>
 <p>Honesty requires naming what this field has not solved.</p>
 <p><strong>Distribution shift at deployment.</strong> Every offline RL algorithm trains a policy $\pi$ assuming the deployed environment matches the training environment. When the process changes — equipment wears, feed composition shifts, ambient conditions differ — the offline-trained policy has no mechanism to detect or adapt. The theoretical guarantees from Chapters 4–9 hold only as long as the test distribution resembles the training distribution. In practice, this is a calendar question: how long until the gap becomes dangerous?</p>
@@ -237,11 +257,14 @@
 </ul></main>
 <nav class="chapter-nav">
 <a href="/offline-rl-book/en/chapter11.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Explainability in Offline RL</span></a>
-    
+    <a href="/offline-rl-book/en/appendix.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Appendix: Algorithm Selection Guide</span></a>
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">
-    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+    Offline RL: From Theory to Industrial Practice<br>
+    Created and maintained by Artem Zvyagintsev ·
+    <a href="https://github.com/corba777/offline-rl-book">GitHub</a><br>
+    <span style="font-size:0.75rem;margin-top:0.5rem;display:block">© 2026 Artem Zvyagintsev. Educational notes on offline deep reinforcement learning.</span>
   </div>
 </footer>
 </body>

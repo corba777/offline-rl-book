@@ -6,7 +6,9 @@ ru_url: /ru/chapter12/
 prev_chapter:
   url: /en/chapter11/
   title: "Explainability in Offline RL"
-next_chapter: null
+next_chapter:
+  url: /en/appendix/
+  title: "Appendix: Algorithm Selection Guide"
 permalink: "/offline-rl-book/en/chapter12/"
 ---
 
@@ -31,6 +33,36 @@ The caveats are not engineering details. They are structural features of the off
 **Physics-informed methods** (Chapter 9) answer it by borrowing structure: replace the unknown parts of the model with known physics, constrain the reward signal to respect physical laws, and enforce hard constraints via Lagrangian duality. This approach is only possible when engineering knowledge exists — but when it does, it is the most data-efficient of all.
 
 **The industrial case study** (Chapter 10) showed these tools composing in a setting where the stakes are real: a five-variable process with integrating dynamics, transport delay, non-uniform data coverage, and hard equipment constraints. No single algorithm dominated. The practical recommendation — CQL+Physics for minimal constraint violations, HybridMOReL when higher reward is needed — reflects not a winner but a complementary structure between model-free constraint enforcement and model-based diversity.
+
+---
+
+## When Not to Use Offline RL
+
+Offline RL is not the default tool for every sequential decision problem. **Policy improvement under data support constraints** only helps when the problem is genuinely RL-shaped and the logs support the ambition.
+
+Consider **not** using offline RL (or deferring it) when:
+
+- **BC already meets the bar** — safe improvement over the behavior policy is unnecessary or unmeasurable.
+- **The reward is poorly defined** — delayed, proxy, or confounded signals make “optimize return” meaningless.
+- **Logs come from one narrow policy** — little diversity in actions or states; no better modes to extract.
+- **The action space is under-instrumented** — you cannot act on the levers that matter; logs miss key controls.
+- **Confounders are missing from the state** — causal structure is wrong; any policy will inherit spurious correlations.
+- **Deployment risk is high and OPE is weak** — estimators disagree or coverage for the target policy is poor.
+- **The real task is closer to** supervised forecasting, MPC with a known model, constrained optimization, Bayesian optimization, contextual bandits, or causal policy evaluation — not long-horizon RL from logs.
+
+In manufacturing and process control, ask first: *Is the bottleneck data, dynamics, reward design, or intervention risk?* Often the answer points to a simpler baseline before CQL/IQL.
+
+**Alternatives worth trying first:** strong BC + rules; model predictive control; surrogate model + constrained optimizer; offline contextual bandits when horizon is short; rigorous OPE before any value-based method.
+
+See the [Appendix: Algorithm Selection Guide](/offline-rl-book/en/appendix.html) for method-by-method anchors.
+
+---
+
+## About the Code in This Book
+
+The Python files linked from chapters are **educational scaffolding** — they clarify algorithmic skeletons on a toy environment. They are **not** benchmark-grade reference code.
+
+Treat them accordingly: normalization, evaluation protocol, and OPE initial-state handling are easy to get subtly wrong. When embedded snippets and `code/*.py` disagree, **trust the raw code** (or fix the snippet). This resource summarizes methods and caveats; it does not replace reading the original papers or production-grade libraries (d3rlpy, CleanRL, author releases).
 
 ---
 

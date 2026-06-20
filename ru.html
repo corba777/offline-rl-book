@@ -35,7 +35,9 @@
     .ch-num{font-size:0.78rem;color:var(--text-light);font-weight:400;margin-right:0.75rem;flex-shrink:0}
     .ch-status{font-size:0.75rem;color:var(--text-light);background:var(--bg-code);border:1px solid var(--border);padding:0.15rem 0.5rem;border-radius:20px;flex-shrink:0}
     .ch-status.ready{background:#dcfce7;border-color:#86efac;color:#166534}
-    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .byline{font-family:var(--sans);font-size:0.9rem;color:var(--text-light);margin-bottom:0.5rem}
+    .disclaimer{font-family:var(--sans);font-size:0.88rem;color:var(--text-light);background:var(--bg-code);border:1px solid var(--border);border-radius:6px;padding:0.85rem 1rem;margin:1.25rem 0 1.5rem;line-height:1.55}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light);line-height:1.6}
     .site-footer a{color:var(--accent)}
   </style>
 </head>
@@ -48,6 +50,8 @@
 </header>
 <main>
   <h1>Offline RL: От теории к промышленной практике</h1>
+  <p class="byline">Created and maintained by <strong>Artem Zvyagintsev</strong></p>
+  <p class="disclaimer">Прикладные учебные заметки по offline deep RL — не авторитетный textbook. Материал суммирует алгоритмы, паттерны реализации и практические caveats; код — учебный каркас.</p>
   <p>Практическое руководство по офлайн обучению с подкреплением — для практиков, которые знают ML и хотят применять RL к реальным системам без живых экспериментов.</p>
   <p>Каждая глава: <strong>идея → формализация → код → ограничения</strong>.</p>
   <hr>
@@ -65,10 +69,11 @@
     <li><a href="/offline-rl-book/ru/chapter10.html"><span><span class="ch-num">Гл 10</span>Промышленные применения</span><span class="ch-status ready">готово</span></a></li>
     <li><a href="/offline-rl-book/ru/chapter11.html"><span><span class="ch-num">Гл 11</span>Объяснимость в Offline RL</span><span class="ch-status ready">готово</span></a></li>
     <li><a href="/offline-rl-book/ru/chapter12.html"><span><span class="ch-num">Гл 12</span>Заключение и перспективы</span><span class="ch-status ready">готово</span></a></li>
+    <li><a href="/offline-rl-book/ru/appendix.html"><span><span class="ch-num">Прил.</span>Выбор алгоритма</span><span class="ch-status ready">готово</span></a></li>
   </ul>
 </main>
 <footer class="site-footer">
-  <div style="max-width:720px;margin:0 auto">Offline RL · <a href="https://github.com/corba777/offline-rl-book">GitHub</a></div>
+  <div style="max-width:720px;margin:0 auto">Offline RL · Created and maintained by Artem Zvyagintsev · <a href="https://github.com/corba777/offline-rl-book">GitHub</a><br><span style="font-size:0.75rem;margin-top:0.5rem;display:block">© 2026 Artem Zvyagintsev. Educational notes on offline deep reinforcement learning.</span></div>
 </footer>
 </body>
 </html>

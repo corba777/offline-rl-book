@@ -84,7 +84,10 @@ __NAV__
 </nav>
 <footer class="site-footer">
   <div style="max-width:720px;margin:0 auto">
-    Offline RL: From Theory to Industrial Practice · <a href="https://github.com/corba777/offline-rl-book">GitHub</a>
+    Offline RL: From Theory to Industrial Practice<br>
+    Created and maintained by Artem Zvyagintsev ·
+    <a href="https://github.com/corba777/offline-rl-book">GitHub</a><br>
+    <span style="font-size:0.75rem;margin-top:0.5rem;display:block">© 2026 Artem Zvyagintsev. Educational notes on offline deep reinforcement learning.</span>
   </div>
 </footer>
 </body>
@@ -215,7 +218,8 @@ def main():
         if not md_dir.is_dir():
             continue
         print(f"{folder}/")
-        for md_path in sorted(md_dir.glob("chapter*.md")):
+        for name in sorted(md_dir.glob("chapter*.md")) + sorted(md_dir.glob("appendix.md")):
+            md_path = name
             out_path = md_dir / md_path.name.replace(".md", ".html")
             convert_file(md_path, out_path)
     print("Done.")

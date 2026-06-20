@@ -1,6 +1,6 @@
 # Offline RL: From Theory to Industrial Practice
 
-A practical book on offline reinforcement learning.
+Applied learning notes on offline deep reinforcement learning — **created and maintained by Artem Zvyagintsev**. Not an authoritative textbook; code is educational scaffolding.
 
 **English:** https://corba777.github.io/offline-rl-book/  
 **Russian:**  https://corba777.github.io/offline-rl-book/ru/
@@ -21,6 +21,7 @@ A practical book on offline reinforcement learning.
 | 10. Industrial Applications | `en/chapter10.md` | `ru/chapter10.md` | ✅ Ready |
 | 11. Explainability in Offline RL | `en/chapter11.md` | `ru/chapter11.md` | ✅ Ready |
 | 12. Conclusion and Future Directions | `en/chapter12.md` | `ru/chapter12.md` | ✅ Ready |
+| App. Algorithm Selection Guide | `en/appendix.md` | `ru/appendix.md` | ✅ Ready |
 
 **Algorithm coverage:** Off-Policy Evaluation (OPE) has a dedicated chapter (Ch 3). Value-based (CQL, IQL), policy-constraint / Actor-Critic (TD3+BC, AWAC), Decision Transformers, and model-based (MOPO, MOReL) each have dedicated chapters. Chapter 2 maps the full landscape with references.
 
