@@ -441,7 +441,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
 <p>Chapters 9 and 10 already use <strong>physics-informed constraint penalties</strong> and hard bounds: the policy is trained to avoid regions where constraints are violated. That gives <em>expected</em> constraint satisfaction — violations are rare but not provably zero.</p>
 <p>For higher assurance, two directions are relevant in industry:</p>
 <ul>
-<li><strong>Safety critics</strong> (see Chapter 12): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.</li>
+<li><strong>Safety critics</strong> (see Chapter 13): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.</li>
 <li><strong>Action masking / safe sets:</strong> At runtime, before applying the RL action, check whether it would push the state toward a constraint boundary. If the predicted next state (from a physics or hybrid model) violates a bound, replace the action with a safe alternative: e.g. clip to a conservative set, or switch to a PID that only corrects toward setpoint without aggressive moves. This is especially useful when the primary policy is model-based (HybridMOReL): the same ensemble that generates rollouts can predict $s'$ and flag unsafe actions.</li>
 </ul>
 <p>Neither approach removes the need for the constraint calibration described earlier; they add a second layer of checks at deployment.</p>
@@ -453,7 +453,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
 <li><strong>Density / OOD score:</strong> Fit a density model (e.g. Gaussian mixture, normalizing flow, or leave-one-out kernel density) on training states. At runtime, compute the log-density of the current state (or a short trajectory). If the score drops below a chosen quantile of the training scores, treat the situation as out-of-distribution.</li>
 <li><strong>Ensemble disagreement:</strong> If you use a dynamics ensemble (e.g. HybridMOReL), high prediction variance indicates epistemic uncertainty — the model has not seen similar states. Use the same <code>halt_thresh</code> logic: when uncertainty is above threshold, consider the state as drifted relative to what the model was trained on.</li>
 </ul>
-<p><strong>What to do when drift is detected:</strong> Reduce confidence in the RL policy. Options include: (1) switch to a <strong>fallback policy</strong> (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a <strong>retrain</strong> on historical + recent deployment data. Chapter 12’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.</p>
+<p><strong>What to do when drift is detected:</strong> Reduce confidence in the RL policy. Options include: (1) switch to a <strong>fallback policy</strong> (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a <strong>retrain</strong> on historical + recent deployment data. Chapter 13’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.</p>
 <h3>Fallback Offline RL</h3>
 <p>A <strong>fallback policy</strong> is a safe default used when the primary RL policy is deemed unreliable: after drift is detected, when a constraint violation is predicted or observed, or when uncertainty is above threshold.</p>
 <p><strong>Choosing the fallback:</strong></p>
@@ -469,7 +469,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
 <li>Else: use <strong>fallback policy</strong> (BC or PID).</li>
 <li>Optionally: if a constraint violation is observed, force fallback for the next $K$ steps or until the state returns to a safe region.</li>
 </ol>
-<p>This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 12), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.</p>
+<p>This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 13), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.</p>
 <hr />
 <h2>Summary</h2>
 <p>This chapter translated the tools from Chapters 1–9 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>

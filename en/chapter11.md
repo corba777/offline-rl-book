@@ -275,7 +275,7 @@ Expected output:
 
 **Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in Q-function and policy. $\rho > 0.6$ means the agent's critic and actor attend to the same features. $\rho < 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.
 
-**Physics sign tests:** `heat_input` → `next_temperature` SHAP must be positive; `flow_input` → `next_filler_frac` SHAP must be positive. Failure indicates the dynamics model learned a physically inverted relationship in some data region — common when coverage near boundaries is very sparse.
+**Physics sign tests:** `heat_input` should show a positive dependence slope with `next_temperature`, and `flow_input` with `next_filler_frac` — test the feature-vs-SHAP slope (or dependence plot), not the mean signed SHAP, which can sit near zero when instances straddle the background. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse.
 
 ---
 
@@ -353,7 +353,7 @@ Three complementary SHAP explanations for a trained Offline RL agent:
 
 The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.
 
-Chapter 12 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.
+Chapter 13 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.
 
 ---
 

@@ -243,7 +243,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 </code></pre></div>
 
 <p><strong>Q-policy Spearman $\rho$:</strong> ranks state features by mean |SHAP| in Q-function and policy. $\rho > 0.6$ means the agent's critic and actor attend to the same features. $\rho < 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.</p>
-<p><strong>Physics sign tests:</strong> <code>heat_input</code> → <code>next_temperature</code> SHAP must be positive; <code>flow_input</code> → <code>next_filler_frac</code> SHAP must be positive. Failure indicates the dynamics model learned a physically inverted relationship in some data region — common when coverage near boundaries is very sparse.</p>
+<p><strong>Physics sign tests:</strong> <code>heat_input</code> should show a positive dependence slope with <code>next_temperature</code>, and <code>flow_input</code> with <code>next_filler_frac</code> — test the feature-vs-SHAP slope (or dependence plot), not the mean signed SHAP, which can sit near zero when instances straddle the background. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse.</p>
 <hr />
 <h2>SHAP in Production: Practical Considerations</h2>
 <p><strong>Computational cost.</strong> KernelExplainer makes $n\_\text{explain} \times n\_\text{samples} \times n\_\text{background}$ model evaluations. For 150 × 80 × 80 = 960,000 calls this takes minutes on CPU. Practical strategy: run offline before deployment on a held-out validation set; re-run monthly on recent operating data to detect distribution shift.</p>
@@ -322,7 +322,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 </tbody>
 </table>
 <p>The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.</p>
-<p>Chapter 12 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
+<p>Chapter 13 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
 <hr />
 <h2>Appendix 11.A: Choosing Between SHAP Variants</h2>
 <table>

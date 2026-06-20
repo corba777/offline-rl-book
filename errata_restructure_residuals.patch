@@ -1,0 +1,264 @@
+diff --git a/en/chapter10.html b/en/chapter10.html
+index 46df6a5..2a49ea2 100644
+--- a/en/chapter10.html
++++ b/en/chapter10.html
+@@ -441,7 +441,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ <p>Chapters 9 and 10 already use <strong>physics-informed constraint penalties</strong> and hard bounds: the policy is trained to avoid regions where constraints are violated. That gives <em>expected</em> constraint satisfaction — violations are rare but not provably zero.</p>
+ <p>For higher assurance, two directions are relevant in industry:</p>
+ <ul>
+-<li><strong>Safety critics</strong> (see Chapter 12): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.</li>
++<li><strong>Safety critics</strong> (see Chapter 13): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.</li>
+ <li><strong>Action masking / safe sets:</strong> At runtime, before applying the RL action, check whether it would push the state toward a constraint boundary. If the predicted next state (from a physics or hybrid model) violates a bound, replace the action with a safe alternative: e.g. clip to a conservative set, or switch to a PID that only corrects toward setpoint without aggressive moves. This is especially useful when the primary policy is model-based (HybridMOReL): the same ensemble that generates rollouts can predict $s'$ and flag unsafe actions.</li>
+ </ul>
+ <p>Neither approach removes the need for the constraint calibration described earlier; they add a second layer of checks at deployment.</p>
+@@ -453,7 +453,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ <li><strong>Density / OOD score:</strong> Fit a density model (e.g. Gaussian mixture, normalizing flow, or leave-one-out kernel density) on training states. At runtime, compute the log-density of the current state (or a short trajectory). If the score drops below a chosen quantile of the training scores, treat the situation as out-of-distribution.</li>
+ <li><strong>Ensemble disagreement:</strong> If you use a dynamics ensemble (e.g. HybridMOReL), high prediction variance indicates epistemic uncertainty — the model has not seen similar states. Use the same <code>halt_thresh</code> logic: when uncertainty is above threshold, consider the state as drifted relative to what the model was trained on.</li>
+ </ul>
+-<p><strong>What to do when drift is detected:</strong> Reduce confidence in the RL policy. Options include: (1) switch to a <strong>fallback policy</strong> (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a <strong>retrain</strong> on historical + recent deployment data. Chapter 12’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.</p>
++<p><strong>What to do when drift is detected:</strong> Reduce confidence in the RL policy. Options include: (1) switch to a <strong>fallback policy</strong> (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a <strong>retrain</strong> on historical + recent deployment data. Chapter 13’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.</p>
+ <h3>Fallback Offline RL</h3>
+ <p>A <strong>fallback policy</strong> is a safe default used when the primary RL policy is deemed unreliable: after drift is detected, when a constraint violation is predicted or observed, or when uncertainty is above threshold.</p>
+ <p><strong>Choosing the fallback:</strong></p>
+@@ -469,7 +469,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ <li>Else: use <strong>fallback policy</strong> (BC or PID).</li>
+ <li>Optionally: if a constraint violation is observed, force fallback for the next $K$ steps or until the state returns to a safe region.</li>
+ </ol>
+-<p>This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 12), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.</p>
++<p>This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 13), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.</p>
+ <hr />
+ <h2>Summary</h2>
+ <p>This chapter translated the tools from Chapters 1–9 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.</p>
+diff --git a/en/chapter10.md b/en/chapter10.md
+index 3468f96..2988934 100644
+--- a/en/chapter10.md
++++ b/en/chapter10.md
+@@ -442,7 +442,7 @@ Chapters 9 and 10 already use **physics-informed constraint penalties** and hard
+ 
+ For higher assurance, two directions are relevant in industry:
+ 
+-- **Safety critics** (see Chapter 12): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.
++- **Safety critics** (see Chapter 13): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.
+ - **Action masking / safe sets:** At runtime, before applying the RL action, check whether it would push the state toward a constraint boundary. If the predicted next state (from a physics or hybrid model) violates a bound, replace the action with a safe alternative: e.g. clip to a conservative set, or switch to a PID that only corrects toward setpoint without aggressive moves. This is especially useful when the primary policy is model-based (HybridMOReL): the same ensemble that generates rollouts can predict $s'$ and flag unsafe actions.
+ 
+ Neither approach removes the need for the constraint calibration described earlier; they add a second layer of checks at deployment.
+@@ -457,7 +457,7 @@ Neither approach removes the need for the constraint calibration described earli
+ - **Density / OOD score:** Fit a density model (e.g. Gaussian mixture, normalizing flow, or leave-one-out kernel density) on training states. At runtime, compute the log-density of the current state (or a short trajectory). If the score drops below a chosen quantile of the training scores, treat the situation as out-of-distribution.
+ - **Ensemble disagreement:** If you use a dynamics ensemble (e.g. HybridMOReL), high prediction variance indicates epistemic uncertainty — the model has not seen similar states. Use the same `halt_thresh` logic: when uncertainty is above threshold, consider the state as drifted relative to what the model was trained on.
+ 
+-**What to do when drift is detected:** Reduce confidence in the RL policy. Options include: (1) switch to a **fallback policy** (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a **retrain** on historical + recent deployment data. Chapter 12’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.
++**What to do when drift is detected:** Reduce confidence in the RL policy. Options include: (1) switch to a **fallback policy** (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a **retrain** on historical + recent deployment data. Chapter 13’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.
+ 
+ ### Fallback Offline RL
+ 
+@@ -476,7 +476,7 @@ A **fallback policy** is a safe default used when the primary RL policy is deeme
+ 3. Else: use **fallback policy** (BC or PID).
+ 4. Optionally: if a constraint violation is observed, force fallback for the next $K$ steps or until the state returns to a safe region.
+ 
+-This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 12), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.
++This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 13), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.
+ 
+ ---
+ 
+diff --git a/en/chapter11.html b/en/chapter11.html
+index 76b5e2c..e5132ac 100644
+--- a/en/chapter11.html
++++ b/en/chapter11.html
+@@ -243,7 +243,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
+ </code></pre></div>
+ 
+ <p><strong>Q-policy Spearman $\rho$:</strong> ranks state features by mean |SHAP| in Q-function and policy. $\rho > 0.6$ means the agent's critic and actor attend to the same features. $\rho < 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.</p>
+-<p><strong>Physics sign tests:</strong> <code>heat_input</code> → <code>next_temperature</code> SHAP must be positive; <code>flow_input</code> → <code>next_filler_frac</code> SHAP must be positive. Failure indicates the dynamics model learned a physically inverted relationship in some data region — common when coverage near boundaries is very sparse.</p>
++<p><strong>Physics sign tests:</strong> <code>heat_input</code> should show a positive dependence slope with <code>next_temperature</code>, and <code>flow_input</code> with <code>next_filler_frac</code> — test the feature-vs-SHAP slope (or dependence plot), not the mean signed SHAP, which can sit near zero when instances straddle the background. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse.</p>
+ <hr />
+ <h2>SHAP in Production: Practical Considerations</h2>
+ <p><strong>Computational cost.</strong> KernelExplainer makes $n\_\text{explain} \times n\_\text{samples} \times n\_\text{background}$ model evaluations. For 150 × 80 × 80 = 960,000 calls this takes minutes on CPU. Practical strategy: run offline before deployment on a held-out validation set; re-run monthly on recent operating data to detect distribution shift.</p>
+@@ -322,7 +322,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
+ </tbody>
+ </table>
+ <p>The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.</p>
+-<p>Chapter 12 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
++<p>Chapter 13 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
+ <hr />
+ <h2>Appendix 11.A: Choosing Between SHAP Variants</h2>
+ <table>
+diff --git a/en/chapter11.md b/en/chapter11.md
+index 3704789..eaab98d 100644
+--- a/en/chapter11.md
++++ b/en/chapter11.md
+@@ -275,7 +275,7 @@ Expected output:
+ 
+ **Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in Q-function and policy. $\rho > 0.6$ means the agent's critic and actor attend to the same features. $\rho < 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.
+ 
+-**Physics sign tests:** `heat_input` → `next_temperature` SHAP must be positive; `flow_input` → `next_filler_frac` SHAP must be positive. Failure indicates the dynamics model learned a physically inverted relationship in some data region — common when coverage near boundaries is very sparse.
++**Physics sign tests:** `heat_input` should show a positive dependence slope with `next_temperature`, and `flow_input` with `next_filler_frac` — test the feature-vs-SHAP slope (or dependence plot), not the mean signed SHAP, which can sit near zero when instances straddle the background. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse.
+ 
+ ---
+ 
+@@ -353,7 +353,7 @@ Three complementary SHAP explanations for a trained Offline RL agent:
+ 
+ The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.
+ 
+-Chapter 12 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.
++Chapter 13 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.
+ 
+ ---
+ 
+diff --git a/en/chapter4.html b/en/chapter4.html
+index 0735f57..d2aded0 100644
+--- a/en/chapter4.html
++++ b/en/chapter4.html
+@@ -420,7 +420,7 @@
+ </tbody>
+ </table>
+ <h3>When to use automatic tuning</h3>
+-<p>Use <code>auto_alpha=True</code> when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set <code>target_cql</code> to a small negative value (e.g. <code>-1.0</code>).</p>
++<p>Use <code>auto_alpha=True</code> when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set <code>target_gap</code> to a positive value on the logsumexp-gap scale (e.g. <code>10.0</code>).</p>
+ <p>Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible experiments, or you have already found a good value via grid search.</p>
+ <hr />
+ <h2>CQL vs TD3+BC: A Comparison</h2>
+diff --git a/en/chapter4.md b/en/chapter4.md
+index 4f4d8e7..175575d 100644
+--- a/en/chapter4.md
++++ b/en/chapter4.md
+@@ -382,7 +382,7 @@ Five runs give a coarse map of the reward–conservatism tradeoff.
+ 
+ ### When to use automatic tuning
+ 
+-Use `auto_alpha=True` when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set `target_cql` to a small negative value (e.g. `-1.0`).
++Use `auto_alpha=True` when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set `target_gap` to a positive value on the logsumexp-gap scale (e.g. `10.0`).
+ 
+ Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible experiments, or you have already found a good value via grid search.
+ 
+diff --git a/ru/chapter10.html b/ru/chapter10.html
+index a2d7ddf..1b19620 100644
+--- a/ru/chapter10.html
++++ b/ru/chapter10.html
+@@ -441,7 +441,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ <p>В главах 9 и 10 уже используются <strong>физически обоснованные штрафы за ограничения</strong> и жёсткие границы: политика обучается избегать областей, где ограничения нарушаются. Это даёт <em>ожидаемое</em> соблюдение ограничений — нарушения редки, но не гарантированно равны нулю.</p>
+ <p>Для более высокой уверенности в промышленности релевантны два направления:</p>
+ <ul>
+-<li><strong>Safety critics</strong> (см. главу 12): обучают отдельную safety Q-функцию, оценивающую риск будущего нарушения ограничений. Политика затем ограничивается так, чтобы сохранять это safety-значение выше порога (например, Conservative Safety Critics, CVPO). Это даёт вероятностные сертификаты безопасности, а не эвристические штрафы.</li>
++<li><strong>Safety critics</strong> (см. главу 13): обучают отдельную safety Q-функцию, оценивающую риск будущего нарушения ограничений. Политика затем ограничивается так, чтобы сохранять это safety-значение выше порога (например, Conservative Safety Critics, CVPO). Это даёт вероятностные сертификаты безопасности, а не эвристические штрафы.</li>
+ <li><strong>Маскирование действий / безопасные множества:</strong> на каждом шаге перед применением действия RL проверять, не приближает ли оно состояние к границе ограничения. Если предсказанное следующее состояние (по физической или гибридной модели) нарушает границу, заменить действие безопасной альтернативой: например, ограничить консервативным множеством или переключиться на ПИД, который только подводит к уставке без агрессивных шагов. Особенно полезно, когда основная политика модельная (HybridMOReL): тот же ансамбль, что генерирует rollout’ы, может предсказывать $s'$ и помечать небезопасные действия.</li>
+ </ul>
+ <p>Ни тот ни другой подход не отменяют калибровку ограничений выше; они добавляют второй уровень проверок при внедрении.</p>
+@@ -453,7 +453,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ <li><strong>Плотность / OOD-оценка:</strong> обучить модель плотности (например, гауссовская смесь, normalizing flow или ядерная оценка) на обучающих состояниях. В рантайме вычислять лог-плотность текущего состояния (или короткой траектории). Если оценка падает ниже выбранного квантиля обучающих оценок — считать ситуацию вне распределения.</li>
+ <li><strong>Разброс ансамбля:</strong> при использовании ансамбля динамики (например, HybridMOReL) высокая дисперсия предсказания означает эпистемическую неопределённость — модель не видела похожих состояний. Использовать ту же логику <code>halt_thresh</code>: при неопределённости выше порога считать состояние «ушедшим» относительно того, на чём обучалась модель.</li>
+ </ul>
+-<p><strong>Что делать при детекции дрейфа:</strong> снижать доверие к RL-политике. Варианты: (1) переключиться на <strong>резервную политику</strong> (ниже); (2) масштабировать действие RL (смешивать с безопасным базовым); (3) запустить проверку человеком или алерт; (4) запланировать <strong>переобучение</strong> на исторических и свежих данных внедрения. В дорожной карте главы 12 рекомендуется переобучать, когда доля наблюдений вне обучающего распределения превышает примерно 5–10%.</p>
++<p><strong>Что делать при детекции дрейфа:</strong> снижать доверие к RL-политике. Варианты: (1) переключиться на <strong>резервную политику</strong> (ниже); (2) масштабировать действие RL (смешивать с безопасным базовым); (3) запустить проверку человеком или алерт; (4) запланировать <strong>переобучение</strong> на исторических и свежих данных внедрения. В дорожной карте главы 13 рекомендуется переобучать, когда доля наблюдений вне обучающего распределения превышает примерно 5–10%.</p>
+ <h3>Резервная офлайн RL политика (Fallback)</h3>
+ <p><strong>Резервная политика (fallback)</strong> — безопасный вариант по умолчанию, когда основная RL-политика считается ненадёжной: после детекции дрейфа, при предсказанном или наблюдённом нарушении ограничения или при неопределённости выше порога.</p>
+ <p><strong>Выбор fallback:</strong></p>
+@@ -469,7 +469,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
+ <li>Иначе: использовать <strong>резервную политику</strong> (BC или ПИД).</li>
+ <li>Опционально: при наблюдённом нарушении ограничения принудительно использовать fallback следующие $K$ шагов или до возврата в безопасную область.</li>
+ </ol>
+-<p>Так система использует лучшую политику, когда распределение совпадает с обучающим, и автоматически откатывается к безопасной офлайн или классической политике, когда нет. Вместе с периодическим переобучением (глава 12) детекция дрейфа и fallback делают офлайн RL применимым в промышленности, где процесс эволюционирует, а безопасность не подлежит обсуждению.</p>
++<p>Так система использует лучшую политику, когда распределение совпадает с обучающим, и автоматически откатывается к безопасной офлайн или классической политике, когда нет. Вместе с периодическим переобучением (глава 13) детекция дрейфа и fallback делают офлайн RL применимым в промышленности, где процесс эволюционирует, а безопасность не подлежит обсуждению.</p>
+ <hr />
+ <h2>Итог</h2>
+ <p>Эта глава перевела инструменты из глав 1–9 в реалистичный промышленный pipeline. Процесс нанесения покрытия ввёл два вызова, отсутствующих в игрушечной среде: интегрирующую переменную уровня и транспортную задержку в динамике наполнителя. Оба потребовали инженерных знаний — в физической модели или в спецификации ограничений.</p>
+diff --git a/ru/chapter10.md b/ru/chapter10.md
+index d9679f5..e43101c 100644
+--- a/ru/chapter10.md
++++ b/ru/chapter10.md
+@@ -442,7 +442,7 @@ for g, lam in zip(constraints, lambdas):
+ 
+ Для более высокой уверенности в промышленности релевантны два направления:
+ 
+-- **Safety critics** (см. главу 12): обучают отдельную safety Q-функцию, оценивающую риск будущего нарушения ограничений. Политика затем ограничивается так, чтобы сохранять это safety-значение выше порога (например, Conservative Safety Critics, CVPO). Это даёт вероятностные сертификаты безопасности, а не эвристические штрафы.
++- **Safety critics** (см. главу 13): обучают отдельную safety Q-функцию, оценивающую риск будущего нарушения ограничений. Политика затем ограничивается так, чтобы сохранять это safety-значение выше порога (например, Conservative Safety Critics, CVPO). Это даёт вероятностные сертификаты безопасности, а не эвристические штрафы.
+ - **Маскирование действий / безопасные множества:** на каждом шаге перед применением действия RL проверять, не приближает ли оно состояние к границе ограничения. Если предсказанное следующее состояние (по физической или гибридной модели) нарушает границу, заменить действие безопасной альтернативой: например, ограничить консервативным множеством или переключиться на ПИД, который только подводит к уставке без агрессивных шагов. Особенно полезно, когда основная политика модельная (HybridMOReL): тот же ансамбль, что генерирует rollout’ы, может предсказывать $s'$ и помечать небезопасные действия.
+ 
+ Ни тот ни другой подход не отменяют калибровку ограничений выше; они добавляют второй уровень проверок при внедрении.
+@@ -457,7 +457,7 @@ for g, lam in zip(constraints, lambdas):
+ - **Плотность / OOD-оценка:** обучить модель плотности (например, гауссовская смесь, normalizing flow или ядерная оценка) на обучающих состояниях. В рантайме вычислять лог-плотность текущего состояния (или короткой траектории). Если оценка падает ниже выбранного квантиля обучающих оценок — считать ситуацию вне распределения.
+ - **Разброс ансамбля:** при использовании ансамбля динамики (например, HybridMOReL) высокая дисперсия предсказания означает эпистемическую неопределённость — модель не видела похожих состояний. Использовать ту же логику `halt_thresh`: при неопределённости выше порога считать состояние «ушедшим» относительно того, на чём обучалась модель.
+ 
+-**Что делать при детекции дрейфа:** снижать доверие к RL-политике. Варианты: (1) переключиться на **резервную политику** (ниже); (2) масштабировать действие RL (смешивать с безопасным базовым); (3) запустить проверку человеком или алерт; (4) запланировать **переобучение** на исторических и свежих данных внедрения. В дорожной карте главы 12 рекомендуется переобучать, когда доля наблюдений вне обучающего распределения превышает примерно 5–10%.
++**Что делать при детекции дрейфа:** снижать доверие к RL-политике. Варианты: (1) переключиться на **резервную политику** (ниже); (2) масштабировать действие RL (смешивать с безопасным базовым); (3) запустить проверку человеком или алерт; (4) запланировать **переобучение** на исторических и свежих данных внедрения. В дорожной карте главы 13 рекомендуется переобучать, когда доля наблюдений вне обучающего распределения превышает примерно 5–10%.
+ 
+ ### Резервная офлайн RL политика (Fallback)
+ 
+@@ -476,7 +476,7 @@ for g, lam in zip(constraints, lambdas):
+ 3. Иначе: использовать **резервную политику** (BC или ПИД).
+ 4. Опционально: при наблюдённом нарушении ограничения принудительно использовать fallback следующие $K$ шагов или до возврата в безопасную область.
+ 
+-Так система использует лучшую политику, когда распределение совпадает с обучающим, и автоматически откатывается к безопасной офлайн или классической политике, когда нет. Вместе с периодическим переобучением (глава 12) детекция дрейфа и fallback делают офлайн RL применимым в промышленности, где процесс эволюционирует, а безопасность не подлежит обсуждению.
++Так система использует лучшую политику, когда распределение совпадает с обучающим, и автоматически откатывается к безопасной офлайн или классической политике, когда нет. Вместе с периодическим переобучением (глава 13) детекция дрейфа и fallback делают офлайн RL применимым в промышленности, где процесс эволюционирует, а безопасность не подлежит обсуждению.
+ 
+ ---
+ 
+diff --git a/ru/chapter11.html b/ru/chapter11.html
+index dae98f0..fffd3b7 100644
+--- a/ru/chapter11.html
++++ b/ru/chapter11.html
+@@ -243,7 +243,7 @@ SHAP признаков действия отвечает: «было ли эт
+ </code></pre></div>
+ 
+ <p><strong>Ранговая корреляция Спирмена Q-политика $\rho$:</strong> ранжирует признаки состояния по среднему |SHAP| в Q-функции и в политике. $\rho > 0.6$ означает, что критик и актор обращают внимание на одни и те же признаки. $\rho < 0.3$ указывает на коллапс политики — актор игнорирует большую часть состояния, которое важно критику. Характерно при слишком большом $\alpha$ в CQL.</p>
+-<p><strong>Проверки знака физики:</strong> SHAP <code>heat_input</code> → <code>next_temperature</code> должен быть положительным; <code>flow_input</code> → <code>next_filler_frac</code> — тоже. Нарушение указывает на то, что модель динамики выучила физически инвертированную зависимость в некоторой области данных — характерно при очень разреженном покрытии вблизи границ.</p>
++<p><strong>Проверки знака физики:</strong> у <code>heat_input</code> должен быть положительный наклон зависимости с <code>next_temperature</code>, и у <code>flow_input</code> — с <code>next_filler_frac</code>. Проверяйте наклон признак–SHAP (или dependence-график), а не среднее знаковое SHAP, которое может быть около нуля при экземплярах вокруг фона. Инвертированный наклон указывает, что модель динамики выучила физически невозможную зависимость в некоторой области данных — характерно при очень разреженном покрытии вблизи границ.</p>
+ <hr />
+ <h2>SHAP в производстве: практические соображения</h2>
+ <p><strong>Вычислительная стоимость.</strong> KernelExplainer делает $n\_\text{explain} \times n\_\text{samples} \times n\_\text{background}$ обращений к модели. Для 150 × 80 × 80 = 960,000 вызовов на CPU это занимает минуты. Практическая стратегия: запускать офлайн перед развёртыванием на отложенной валидационной выборке; ежемесячно перезапускать на свежих эксплуатационных данных для обнаружения дрейфа распределения.</p>
+@@ -323,7 +323,7 @@ SHAP признаков действия отвечает: «было ли эт
+ </table>
+ <p>Проверка согласованности — ранговая корреляция Спирмена Q-политика и проверки знака физики — обеспечивает автоматическую верификацию взаимной когерентности и физической обоснованности трёх объяснений.</p>
+ <p>Объяснимость на основе SHAP — не замена оценке (метрики DA и частоты нарушений из главы 10), соблюдению ограничений (глава 9) или аккуратному моделированию динамики (глава 8). Это слой прозрачности, делающий эти компоненты поддающимися аудиту.</p>
+-<p>Глава 12 завершает книгу широким взглядом: что область достигла, куда движется, и какие открытые проблемы остаются нерешёнными.</p>
++<p>Глава 13 завершает книгу широким взглядом: что область достигла, куда движется, и какие открытые проблемы остаются нерешёнными.</p>
+ <hr />
+ <h2>Приложение 11.А: Выбор между вариантами SHAP</h2>
+ <table>
+diff --git a/ru/chapter11.md b/ru/chapter11.md
+index a4310a9..8bcf798 100644
+--- a/ru/chapter11.md
++++ b/ru/chapter11.md
+@@ -275,7 +275,7 @@ print_consistency_report(metrics)
+ 
+ **Ранговая корреляция Спирмена Q-политика $\rho$:** ранжирует признаки состояния по среднему |SHAP| в Q-функции и в политике. $\rho > 0.6$ означает, что критик и актор обращают внимание на одни и те же признаки. $\rho < 0.3$ указывает на коллапс политики — актор игнорирует большую часть состояния, которое важно критику. Характерно при слишком большом $\alpha$ в CQL.
+ 
+-**Проверки знака физики:** SHAP `heat_input` → `next_temperature` должен быть положительным; `flow_input` → `next_filler_frac` — тоже. Нарушение указывает на то, что модель динамики выучила физически инвертированную зависимость в некоторой области данных — характерно при очень разреженном покрытии вблизи границ.
++**Проверки знака физики:** у `heat_input` должен быть положительный наклон зависимости с `next_temperature`, и у `flow_input` — с `next_filler_frac`. Проверяйте наклон признак–SHAP (или dependence-график), а не среднее знаковое SHAP, которое может быть около нуля при экземплярах вокруг фона. Инвертированный наклон указывает, что модель динамики выучила физически невозможную зависимость в некоторой области данных — характерно при очень разреженном покрытии вблизи границ.
+ 
+ ---
+ 
+@@ -355,7 +355,7 @@ SHAP даёт *атрибуцию* — какие входы модель исп
+ 
+ Объяснимость на основе SHAP — не замена оценке (метрики DA и частоты нарушений из главы 10), соблюдению ограничений (глава 9) или аккуратному моделированию динамики (глава 8). Это слой прозрачности, делающий эти компоненты поддающимися аудиту.
+ 
+-Глава 12 завершает книгу широким взглядом: что область достигла, куда движется, и какие открытые проблемы остаются нерешёнными.
++Глава 13 завершает книгу широким взглядом: что область достигла, куда движется, и какие открытые проблемы остаются нерешёнными.
+ 
+ ---
+ 
+diff --git a/ru/chapter4.html b/ru/chapter4.html
+index 58f4408..c3220e8 100644
+--- a/ru/chapter4.html
++++ b/ru/chapter4.html
+@@ -370,7 +370,7 @@
+ </tbody>
+ </table>
+ <h3>Когда использовать автонастройку</h3>
+-<p>Используйте <code>auto_alpha=True</code> если: (а) политика будет развёрнута в реальной системе и безопасность важнее производительности, или (б) датасет охватывает несколько режимов работы с разными масштабами наград. Задайте <code>target_cql</code> небольшим отрицательным значением (например, <code>-1.0</code>).</p>
++<p>Используйте <code>auto_alpha=True</code> если: (а) политика будет развёрнута в реальной системе и безопасность важнее производительности, или (б) датасет охватывает несколько режимов работы с разными масштабами наград. Задайте <code>target_gap</code> положительным значением в шкале logsumexp-разрыва (например, <code>10.0</code>).</p>
+ <p>Используйте фиксированный $\alpha$ если: проводите воспроизводимые офлайн-эксперименты, или уже нашли хорошее значение грид-поиском.</p>
+ <hr />
+ <h2>CQL vs TD3+BC</h2>
+diff --git a/ru/chapter4.md b/ru/chapter4.md
+index fd6b554..24a7bd4 100644
+--- a/ru/chapter4.md
++++ b/ru/chapter4.md
+@@ -327,7 +327,7 @@ for alpha in [0.1, 0.5, 1.0, 5.0, 10.0]:
+ 
+ ### Когда использовать автонастройку
+ 
+-Используйте `auto_alpha=True` если: (а) политика будет развёрнута в реальной системе и безопасность важнее производительности, или (б) датасет охватывает несколько режимов работы с разными масштабами наград. Задайте `target_cql` небольшим отрицательным значением (например, `-1.0`).
++Используйте `auto_alpha=True` если: (а) политика будет развёрнута в реальной системе и безопасность важнее производительности, или (б) датасет охватывает несколько режимов работы с разными масштабами наград. Задайте `target_gap` положительным значением в шкале logsumexp-разрыва (например, `10.0`).
+ 
+ Используйте фиксированный $\alpha$ если: проводите воспроизводимые офлайн-эксперименты, или уже нашли хорошее значение грид-поиском.
+ 

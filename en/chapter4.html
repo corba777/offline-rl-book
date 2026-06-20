@@ -420,7 +420,7 @@
 </tbody>
 </table>
 <h3>When to use automatic tuning</h3>
-<p>Use <code>auto_alpha=True</code> when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set <code>target_cql</code> to a small negative value (e.g. <code>-1.0</code>).</p>
+<p>Use <code>auto_alpha=True</code> when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set <code>target_gap</code> to a positive value on the logsumexp-gap scale (e.g. <code>10.0</code>).</p>
 <p>Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible experiments, or you have already found a good value via grid search.</p>
 <hr />
 <h2>CQL vs TD3+BC: A Comparison</h2>

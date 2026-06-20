@@ -442,7 +442,7 @@ Chapters 9 and 10 already use **physics-informed constraint penalties** and hard
 
 For higher assurance, two directions are relevant in industry:
 
-- **Safety critics** (see Chapter 12): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.
+- **Safety critics** (see Chapter 13): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.
 - **Action masking / safe sets:** At runtime, before applying the RL action, check whether it would push the state toward a constraint boundary. If the predicted next state (from a physics or hybrid model) violates a bound, replace the action with a safe alternative: e.g. clip to a conservative set, or switch to a PID that only corrects toward setpoint without aggressive moves. This is especially useful when the primary policy is model-based (HybridMOReL): the same ensemble that generates rollouts can predict $s'$ and flag unsafe actions.
 
 Neither approach removes the need for the constraint calibration described earlier; they add a second layer of checks at deployment.
@@ -457,7 +457,7 @@ Neither approach removes the need for the constraint calibration described earli
 - **Density / OOD score:** Fit a density model (e.g. Gaussian mixture, normalizing flow, or leave-one-out kernel density) on training states. At runtime, compute the log-density of the current state (or a short trajectory). If the score drops below a chosen quantile of the training scores, treat the situation as out-of-distribution.
 - **Ensemble disagreement:** If you use a dynamics ensemble (e.g. HybridMOReL), high prediction variance indicates epistemic uncertainty — the model has not seen similar states. Use the same `halt_thresh` logic: when uncertainty is above threshold, consider the state as drifted relative to what the model was trained on.
 
-**What to do when drift is detected:** Reduce confidence in the RL policy. Options include: (1) switch to a **fallback policy** (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a **retrain** on historical + recent deployment data. Chapter 12’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.
+**What to do when drift is detected:** Reduce confidence in the RL policy. Options include: (1) switch to a **fallback policy** (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a **retrain** on historical + recent deployment data. Chapter 13’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.
 
 ### Fallback Offline RL
 
@@ -476,7 +476,7 @@ A **fallback policy** is a safe default used when the primary RL policy is deeme
 3. Else: use **fallback policy** (BC or PID).
 4. Optionally: if a constraint violation is observed, force fallback for the next $K$ steps or until the state returns to a safe region.
 
-This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 12), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.
+This way, the system uses the best policy when the distribution matches training and automatically retreats to a safe, offline-trained or classical policy when it does not. Together with periodic retraining (Chapter 13), drift detection and fallback make offline RL deployable in industrial settings where the process evolves and safety is non-negotiable.
 
 ---
 

@@ -382,7 +382,7 @@ Five runs give a coarse map of the reward–conservatism tradeoff.
 
 ### When to use automatic tuning
 
-Use `auto_alpha=True` when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set `target_cql` to a small negative value (e.g. `-1.0`).
+Use `auto_alpha=True` when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set `target_gap` to a positive value on the logsumexp-gap scale (e.g. `10.0`).
 
 Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible experiments, or you have already found a good value via grid search.
 
