@@ -38,9 +38,9 @@ $$Q^{*}(s, a) = r(s, a) + \gamma \, \mathbb{E}_{s' \sim P(\cdot|s,a)} \left[ \ma
 
 We learn $Q_\theta$ by minimizing the **TD error** (Temporal Difference):
 
-$$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar\theta}(s', a') - Q_\theta(s, a) \right)^{2} \right]$$
+$$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar{\theta}}(s', a') - Q_\theta(s, a) \right)^{2} \right]$$
 
-where $Q_{\bar\theta}$ is a **target network** — a periodically updated copy of $Q_\theta$ used to stabilize training.
+where $Q_{\bar{\theta}}$ is a **target network** — a periodically updated copy of $Q_\theta$ used to stabilize training.
 
 In **online RL**, the agent collects new transitions by acting in the environment. When $Q_\theta$ becomes inaccurate somewhere, the agent will visit those states, get real rewards, and correct the estimate.
 
@@ -52,7 +52,7 @@ In **offline RL**, the dataset $\mathcal{D}$ is fixed. There is no feedback loop
 
 Here is the key issue. During the $\max_{a'}$ step in the Bellman backup:
 
-$$\max_{a'} Q_{\bar\theta}(s', a')$$
+$$\max_{a'} Q_{\bar{\theta}}(s', a')$$
 
 the optimizer searches over **all possible actions** $a'$ — including actions that never appear in the dataset $\mathcal{D}$.
 
@@ -82,17 +82,17 @@ Let $\hat{\pi}$ be the greedy policy with respect to a learned Q-function:
 
 $$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$
 
-Define the **estimated performance** $\hat{J}(\hat{\pi}) = \mathbb{E}_{s,a \sim d^{\hat{\pi}}}[Q_\theta(s,a)]$ — what the Q-function *predicts* the policy will achieve — and the **true performance** $J(\hat{\pi})$ — what it actually achieves in the environment.
+Define the **estimated performance** $\hat{J}(\hat{\pi}) = \underset{s,a \sim d^{{\hat{\pi}}}}{\mathbb{E}}\bigl[Q_\theta(s,a)\bigr]$ — what the Q-function *predicts* the policy will achieve — and the **true performance** $J(\hat{\pi})$ — what it actually achieves in the environment.
 
 The gap between them is bounded (approximately, following Kumar et al., 2020):
 
-$$\hat{J}(\hat{\pi}) - J(\hat{\pi}) \leq \frac{2\gamma}{(1-\gamma)^{2}} \mathbb{E}_{s \sim d^{\hat{\pi}}}\left[\max_a \left| Q_\theta(s,a) - Q^{*}(s,a) \right|\right]$$
+$$\hat{J}(\hat{\pi}) - J(\hat{\pi}) \leq \frac{2\gamma}{(1-\gamma)^{2}} \underset{s \sim d^{{\hat{\pi}}}}{\mathbb{E}}\left[\max_a \left| Q_\theta(s,a) - Q^{*}(s,a) \right|\right]$$
 
-This is the right way to frame the problem. The left side is what we fear: the **gap between the promised and the real return**. The right side shows what drives it: Q-function error evaluated under $d^{\hat{\pi}}$ — the state distribution of the *learned* policy, not the behavior policy.
+This is the right way to frame the problem. The left side is what we fear: the **gap between the promised and the real return**. The right side shows what drives it: Q-function error evaluated under $d^{{\hat{\pi}}}$ — the state distribution of the *learned* policy, not the behavior policy.
 
-This is what makes OOD overestimation dangerous. During training, $\hat{J}(\hat{\pi})$ looks high — the Q-function is optimistic. But that optimism is concentrated exactly in the regions the greedy policy seeks out: actions never seen in $\mathcal{D}$, where $|Q_\theta - Q^{*}|$ is largest. The bound above can be arbitrarily large, meaning real performance can be arbitrarily worse than estimated.
+This is what makes OOD overestimation dangerous. During training, $\hat{J}(\hat{\pi})$ looks high — the Q-function is optimistic. But that optimism is concentrated exactly in the regions the greedy policy seeks out: actions never seen in $\mathcal{D}$, where $\lvert Q_\theta - Q^{*} \rvert$ is largest. The bound above can be arbitrarily large, meaning real performance can be arbitrarily worse than estimated.
 
-The crucial asymmetry: **the error is evaluated under $d^{\hat{\pi}}$, not $d^{\pi_\beta}$**. A policy that stays near the behavior policy would keep this term small. The greedy policy actively maximizes it.
+The crucial asymmetry: **the error is evaluated under $d^{{\hat{\pi}}}$, not $d^{{\pi_{\beta}}}$**. A policy that stays near the behavior policy would keep this term small. The greedy policy actively maximizes it.
 
 ---
 
@@ -102,8 +102,8 @@ In Chapter 1, we saw distribution shift in BC: the policy visits different state
 
 In offline Q-learning, the distribution shift is in **action space**:
 
-- **Training distribution**: $(s, a) \sim d^{\pi_\beta}(s) \cdot \pi_\beta(a|s)$ — state-action pairs from the dataset
-- **Evaluation distribution**: $(s, a) \sim d^{\hat{\pi}}(s) \cdot \hat{\pi}(a|s)$ — state-action pairs under the greedy policy
+- **Training distribution**: $(s, a) \sim d^{{\pi_{\beta}}}(s) \cdot \pi_{\beta}(a \mid s)$ — state-action pairs from the dataset
+- **Evaluation distribution**: $(s, a) \sim d^{{\hat{\pi}}}(s) \cdot \hat{\pi}(a \mid s)$ — state-action pairs under the greedy policy
 
 The greedy policy will select actions outside the training distribution whenever the Q-function is overoptimistic there — which is exactly when no corrective training signal exists.
 
@@ -193,9 +193,9 @@ Too aggressive → policy exploits Q-function errors (catastrophic failure)
 
 The solution space splits into two families:
 
-**Policy-constraint methods** — restrict the learned policy to stay close to $\pi_\beta$:
+**Policy-constraint methods** — restrict the learned policy to stay close to $\pi_{\beta}$:
 
-$$\pi^{*} = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \| \pi_\beta) \leq \epsilon$$
+$$\pi^{*} = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \,\|\, \pi_{\beta}) \leq \epsilon$$
 
 Examples: TD3+BC, BEAR, BCQ.
 
@@ -211,7 +211,7 @@ This is the approach of **CQL** (Chapter 4) and **IQL** (Chapter 5).
 
 Beyond value-pessimism, two other families are widely used. This book focuses on **value-based** (CQL, IQL) and **model-based** (Chapter 8) methods for depth; the following map helps place them.
 
-**Policy-constraint and Actor-Critic methods** keep the learned policy close to the behavior policy, either by explicit constraints or by regularizing the actor toward the data. **TD3+BC** (Fujimoto & Gu, 2021) adds a behavioral cloning term to the actor loss: $\pi$ maximizes $\lambda Q(s, \pi(s)) - (\pi(s) - a)^{2}$ (with $Q$ scaled by mean $|Q|$ over the batch) so it stays near the data while improving on it. **AWAC** (Advantage-Weighted Actor-Critic) and **AWR** (Advantage-Weighted Regression) fit the policy with importance weights derived from the advantage; they avoid querying Q at OOD actions by using only in-dataset $(s, a)$ for the actor. **BEAR** and **BCQ** restrict the policy support (e.g. to actions close to the dataset or generated by a conditional VAE). All of these are *actor-critic* in the sense that they train both a critic (Q or V) and an actor (policy), but the actor is constrained or regularized rather than greedy over an unconstrained Q.
+**Policy-constraint and Actor-Critic methods** keep the learned policy close to the behavior policy, either by explicit constraints or by regularizing the actor toward the data. **TD3+BC** (Fujimoto & Gu, 2021) adds a behavioral cloning term to the actor loss: $\pi$ maximizes $\lambda Q(s, \pi(s)) - (\pi(s) - a)^{2}$ (with $Q$ scaled by mean $\lvert Q \rvert$ over the batch) so it stays near the data while improving on it. **AWAC** (Advantage-Weighted Actor-Critic) and **AWR** (Advantage-Weighted Regression) fit the policy with importance weights derived from the advantage; they avoid querying Q at OOD actions by using only in-dataset $(s, a)$ for the actor. **BEAR** and **BCQ** restrict the policy support (e.g. to actions close to the dataset or generated by a conditional VAE). All of these are *actor-critic* in the sense that they train both a critic (Q or V) and an actor (policy), but the actor is constrained or regularized rather than greedy over an unconstrained Q.
 
 **Decision Transformers (DT)** (Chen et al., 2021) take a different view: treat offline RL as **sequence modeling**. The model is given a trajectory prefix (states, actions, returns-to-go or rewards) and predicts the next action autoregressively. There is no Bellman backup and no explicit Q-function; the “policy” is implicit in the conditional distribution over actions given past context and desired return. **Offline DT** is trained by supervised learning on $(s, a, R)$ chunks from the dataset, often with return-conditioning so that at test time you can ask for “high return” behavior. This avoids extrapolation error by construction (no $\max_{a'}$ over OOD actions) but shifts the challenge to generalization of the sequence model and the choice of conditioning. Variants include **Q-learning DT** (e.g. QDT) that combine return-conditioning with TD learning for better credit assignment.
 
@@ -251,7 +251,7 @@ This is the motivation for the methods in Chapters 3–7.
 | Distribution shift | Greedy policy visits states/actions not in dataset |
 | Deadly triad | Function approx + bootstrapping + off-policy = unstable |
 
-The two main remedies: **policy constraints** (stay near $\pi_\beta$) and **value pessimism** (push OOD Q-values down). CQL implements the second approach with an elegant regularization objective — which is where we go next. Chapter 2 also maps the broader landscape: policy-constraint / Actor-Critic (TD3+BC, AWAC, BEAR, BCQ) and Decision Transformers; the book then focuses on value-pessimism (Chapters 4–5) and model-based methods (Chapter 8).
+The two main remedies: **policy constraints** (stay near $\pi_{\beta}$) and **value pessimism** (push OOD Q-values down). CQL implements the second approach with an elegant regularization objective — which is where we go next. Chapter 2 also maps the broader landscape: policy-constraint / Actor-Critic (TD3+BC, AWAC, BEAR, BCQ) and Decision Transformers; the book then focuses on value-pessimism (Chapters 4–5) and model-based methods (Chapter 8).
 
 ---
 
