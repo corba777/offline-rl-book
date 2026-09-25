@@ -82,6 +82,37 @@ LangChain-, AutoGen-, or OpenAI Agents-style logs are not merely debugging artif
 
 ---
 
+## From Agentic Offline RL to Offline MARL
+
+The rest of this chapter treats **one** tool-using agent. That framing breaks as soon as several agents act in the same episode. A multi-agent trace is **not** “a longer single-agent trajectory”: the decision process is a **Markov game** (stochastic game), not an MDP with a bigger context window.
+
+**Minimal objects.** With $N$ agents, write a joint state $s_t$ (shared world / workspace / ticket state), local observations $o_t^i$ for each agent $i$ (its prompt, tools, and private memory), and a **joint action**
+
+$$a_t = (a_t^1,\ldots,a_t^N),$$
+
+where $a_t^i$ may be a message, a tool call, or a plan step. Rewards may be **shared** ($r_t$ for the team), **individual** ($r_t^i$), or mixed. The logged object is then a multi-agent trajectory with per-agent observations and actions — not a flat sequence that one OREO- or IQL-style single-agent update can credit blindly.
+
+Three problems appear that single-agent offline RL does not already solve:
+
+1. **Combinatorial joint-action coverage.** Support is over *tuples* $(a^1,\ldots,a^N)$, not over each agent’s marginal actions. Logs may cover “agent A searches” and “agent B edits” separately while never covering the *joint* pattern needed at deploy time. Conservative / support-constrained methods must reason about joint support, or they will invent uncoordinated combinations.
+2. **Multi-agent credit assignment.** A team success does not say *which* agent’s step produced it. Trajectory-level team reward alone is insufficient: you need agent- or role-level returns, counterfactual baselines, or structured process rewards that separate contribution from luck and from teammates’ work.
+3. **Coordination conventions in the logs.** Multi-agent datasets encode *who speaks when*, which tools are “owned” by which role, and what handoff protocol was used. Offline improvement that ignores those conventions can “improve” local policies while destroying the coordination that made the logs succeed.
+
+Keep two **levels** distinct — they are easy to conflate in LLM stacks:
+
+| Level | What is learned | Typical offline substrate |
+|-------|-----------------|---------------------------|
+| **Shared LLM policy (post-training)** | One base model used by several roles / prompts | Preference pairs, successful multi-agent traces as SFT, optional MARL-aware credit |
+| **Orchestration policy** | Who acts, when to hand off, how to route tools / messages | Logs of routers, schedulers, Autogen/LangGraph graphs as a separate decision process |
+
+Improving the shared LLM (DPO / SFT / single-agent offline RL on role-conditioned traces) is **not** the same as learning a cooperative orchestration policy over joint actions. Mixing them without naming which policy you update is how MARL failure modes get smuggled into “agent fine-tuning.”
+
+**Tiny illustration.** Two agents must solve a ticket: agent 1 chooses a short message $m$ to agent 2; agent 2 chooses a tool action $u$. The environment returns a single team reward $r \in \{0,1\}$ at the end. Offline logs show many $(m,u,r)$ triples with $r=1$. That does **not** tell you whether success came from $m$, from $u$, or only from the pair $(m,u)$. A single-agent update that averages credit over the concatenated transcript will happily reinforce the wrong speaker. Offline MARL starts where that ambiguity is treated as first-class — not where you paste OREO/IQL onto a longer chat.
+
+This chapter stays single-agent on purpose. Treat the Markov-game boundary as a **stop sign**: if your product is already multi-agent, reuse the logging and OPE discipline here, but do not assume single-agent conservative RL transfers unchanged to joint actions and team rewards.
+
+---
+
 ## BC / SFT as the Baseline
 
 **Supervised fine-tuning (SFT)** on expert or filtered successful trajectories is behavioral cloning in disguise. It is strong when:

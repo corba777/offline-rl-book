@@ -82,6 +82,37 @@ Agent observability / tracing → trajectories → offline or off-policy RL data
 
 ---
 
+## От agentic offline RL к offline MARL
+
+Дальше глава про **одного** tool-using агента. Несколько агентов в одном эпизоде — это **не** «более длинная single-agent trajectory»: процесс — **Markov game** (stochastic game), а не MDP с большим context window.
+
+**Минимальные объекты.** При $N$ агентах: совместное состояние $s_t$ (workspace / ticket), локальные наблюдения $o_t^i$ у каждого агента $i$, **совместное действие**
+
+$$a_t = (a_t^1,\ldots,a_t^N),$$
+
+где $a_t^i$ — сообщение, tool call или шаг плана. Награды: **shared** $r_t$, **individual** $r_t^i$ или смесь. В логе — multi-agent trajectory с per-agent observations/actions; плоская склейка transcript’а не даёт корректный credit для OREO/IQL в single-agent смысле.
+
+Три новые проблемы:
+
+1. **Combinatorial joint-action coverage.** Support — по *кортежам* $(a^1,\ldots,a^N)$, не по маргиналам. В логах могут быть «A ищет» и «B правит» по отдельности, но не нужный *совместный* паттерн. Conservative / support-constrained методы должны учитывать joint support.
+2. **Multi-agent credit assignment.** Team success не говорит, *чей* шаг создал результат. Нужны agent-/role-level returns, counterfactual baselines или process rewards, отделяющие вклад от удачи и работы партнёров.
+3. **Coordination conventions в логах.** Кто говорит, кому «принадлежат» tools, какой handoff. Offline improvement локальных политик может сломать координацию, из‑за которой логи вообще успешны.
+
+Два **уровня** не смешивать:
+
+| Уровень | Что учим | Типичный offline-субстрат |
+|---------|----------|---------------------------|
+| **Shared LLM (post-training)** | Одна base model под несколько roles / prompts | Preferences, успешные multi-agent traces как SFT, опционально MARL-aware credit |
+| **Orchestration policy** | Кто действует, handoff, маршрутизация tools / messages | Логи routers, schedulers, графов Autogen/LangGraph как отдельный decision process |
+
+Улучшить shared LLM ≠ выучить кооперативную orchestration policy над joint actions.
+
+**Мини-пример.** Два агента: агент 1 выбирает сообщение $m$, агент 2 — tool action $u$; в конце один team reward $r \in \{0,1\}$. Успешные $(m,u,r)$ в логе **не** показывают, создал результат $m$, $u$ или только пара $(m,u)$. Single-agent update по склеенному transcript усиливает «не того» говорящего. Offline MARL начинается там, где эта неоднозначность — first-class, а не где OREO/IQL клеят на более длинный чат.
+
+Глава остаётся single-agent намеренно. Граница Markov game — **стоп-сигнал**: для multi-agent продукта берите логирование и OPE-дисциплину отсюда, но не переносите single-agent conservative RL на joint actions и team rewards без адаптации.
+
+---
+
 ## BC / SFT как baseline
 
 **SFT** на expert или отфильтрованных успешных траекториях — behavioral cloning. Силён, когда behavior policy хорош, horizon короткий, failure modes редки.
