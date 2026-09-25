@@ -37,18 +37,38 @@ Applied learning notes on offline deep reinforcement learning — **created and 
 ├── ru/
 │   ├── chapter1.md … chapter13.md, appendix.md
 │   └── chapter1.html … chapter13.html, appendix.html
-└── code/
-    ├── behavioral_cloning.py
-    ├── extrapolation_error.py
-    ├── cql.py
-    ├── iql.py
-    ├── mopo.py
-    ├── morel.py
-    ├── physics_informed.py
-    ├── chapter10.py         # Industrial case study (coating process)
-    ├── chapter11.py         # SHAP explainability
-    └── agentic_offline_rl_toy.py  # Tabular calculator agent (Ch. 12)
+├── requirements.txt
+└── code/                    # see chapter → script map in requirements.txt
+    ├── behavioral_cloning.py, extrapolation_error.py, fqe.py
+    ├── cql.py, iql.py, td3bc.py, decision_transformer.py
+    ├── mopo.py, morel.py, physics_informed.py
+    ├── chapter10.py, chapter11.py, chapter11_toy_figures.py
+    ├── chapter11_causal_toy.py
+    └── agentic_offline_rl_toy.py
 ```
+
+## Run the examples
+
+From the repo root (Python 3.9+ recommended):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Two quick smoke checks (no long training):
+
+```bash
+# Dependency-light (numpy / stdlib)
+python code/chapter11_causal_toy.py
+python code/agentic_offline_rl_toy.py
+
+# PyTorch toy (Chapter 2 — OOD overestimation demo)
+python code/extrapolation_error.py
+```
+
+Full chapter scripts (CQL, IQL, MOPO, …) are educational and may take longer; see the map at the top of `requirements.txt`.
 
 ## Writing New Chapters
 

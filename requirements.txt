@@ -1,12 +1,19 @@
-# Offline RL Book — dependencies for all chapter code
-# Ch1: behavioral_cloning.py
-# Ch2: extrapolation_error.py
-# Ch3: cql.py
-# Ch4: iql.py
-# Ch5: mopo.py, morel.py
-# Ch6: physics_informed.py
-# Ch10: chapter10.py (uses cql, morel, physics_informed)
-# Ch11: chapter11.py (uses cql, morel, chapter10; adds shap, scipy)
+# Offline RL Book — dependencies for chapter code under code/
+#
+# Chapter → script map (from repo root: python code/<script>):
+#   Ch1:  behavioral_cloning.py
+#   Ch2:  extrapolation_error.py
+#   Ch3:  fqe.py
+#   Ch4:  cql.py
+#   Ch5:  iql.py
+#   Ch6:  td3bc.py
+#   Ch7:  decision_transformer.py
+#   Ch8:  mopo.py, morel.py
+#   Ch9:  physics_informed.py
+#   Ch10: chapter10.py          (uses cql, morel, physics_informed)
+#   Ch11: chapter11.py, chapter11_toy_figures.py, chapter11_causal_toy.py
+#         (shap/scipy for figures; causal toy needs numpy only)
+#   Ch12: agentic_offline_rl_toy.py  (stdlib only)
 
 numpy>=1.21,<3
 torch>=1.12

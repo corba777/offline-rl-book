@@ -1,7 +1,7 @@
 """
 chapter11_causal_toy.py
 ======================
-Minimal toy example for "Causal AI in Offline RL" (Chapter 8).
+Minimal toy example for causal vs correlation predictors (Chapter 11).
 
 Idea: In offline data we often see *correlations* (e.g. a variable z that
 correlates with the true cause s1). A model that relies on z (when s1 is

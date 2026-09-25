@@ -15,10 +15,9 @@ After training vanilla Q-learning we compare Q-values for:
   (a) in-distribution actions (sampled from [-0.5, 0.5])
   (b) all actions             (sampled from [-2.0, 2.0])
 
-Expected output (exact values vary by seed):
-  In-distribution actions  | Q mean: 0.412, max: 0.731
-  All actions (incl. OOD)  | Q mean: 0.893, max: 3.847
-  OOD overestimation ratio : 5.26x
+Dynamics pad the 2-D action into the first two state coordinates.
+Report max_Q(OOD) − max_Q(ID): a positive gap indicates OOD overestimation
+(run-to-run variation is expected; increase epochs if the gap is ≤ 0).
 """
 
 import torch
@@ -61,8 +60,10 @@ def reward_fn(s: torch.Tensor, a: torch.Tensor) -> torch.Tensor:
 
 
 def next_state_fn(s: torch.Tensor, a: torch.Tensor) -> torch.Tensor:
-    """Linear dynamics with small noise (deterministic for dataset building)."""
-    return 0.9 * s + 0.3 * a + 0.05 * torch.randn_like(s)
+    """Linear dynamics: action (dim 2) is applied to the first two state coords."""
+    a_pad = torch.zeros_like(s)
+    a_pad[..., :ACTION_DIM] = a
+    return 0.9 * s + 0.3 * a_pad + 0.05 * torch.randn_like(s)
 
 
 # ── dataset generation ────────────────────────────────────────────────────────
@@ -167,9 +168,10 @@ def measure_ood_overestimation(
           f"Q mean: {q_in_dist.mean():.3f}, max: {q_in_dist.max():.3f}")
     print(f"All actions (incl. OOD)  | "
           f"Q mean: {q_all.mean():.3f},     max: {q_all.max():.3f}")
-    ratio = q_all.max().item() / max(q_in_dist.max().item(), 1e-8)
-    print(f"OOD overestimation ratio : {ratio:.2f}x")
-    return ratio
+    # Signed Q can be negative; report max-gap (OOD − ID). Positive ⇒ overestimation.
+    gap = (q_all.max() - q_in_dist.max()).item()
+    print(f"OOD − ID max Q gap      : {gap:+.3f}  (positive ⇒ OOD overestimation)")
+    return gap
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -201,15 +203,15 @@ def main() -> None:
     all_actions = torch.rand(2_000, ACTION_DIM) * 4 - 2  # full [-2, 2]
 
     print()
-    ratio = measure_ood_overestimation(Q, in_dist_actions, all_actions, eval_state)
+    gap = measure_ood_overestimation(Q, in_dist_actions, all_actions, eval_state)
 
     # 4. summary
     print("\n" + "=" * 60)
-    if ratio > 2.0:
-        print(f"✓  OOD overestimation confirmed: {ratio:.2f}x")
-        print("   The greedy policy will select these overvalued OOD actions.")
+    if gap > 0.5:
+        print(f"✓  OOD overestimation confirmed: max_Q(OOD) − max_Q(ID) = {gap:+.3f}")
+        print("   The greedy policy will prefer these overvalued OOD actions.")
     else:
-        print(f"   Ratio = {ratio:.2f}x  (try increasing epochs or hidden size)")
+        print(f"   Gap = {gap:+.3f}  (try more epochs or a larger hidden size if ≤ 0)")
     print("=" * 60)
 
 
