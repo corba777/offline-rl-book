@@ -141,6 +141,49 @@ Agent observability / tracing → trajectories → offline or off-policy RL data
 3. **Learned critics** — FQE-style или goal-conditioned values. *Planning without Search* ([Hong et al., 2025](https://arxiv.org/abs/2505.18098)) — natural-language critic без fine-tuning base LLM.
 4. **Human / A/B review** — при высоком deploy risk.
 
+Offline RL для агентов тихо проваливается, когда OPE меряет **format quality** вместо **task success**. Метрики должны соответствовать deployment risk (предупреждения главы 3 о coverage).
+
+### Контракт оценки политики агента
+
+OPE объясняет *как* оценить return, но не *что считать улучшением*. У tool-using agent success rate может расти вместе с cost, latency, лишними tool calls или safety violations. До сравнения offline-кандидатов зафиксируйте короткий **контракт оценки** — спецификацию, которую команда может исполнять без повторных споров о метриках после каждого training run.
+
+**Базовые политики (всегда сравнивать с обеими):**
+
+1. **Текущий deployed agent** — behavior policy в production (или лучшая доступная shadow-копия).
+2. **SFT / BC на успешных traces** — imitation по отфильтрованным wins; честный «без RL» baseline, когда логи хорошие, но reward structure бедная.
+
+**Группы метрик (не сводить в одно число):**
+
+| Группа | Что мерить | Роль |
+|--------|------------|------|
+| **Task success** | Verifier pass rate, completion, human accept | **Primary** — метрика, которую хотим улучшить |
+| **Cost / latency** | USD/episode, tokens, p95 wall-clock | **Guardrail** |
+| **Tool-call efficiency** | Calls/episode, duplicate lookups, пустые retries | **Guardrail** |
+| **Safety / constraints** | Forbidden tools, PII, policy violations, API allowlist | **Guardrail** |
+
+**Набор для оценки:** **held-out** suite — задачи, не участвовавшие в train/tuning. Стратификация по **типу задачи** и **сложности**. Отчёт по stratum, не только global average. OPE на логах не заменяет held-out eval, если deploy states расходятся с log (предупреждения главы 3 о coverage).
+
+**Правило принятия (шаблон):**
+
+Принять кандидата $\pi$ над baseline $b$, только если:
+
+- **Primary:** $\text{success}(\pi) \geq \text{success}(b) + \Delta_{\min}$ на held-out suite, с **доверительным интервалом** (bootstrap по задачам или A/B в shadow), исключающим нулевой uplift.
+- **Guardrails:** для каждой guardrail-метрики $g$: $\; g(\pi) \leq g(b) + \tau_g\;$, где $\tau_g$ — **заранее заданный tolerance** (например cost +5%, p95 latency +10%, нулевой tolerance на hard safety).
+
+Если primary улучшился, а guardrail нарушен — по умолчанию **не** внедрять «с оговорками»: доработать reward, constraints или support filtering, либо отклонить кандидата.
+
+**Иллюстративное сравнение (вымышленные числа):**
+
+| Policy | Success (held-out) | Cost / task | Tool calls / task | Safety violations |
+|--------|-------------------|-------------|-------------------|-------------------|
+| Deployed agent | 62% | $0.041 | 4.2 | 0.3% |
+| SFT / BC | 68% | $0.038 | 3.9 | 0.2% |
+| Offline RL candidate | **71% ± 2%** | $0.044 | 4.0 | 0.2% |
+
+При $\tau_{\text{cost}} = +5\%$, $\tau_{\text{calls}} = +10\%$ кандидат **проходит** success и safety, но **не проходит** cost ($0.044 > 1.05 \times 0.041$). Контракт отклоняет внедрение, пока cost не снижен — даже если success выше обоих baselines.
+
+Это agentic-аналог раздела главы 13 **«Промышленное внедрение: этапы допуска (gates)»**: OPE питает Gate 2; контракт оценки — то, что Gate 3 (shadow) и Gate 4 (limited rollout) проверяют на live tasks.
+
 ---
 
 ## LLM как annotators, generators и critics

@@ -240,6 +240,90 @@
 <li><strong>Human or A/B review</strong> — expensive but necessary for high-stakes deploy.</li>
 </ol>
 <p>Offline RL for agents fails quietly when OPE measures <strong>format quality</strong> instead of <strong>task success</strong>. Align metrics with deployment risk, as in Chapter 3’s coverage warnings.</p>
+<h3>Evaluation Contract for an Agent Policy</h3>
+<p>OPE methods tell you <em>how</em> to estimate return; they do not define <em>what counts as improvement</em>. For tool-using agents, a policy can raise task success while increasing cost, latency, redundant tool calls, or safety violations. Before comparing offline-trained candidates, write a short <strong>evaluation contract</strong> — a spec stakeholders can execute without re-debating metrics after every training run.</p>
+<p><strong>Baselines (always report against both):</strong></p>
+<ol>
+<li><strong>Current deployed agent</strong> — the behavior policy in production (or the best available shadow of it).</li>
+<li><strong>SFT / BC on successful traces</strong> — imitation on filtered wins; the honest “no RL” ceiling when logs are good but sparse on reward structure.</li>
+</ol>
+<p><strong>Metric groups (do not collapse to one number):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>What to measure</th>
+<th>Typical role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Task success</strong></td>
+<td>Verifier pass rate, task completion, human accept rate</td>
+<td><strong>Primary</strong> — the metric you want to improve</td>
+</tr>
+<tr>
+<td><strong>Cost / latency</strong></td>
+<td>USD per episode, tokens, p95 wall-clock per task</td>
+<td><strong>Guardrail</strong></td>
+</tr>
+<tr>
+<td><strong>Tool-call efficiency</strong></td>
+<td>Calls per episode, duplicate lookups, empty retries</td>
+<td><strong>Guardrail</strong></td>
+</tr>
+<tr>
+<td><strong>Safety / constraints</strong></td>
+<td>Forbidden tools, PII leaks, policy violations, out-of-allowlist APIs</td>
+<td><strong>Guardrail</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Evaluation set:</strong> Use a <strong>held-out</strong> task suite — never tasks seen during training or prompt tuning. Stratify by <strong>task type</strong> (search, code, CRM, etc.) and <strong>difficulty</strong> (single-hop vs multi-hop). Report per-stratum tables, not only a global average. Chapter 3’s coverage warnings apply: OPE on logs is not a substitute for held-out task eval when deploy states differ from the log.</p>
+<p><strong>Acceptance rule (example template):</strong></p>
+<p>Accept candidate policy $\pi$ over baseline $b$ only if:</p>
+<ul>
+<li><strong>Primary:</strong> $\text{success}(\pi) \geq \text{success}(b) + \Delta_{\min}$ on the held-out suite, with a <strong>confidence interval</strong> (bootstrap over tasks, or A/B in shadow mode) that excludes zero uplift.</li>
+<li><strong>Guardrails:</strong> for each guardrail metric $g$, $\; g(\pi) \leq g(b) + \tau_g\;$ where $\tau_g$ is a <strong>pre-registered tolerance</strong> (e.g. cost +5%, p95 latency +10%, zero tolerance on hard safety violations).</li>
+</ul>
+<p>If primary improves but a guardrail breaks tolerance, the answer is <strong>not</strong> to ship with caveats by default — iterate on reward shaping, constraints, or support filtering until the contract is satisfied or the candidate is rejected.</p>
+<p><strong>Illustrative comparison (fictional numbers):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>Success (held-out)</th>
+<th>Cost / task</th>
+<th>Tool calls / task</th>
+<th>Safety violations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Deployed agent</td>
+<td>62%</td>
+<td>$0.041</td>
+<td>4.2</td>
+<td>0.3%</td>
+</tr>
+<tr>
+<td>SFT / BC</td>
+<td>68%</td>
+<td>$0.038</td>
+<td>3.9</td>
+<td>0.2%</td>
+</tr>
+<tr>
+<td>Offline RL candidate</td>
+<td><strong>71% ± 2%</strong></td>
+<td>$0.044</td>
+<td>4.0</td>
+<td>0.2%</td>
+</tr>
+</tbody>
+</table>
+<p>With tolerances $\tau_{\text{cost}} = +5\%$ and $\tau_{\text{calls}} = +10\%$, the candidate <strong>passes</strong> success and safety but <strong>fails</strong> cost ($0.044 > 1.05 \times 0.041$). The contract rejects deployment until cost is brought down — even though success beat both baselines.</p>
+<p>This contract is the agentic analogue of Chapter 13’s <strong>Industrial Deployment: Gated Readiness</strong>: offline metrics and OPE inform Gate 2; the evaluation contract is what Gate 3 (shadow) and Gate 4 (limited rollout) must verify on live tasks.</p>
 <hr />
 <h2>LLMs as Annotators, Generators, and Critics</h2>
 <p>LLMs appear in agentic offline pipelines in several roles — not only as the policy. KALM and TEDUO are <strong>LLM-assisted offline RL</strong> lines (language-conditioned or rollout-augmented control), not always narrow “tool-using chat agents” — but the data-layer pattern transfers:</p>

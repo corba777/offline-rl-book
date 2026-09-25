@@ -227,8 +227,8 @@
 <p><strong>Стоп / fallback:</strong> автоматический откат на <strong>BC/rules</strong>, <strong>baseline MPC</strong> или <strong>ручное управление</strong> — не «дать RL доехать».</p>
 <hr />
 <blockquote>
-<p><strong>Пример порогов из case study главы 10 (только иллюстрация).</strong><br />
-В coating-process примере команда использовала <strong>DA &gt; 0.80</strong> и <strong>violation rate &lt; 2%</strong> как <em>внутренние</em> checks перед расширением shadow trials, считала <strong>покрытие physics model ниже ~70%</strong> по ключевым переменным блокером для hybrid model-based runs и следила, чтобы <strong>~5–10%</strong> live states не уходили за пределы training envelope без retrain. Сравнивали <strong>CQL+Physics</strong> (меньше violations) и <strong>HybridMOReL</strong> (выше reward) — <strong>tradeoff кейса</strong>, не отраслевой стандарт.<br />
+<p><strong>Пример метрик из case study главы 10 (только иллюстрация).</strong><br />
+В coating-process benchmark средний <strong>DA</strong> доходит до <strong>79,2%</strong> (HybridMOReL) — <strong>ниже</strong> промышленного порога ~<strong>80%</strong>, который глава 10 упоминает в контексте (BC ≈ 61%), хотя DA по temperature достигает <strong>81,3%</strong>. <strong>Violation rate</strong>: <strong>1,1%</strong> у CQL+Physics и <strong>1,9%</strong> у HybridMOReL (plain CQL — <strong>2,8%</strong>). <code>diagnose_physics_coverage</code> показывает <strong>64,2%</strong> по viscosity при overall ~<strong>82%</strong> — сигнал доработать слабые измерения physics model перед опорой на hybrid rollouts. Сравнивают <strong>CQL+Physics</strong> (меньше violations) и <strong>HybridMOReL</strong> (выше reward и DA) — <strong>tradeoff кейса</strong>, не отраслевой стандарт.<br />
 <strong>Ваши</strong> stop rules и числа задаются <strong>риском процесса</strong>: damage, quality, regulation, reversibility. Не переносите эти цифры как универсальные safety criteria.</p>
 </blockquote>
 <hr />

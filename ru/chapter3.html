@@ -67,15 +67,33 @@
 <p>В главе 2 мы определили офлайн постановку: фиксированный датасет $\mathcal{D}$ переходов $(s, a, r, s')$, собранных поведенческой политикой $\pi_\beta$. Мы обучаем новую политику $\pi$ (например, с помощью CQL, IQL или других методов этой книги) по $\mathcal{D}$. Ключевой вопрос <strong>до</strong> внедрения:</p>
 <p><strong>Чему равна $J(\pi) = \mathbb{E}_{\tau \sim \pi}\bigl[\sum_t \gamma^t r_t\bigr]$ — истинный ожидаемый return политики $\pi$?</strong></p>
 <p>Ответить на это, запуская $\pi$ в реальной среде, нельзя: это уже внедрение, а не оценка. В промышленности развёртывание непроверенной политики может быть небезопасным или дорогим. Нужно <strong>оценивать</strong> $J(\pi)$ только по офлайн датасету $\mathcal{D}$, собранному под $\pi_\beta$, а не под $\pi$. Это и есть <strong>Off-Policy Evaluation (OPE)</strong>.</p>
-<p>OPE — парная по смыслу к офлайн RL задача: офлайн RL <em>обучает</em> политику по $\mathcal{D}$; OPE <em>оценивает</em> кандидатную политику по тому же $\mathcal{D}$. На практике используют оба шага: обучают несколько политик (например, CQL с разным $\alpha$), ранжируют их с помощью OPE и только потом рассматривают внедрение лучшего кандидата.</p>
+<p>OPE — парная по смыслу к офлайн RL задача: офлайн RL <em>обучает</em> политику по $\mathcal{D}$; OPE <em>оценивает</em> кандидатную политику по тому же $\mathcal{D}$. На практике используют оба шага: обучают несколько политик (например, CQL с разным $\alpha$), ранжируют их с помощью OPE, выбирают лучшего кандидата и только потом рассматривают внедрение (часто после отдельной проверки безопасности).</p>
+<hr />
+<h2>Почему нельзя просто использовать обученную Q-функцию?</h2>
+<p>В главе 2 уже вводилась оценка $\hat{J}(\hat\pi) = \mathbb{E}_{s,a \sim d^{\hat\pi}}[Q_\theta(s,a)]$ — return, который <em>предсказывает</em> обученная Q-сеть для жадной политики. Мы отмечали: $\hat{J}$ легко становится <strong>чрезмерно оптимистичной</strong>, когда $Q_\theta$ завышает ценность <strong>OOD</strong>-действий (действий вне поддержки датасета).</p>
+<p>Отсюда два связанных эффекта:</p>
+<ul>
+<li><strong>Selection bias (смещение отбора):</strong> при обучении offline RL политика $\pi$ подбирается <em>по</em> $Q_\theta$ — argmax, улучшение, консервативные штрафы. Та же сеть затем «оценивает» ту политику, которую она же помогла выбрать. Ошибки экстраполяции на OOD-действиях систематически <strong>в пользу</strong> кандидата, а не случайны.</li>
+<li><strong>OOD-overestimation:</strong> для пар $(s, a)$, которых почти не было в $\mathcal{D}$, $Q_\theta$ не опирается на достаточное число TD-целей. Завышение на таких действиях напрямую раздувает $\hat{J}(\pi)$ для политик, которые эти действия и выбирают.</li>
+</ul>
+<p><strong>Использовать training Q-network как единственный оценщик $J(\pi)$ — значит смешать обучение и валидацию.</strong> OPE вводит <strong>отдельные</strong> оценки $J(\pi)$: они явно учитывают сдвиг распределения между $\pi_\beta$ и $\pi$ и не предполагают, что $Q_\theta$ «уже правильная».</p>
 <hr />
 <h2>Три семейства оценок</h2>
-<p><strong>1. Importance Sampling (IS)</strong><br />
-Return траектории под $\pi$ переписывается как матожидание под $\pi_\beta$ с весами $\prod_t \frac{\pi(a_t|s_t)}{\pi_\beta(a_t|s_t)}$. Оценка: среднее взвешенных return’ов по траекториям из $\mathcal{D}$. <strong>Плюсы:</strong> несмещённость при полной поддержке. <strong>Минусы:</strong> дисперсия резко растёт, когда $\pi$ и $\pi_\beta$ сильно различаются; на практике используют per-decision IS и ограничение весов.</p>
-<p><strong>2. Direct Method (DM)</strong><br />
-Обучают модель награды/динамики или Q-функцию по $\mathcal{D}$, затем оценивают $J(\pi)$. Поскольку $J(\pi)$ — ожидаемый return <strong>от начального распределения состояний</strong>, корректная оценка DM — среднее по <strong>начальным</strong> состояниям $s_0^{(i)}$ (по одному на траекторию в $\mathcal{D}$ или по отдельной выборке): $\hat{J}_{DM} = \frac{1}{n}\sum_{i=1}^n \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$. Усреднение $\hat{Q}(s, \pi(s))$ по <em>всем</em> $s$ из $\mathcal{D}$ дало бы среднюю ценность по <em>посещённому</em> распределению состояний, а не ожидаемый return эпизода; иногда это используют как дешёвый суррогат, когда начальные состояния не выделены, но к $J(\pi)$ это не сводится. Стандартный способ получить $\hat{Q}$ — <strong>Fitted Q Evaluation (FQE)</strong>; подробнее ниже. <strong>Плюсы:</strong> малая дисперсия. <strong>Минусы:</strong> смещение при ошибке модели.</p>
-<p><strong>Fitted Q Evaluation (FQE) подробнее.</strong><br />
-FQE (Le et al., 2019, <em>Batch Policy Learning under Constraints</em>; там же формализована для OPE) подгоняет Q-функцию, приближающую <em>ценность целевой политики $\pi$</em>, только по офлайн данным из $\mathcal{D}$. В отличие от Fitted Q Iteration (FQI), FQE <strong>оценивает фиксированную политику</strong>: в Bellman-цели на следующем шаге используется $\pi(s')$, а не $\max_a$ или поведенческая политика. Истинная $Q^\pi$ удовлетворяет $Q^\pi(s,a) = r + \gamma \mathbb{E}_{s'}[Q^\pi(s', \pi(s'))]$, поэтому регрессия идёт на цель $y = r + \gamma \hat{Q}(s', \pi(s'))$ по переходам $(s,a,r,s') \in \mathcal{D}$. Минимизируют TD-ошибку: $\mathcal{L}_{FQE} = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}[(r + \gamma \hat{Q}_{tgt}(s', \pi(s')) - \hat{Q}(s,a))^2]$. Можно делать одну регрессию или итерации с обновлением целевой сети. Минимальный шаг обучения и оценка $J$ в коде:</p>
+<h3>1. Importance Sampling (IS)</h3>
+<p>Return траектории $\tau = (s_0, a_0, r_0, s_1, a_1, \ldots)$ под $\pi$ равен $G(\tau) = \sum_{t\ge 0} \gamma^t r_t$. Траектории в $\mathcal{D}$ сгенерированы $\pi_\beta$. Тождество:</p>
+<p><div class="math-display">$$\mathbb{E}_{\tau \sim \pi}[G(\tau)] = \mathbb{E}_{\tau \sim \pi_\beta}\left[ \frac{\rho(\tau)}{\rho_\beta(\tau)} \, G(\tau) \right]$$</div></p>
+<p>где $\rho(\tau)$ — вероятность $\tau$ под $\pi$, $\rho_\beta(\tau)$ — под $\pi_\beta$. Произведение $\prod_{t} \frac{\pi(a_t|s_t)}{\pi_\beta(a_t|s_t)}$ — <strong>trajectory importance weight</strong>. Оценка:</p>
+<p><div class="math-display">$$\hat{J}_{IS} = \frac{1}{n}\sum_{i=1}^n \left( \prod_{t=0}^{T_i-1} \frac{\pi(a_t^{(i)}|s_t^{(i)})}{\pi_\beta(a_t^{(i)}|s_t^{(i)})} \right) G^{(i)}$$</div></p>
+<p><strong>Плюсы:</strong> несмещённость при полной поддержке (каждое действие с положительной вероятностью под $\pi$ имело положительную вероятность под $\pi_\beta$).<br />
+<strong>Минусы:</strong> дисперсия взрывается, когда $\pi$ и $\pi_\beta$ сильно расходятся — произведение весов может стать огромным. На практике: <strong>per-step</strong> / <strong>per-decision</strong> IS и <strong>clipping</strong> весов — меньше дисперсия, ценой смещения.</p>
+<h3>2. Direct Method (DM)</h3>
+<p>Обучают модель награды/динамики (или только Q) по $\mathcal{D}$, затем оценивают $J(\pi)$ симуляцией $\pi$ в модели или усреднением $\hat{Q}(s, \pi(s))$. Поскольку $J(\pi)$ — ожидаемый return <strong>от начального распределения состояний</strong>, корректная DM-оценка — среднее по <strong>начальным</strong> $s_0^{(i)}$ (по одному на траекторию в $\mathcal{D}$ или по held-out):</p>
+<p><div class="math-display">$$\hat{J}_{DM} = \frac{1}{n}\sum_{i=1}^n \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)}))$$</div></p>
+<p>Усреднение $\hat{Q}(s, \pi(s))$ по <em>всем</em> $s$ из $\mathcal{D}$ даёт ценность на <strong>посещённом</strong> распределении состояний, а не $J(\pi)$; иногда это дешёвый суррогат, если $s_0$ не логируются. Стандартный способ получить $\hat{Q}$ — <strong>Fitted Q Evaluation (FQE)</strong>.</p>
+<p><strong>Плюсы:</strong> низкая дисперсия; использует весь датасет.<br />
+<strong>Минусы:</strong> смещение при ошибке модели или $\hat{Q}$ — в offline RL часто есть <strong>extrapolation error</strong>; DM/FQE могут быть излишне оптимистичны для действий $\pi$.</p>
+<h4>Fitted Q Evaluation (FQE) подробнее</h4>
+<p>FQE (Le et al., 2019, <em>Batch Policy Learning under Constraints</em>; там же формализована для OPE) подгоняет Q-функцию, приближающую <em>ценность целевой политики $\pi$</em>, только по офлайн данным из $\mathcal{D}$. В отличие от Fitted Q Iteration (FQI), FQE <strong>оценивает фиксированную политику</strong>: в Bellman-цели на следующем шаге используется $\pi(s')$, а не $\max_a$ или поведенческая политика. Истинная $Q^\pi$ удовлетворяет $Q^\pi(s,a) = r + \gamma \mathbb{E}_{s'}[Q^\pi(s', \pi(s'))]$, поэтому регрессия идёт на цель $y = r + \gamma \hat{Q}(s', \pi(s'))$ по переходам $(s,a,r,s') \in \mathcal{D}$. Минимизируют TD-ошибку: $\mathcal{L}_{FQE} = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}[(r + \gamma \hat{Q}_{tgt}(s', \pi(s')) - \hat{Q}(s,a))^2]$. Можно делать одну регрессию или итерации с обновлением целевой сети. Минимальный шаг обучения и оценка $J$ в коде:</p>
 <div class="codehilite"><pre><span></span><code><span class="c1"># FQE update: TD-цель использует π в следующем состоянии (не поведенческое действие)</span>
 <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
     <span class="n">a_next</span> <span class="o">=</span> <span class="n">policy_fn</span><span class="p">(</span><span class="n">next_states</span><span class="p">)</span>           <span class="c1"># π(s&#39;)</span>
@@ -96,10 +114,12 @@ FQE (Le et al., 2019, <em>Batch Policy Learning under Constraints</em>; там �
 <blockquote>
 <p>📄 <strong>Код:</strong> <a href="https://github.com/corba777/offline-rl-book/blob/main/code/fqe.py"><code>fqe.py</code></a> — FQE на том же игрушечном окружении: обучение BC, подгонка $Q^\pi$, оценка $\hat{J}_{FQE}$ и сравнение с rollout return.</p>
 </blockquote>
-<p><strong>3. Doubly Robust (DR)</strong><br />
-Комбинирует IS и DM так, что оценка несмещена, если верны либо веса, либо модель. На практике часто даёт меньшую дисперсию, чем IS, и меньшее смещение, чем один DM. <strong>Ограничение:</strong> на длинных горизонтах кумулятивный вес $\rho_{0:t}$ по-прежнему может экспоненциально расти или стремиться к нулю при росте $t$, поэтому классический DR страдает от большой дисперсии на длинных траекториях; для смягчения используют варианты вроде <strong>Marginalized IS</strong> (веса по маргинальному распределению состояний).</p>
+<h3>3. Doubly Robust (DR)</h3>
+<p>Комбинирует IS и DM: оценка <strong>несмещена</strong>, если верна (a) модель importance weights, или (b) value model $\hat{Q}$:</p>
+<p><div class="math-display">$$\hat{J}_{DR} = \frac{1}{n}\sum_{i=1}^n \left[ \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)})) + \sum_{t\ge 0} \gamma^t \rho_{0:t}^{(i)} \left( r_t^{(i)} + \gamma \hat{Q}(s_{t+1}^{(i)}, \pi(s_{t+1}^{(i)})) - \hat{Q}(s_t^{(i)}, a_t^{(i)}) \right) \right]$$</div></p>
+<p>где $\rho_{0:t}$ — importance weight до шага $t$. Если $\hat{Q} = Q^\pi$, хвостовые TD-остатки имеют нулевое матожидание. Если $\pi_\beta = \pi$, веса равны 1, но DR <strong>не</strong> вырождается в чистый DM: коррекционные слагаемые остаются. На практике DR часто даёт меньшую дисперсию, чем IS, и меньшее смещение, чем один DM. <strong>Ограничение:</strong> на длинных горизонтах $\rho_{0:t}$ по-прежнему может взрываться или обнуляться; смягчают <strong>Marginalized IS</strong> (state-marginal weights).</p>
 <hr />
-<h2>Практика и ограничения</h2>
+<h2>Практические рекомендации</h2>
 <table>
 <thead>
 <tr>
@@ -110,23 +130,67 @@ FQE (Le et al., 2019, <em>Batch Policy Learning under Constraints</em>; там �
 <tbody>
 <tr>
 <td>$\pi$ близка к $\pi_\beta$</td>
-<td>IS (с ограничением весов)</td>
+<td>IS (или weighted IS с clipping)</td>
 </tr>
 <tr>
 <td>Большое пространство действий / $\pi$ далеко от $\pi_\beta$</td>
-<td>FQE или DM</td>
+<td>FQE или DM (принять смещение)</td>
 </tr>
 <tr>
-<td>Нужно сравнить много политик</td>
-<td>FQE для быстрого ранжирования; топ проверять DR или IS</td>
+<td>Нужно одно число для сравнения многих политик</td>
+<td>FQE быстрая; ранжировать по $\hat{J}_{FQE}$, топ — проверить DR или IS</td>
 </tr>
 <tr>
 <td>Критично по безопасности</td>
-<td>Несколько оценок; при сильном расхождении не внедрять</td>
+<td>Несколько оценок; <strong>сильное расхождение — стоп-сигнал для внедрения</strong></td>
 </tr>
 </tbody>
 </table>
-<p><strong>Важно:</strong> OPE не устраняет фундаментальную проблему. Если $\pi$ заходит в области с нулевым покрытием в $\mathcal{D}$, никакая оценка не будет точной. В книге в главах 5–11 часто используется оценка по симулятору (<code>evaluate(agent, env, ...)</code>). OPE нужна там, где симулятора нет или новую политику нельзя запускать — типично для многих промышленных процессов.</p>
+<h3>Снижение дисперсии</h3>
+<p>Для <strong>IS:</strong> per-decision IS, ограничение (cap) весов, нормализованные веса. Для <strong>DR:</strong> хорошо настроенная $\hat{Q}$ (TD на $\mathcal{D}$, target network) уменьшает дисперсию коррекционного члена.</p>
+<h3>Доверительные интервалы</h3>
+<p><strong>Bootstrap</strong> по траекториям (или по эпизодам) даёт интервал вокруг $\hat{J}$; альтернатива — концентрационные границы (Chebyshev, high-confidence OPE). <strong>Широкий интервал</strong> — высокая неопределённость: не принимать решение о внедрении только по точечной оценке.</p>
+<p><strong>Правило для внедрения:</strong> если IS, FQE и DR (или любые две независимые оценки) <strong>сильно расходятся</strong> — трактуйте $J(\pi)$ как <strong>ненадёжную</strong> и не используйте результат как единственное основание для выдачи политики в продакшен. Согласуйте оценки, улучшите покрытие данных или проведите shadow / ограниченный rollout (главы 10, 12–13).</p>
+<hr />
+<h2>Ограничения</h2>
+<ul>
+<li><strong>OPE не снимает фундаментальную проблему offline RL.</strong> Если $\pi$ посещает состояния или действия с малым или нулевым покрытием в $\mathcal{D}$, ни один оценщик не будет точным — в данных просто нет нужной информации. OPE показывает, <em>насколько хорошо</em> можно оценить $J(\pi)$ по $\mathcal{D}$; она <strong>не делает</strong> $\pi$ безопасной.</li>
+<li><strong>Misspecification модели:</strong> DM и DR опираются на $\hat{Q}$ или модель динамики. В offline RL эти модели смещены (оптимизм или пессимизм). При сильной ошибке модели OPE вводит в заблуждение.</li>
+<li><strong>Промышленный контекст:</strong> в главах 5–11 часто используют <strong>on-policy rollouts в симуляторе</strong> (<code>evaluate(agent, env, ...)</code>). Это уместно, когда симулятор есть. OPE нужна, когда симулятора <strong>нет</strong> или новую политику <strong>нельзя</strong> запускать вообще. Для многих процессов high-fidelity симулятора нет — тогда OPE (или отчёт OPE рядом с любыми симуляционными метриками) — правильный инструмент.</li>
+</ul>
+<hr />
+<h2>Итог</h2>
+<table>
+<thead>
+<tr>
+<th>Оценщик</th>
+<th>Смещение</th>
+<th>Дисперсия</th>
+<th>Когда использовать</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IS</td>
+<td>Низкое (при support)</td>
+<td>Высокая</td>
+<td>$\pi \approx \pi_\beta$</td>
+</tr>
+<tr>
+<td>DM / FQE</td>
+<td>Высокое (ошибка модели)</td>
+<td>Низкая</td>
+<td>Быстрое ранжирование, смещение осознанно</td>
+</tr>
+<tr>
+<td>DR</td>
+<td>Низкое, если верны Q или веса</td>
+<td>Средняя</td>
+<td>Разумный выбор по умолчанию, когда применимо</td>
+</tr>
+</tbody>
+</table>
+<p>Off-Policy Evaluation отвечает на вопрос: <em>по офлайн данным только, насколько хороша эта политика?</em> OPE не заменяет контролируемое внедрение и мониторинг, но позволяет <strong>сравнивать и отбирать</strong> политики до реального rollout.</p>
 <p>Следующая глава открывает алгоритмическую часть: <strong>Conservative Q-Learning (CQL)</strong> — первый метод <em>обучения</em> политики по $\mathcal{D}$.</p>
 <hr />
 <h2>Литература</h2>
@@ -134,8 +198,10 @@ FQE (Le et al., 2019, <em>Batch Policy Learning under Constraints</em>; там �
 <li>Le, H. M., Voloshin, C., &amp; Yue, Y. (2019). <em>Batch Policy Learning under Constraints.</em> ICML (PMLR 97). <a href="https://arxiv.org/abs/1903.08738">arXiv:1903.08738</a>. <em>(формализация FQE для OPE)</em></li>
 <li>Gauci, J., et al. (2018). <em>Horizon: Facebook's Open Source Applied Reinforcement Learning Platform.</em> <a href="https://arxiv.org/abs/1811.00260">arXiv:1811.00260</a>. <em>(платформа production RL; не FQE.)</em></li>
 <li>Precup, D., Sutton, R. S., &amp; Singh, S. (2000). <em>Eligibility Traces for Off-Policy Policy Evaluation.</em> ICML.</li>
+<li>Thomas, P., Theocharous, G., &amp; Ghavamzadeh, M. (2015). <em>High-Confidence Off-Policy Evaluation.</em> AAAI.</li>
 <li>Jiang, N., &amp; Li, L. (2016). <em>Doubly Robust Off-policy Value Evaluation for Reinforcement Learning.</em> ICML.</li>
-<li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
+<li>Voloshin, C., Le, H. M., Jiang, N., &amp; Yue, Y. (2019). <em>Empirical Study of Off-Policy Policy Evaluation for Reinforcement Learning.</em> NeurIPS Workshop.</li>
+<li>Levine, S., Kumar, A., Tucker, G., &amp; Fu, J. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>. <em>(раздел об OPE)</em></li>
 </ul></main>
 <nav class="chapter-nav">
 <a href="/offline-rl-book/ru/chapter2.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Задача Offline RL</span></a>

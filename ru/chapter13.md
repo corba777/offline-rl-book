@@ -250,8 +250,8 @@ $$\text{траектория} \sim p_\theta(\tau) \cdot \exp(\beta \cdot J(\tau)
 
 ---
 
-> **Пример порогов из case study главы 10 (только иллюстрация).**  
-> В coating-process примере команда использовала **DA > 0.80** и **violation rate < 2%** как *внутренние* checks перед расширением shadow trials, считала **покрытие physics model ниже ~70%** по ключевым переменным блокером для hybrid model-based runs и следила, чтобы **~5–10%** live states не уходили за пределы training envelope без retrain. Сравнивали **CQL+Physics** (меньше violations) и **HybridMOReL** (выше reward) — **tradeoff кейса**, не отраслевой стандарт.  
+> **Пример метрик из case study главы 10 (только иллюстрация).**  
+> В coating-process benchmark средний **DA** доходит до **79,2%** (HybridMOReL) — **ниже** промышленного порога ~**80%**, который глава 10 упоминает в контексте (BC ≈ 61%), хотя DA по temperature достигает **81,3%**. **Violation rate**: **1,1%** у CQL+Physics и **1,9%** у HybridMOReL (plain CQL — **2,8%**). `diagnose_physics_coverage` показывает **64,2%** по viscosity при overall ~**82%** — сигнал доработать слабые измерения physics model перед опорой на hybrid rollouts. Сравнивают **CQL+Physics** (меньше violations) и **HybridMOReL** (выше reward и DA) — **tradeoff кейса**, не отраслевой стандарт.  
 > **Ваши** stop rules и числа задаются **риском процесса**: damage, quality, regulation, reversibility. Не переносите эти цифры как универсальные safety criteria.
 
 ---

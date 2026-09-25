@@ -250,8 +250,8 @@ Industrial rollout should be treated as a **sequence of admission gates**, not a
 
 ---
 
-> **Example thresholds from the Chapter 10 case study (illustrative only).**  
-> In that coating-process example, the team used **Directional Accuracy (DA) > 0.80** and **constraint violation rate < 2%** as *internal* success checks before expanding shadow trials, treated **physics-model coverage below ~70%** on key variables as a blocker for hybrid model-based runs, and watched for **~5–10%** of live states falling outside the training envelope before scheduling a retrain. They compared **CQL+Physics** (fewer violations) with **HybridMOReL** (higher reward) — a **case-specific** tradeoff, not a universal standard.  
+> **Example metrics from the Chapter 10 case study (illustrative only).**  
+> In that coating-process benchmark, mean **Directional Accuracy (DA)** reaches **79.2%** (HybridMOReL) — still **below** the chapter’s ~**80% industrial threshold** (BC sits near 61%), though per-variable temperature DA hits **81.3%**. **Constraint violation rate** is **1.1%** for CQL+Physics and **1.9%** for HybridMOReL (plain CQL stays at **2.8%**). `diagnose_physics_coverage` flags **viscosity at 64.2%** while overall coverage is ~**82%** — a reminder to refine weak physics dimensions before leaning on hybrid rollouts. The narrative compares **CQL+Physics** (fewer violations) with **HybridMOReL** (higher reward and DA) — a **case-specific** tradeoff, not a universal standard.  
 > **Your** stop rules and numeric bars must be set from **process risk**: equipment damage, product quality, regulatory exposure, and reversibility of interventions. Do not import these numbers as industry-wide safety criteria.
 
 ---

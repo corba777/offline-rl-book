@@ -159,6 +159,47 @@ Practical evaluation layers:
 
 Offline RL for agents fails quietly when OPE measures **format quality** instead of **task success**. Align metrics with deployment risk, as in Chapter 3’s coverage warnings.
 
+### Evaluation Contract for an Agent Policy
+
+OPE methods tell you *how* to estimate return; they do not define *what counts as improvement*. For tool-using agents, a policy can raise task success while increasing cost, latency, redundant tool calls, or safety violations. Before comparing offline-trained candidates, write a short **evaluation contract** — a spec stakeholders can execute without re-debating metrics after every training run.
+
+**Baselines (always report against both):**
+
+1. **Current deployed agent** — the behavior policy in production (or the best available shadow of it).
+2. **SFT / BC on successful traces** — imitation on filtered wins; the honest “no RL” ceiling when logs are good but sparse on reward structure.
+
+**Metric groups (do not collapse to one number):**
+
+| Group | What to measure | Typical role |
+|-------|-----------------|--------------|
+| **Task success** | Verifier pass rate, task completion, human accept rate | **Primary** — the metric you want to improve |
+| **Cost / latency** | USD per episode, tokens, p95 wall-clock per task | **Guardrail** |
+| **Tool-call efficiency** | Calls per episode, duplicate lookups, empty retries | **Guardrail** |
+| **Safety / constraints** | Forbidden tools, PII leaks, policy violations, out-of-allowlist APIs | **Guardrail** |
+
+**Evaluation set:** Use a **held-out** task suite — never tasks seen during training or prompt tuning. Stratify by **task type** (search, code, CRM, etc.) and **difficulty** (single-hop vs multi-hop). Report per-stratum tables, not only a global average. Chapter 3’s coverage warnings apply: OPE on logs is not a substitute for held-out task eval when deploy states differ from the log.
+
+**Acceptance rule (example template):**
+
+Accept candidate policy $\pi$ over baseline $b$ only if:
+
+- **Primary:** $\text{success}(\pi) \geq \text{success}(b) + \Delta_{\min}$ on the held-out suite, with a **confidence interval** (bootstrap over tasks, or A/B in shadow mode) that excludes zero uplift.
+- **Guardrails:** for each guardrail metric $g$, $\; g(\pi) \leq g(b) + \tau_g\;$ where $\tau_g$ is a **pre-registered tolerance** (e.g. cost +5%, p95 latency +10%, zero tolerance on hard safety violations).
+
+If primary improves but a guardrail breaks tolerance, the answer is **not** to ship with caveats by default — iterate on reward shaping, constraints, or support filtering until the contract is satisfied or the candidate is rejected.
+
+**Illustrative comparison (fictional numbers):**
+
+| Policy | Success (held-out) | Cost / task | Tool calls / task | Safety violations |
+|--------|-------------------|-------------|-------------------|-------------------|
+| Deployed agent | 62% | $0.041 | 4.2 | 0.3% |
+| SFT / BC | 68% | $0.038 | 3.9 | 0.2% |
+| Offline RL candidate | **71% ± 2%** | $0.044 | 4.0 | 0.2% |
+
+With tolerances $\tau_{\text{cost}} = +5\%$ and $\tau_{\text{calls}} = +10\%$, the candidate **passes** success and safety but **fails** cost ($0.044 > 1.05 \times 0.041$). The contract rejects deployment until cost is brought down — even though success beat both baselines.
+
+This contract is the agentic analogue of Chapter 13’s **Industrial Deployment: Gated Readiness**: offline metrics and OPE inform Gate 2; the evaluation contract is what Gate 3 (shadow) and Gate 4 (limited rollout) must verify on live tasks.
+
 ---
 
 ## LLMs as Annotators, Generators, and Critics
