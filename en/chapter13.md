@@ -189,7 +189,7 @@ The architectural trend is clear even if a single dominant "DiT for offline RL" 
 
 A purely offline policy is static by definition. Real deployments need adaptation: the process changes, new operating modes are introduced, constraints are revised. **Offline-to-online RL** initializes from an offline-trained policy and continues training with limited online interaction.
 
-The challenge: naively fine-tuning an offline policy online causes catastrophic forgetting of the conservative behavior that made the offline policy safe. Methods like **IQL with online fine-tuning** (Kostrikov et al., 2021) and **Cal-QL** (Nakamoto et al., 2023) maintain the offline pessimism during early online training and gradually relax it as the online data accumulates. This is exactly the right structure for industrial deployment: use the offline policy as a safe starting point, then improve it through supervised interaction with explicit safety constraints.
+The challenge: naively fine-tuning an offline policy online causes catastrophic forgetting of the conservative behavior that made the offline policy safe. Methods like **IQL with online fine-tuning** (Kostrikov et al., 2021) and **Cal-QL** (Nakamoto et al., 2023) maintain the offline pessimism during early online training and gradually relax it as the online data accumulates. This is a plausible structure for industrial deployment: treat the offline policy as a **starting candidate**, then improve it only under explicit safety constraints and gated rollout — not because offline metrics alone certified it as safe.
 
 ### Safe Offline RL and Formal Verification
 
@@ -207,19 +207,52 @@ The reward specification problem — arguably the hardest unsolved problem in ap
 
 ---
 
-## A Practical Roadmap for Industrial Deployment
+## Industrial Deployment: Gated Readiness
 
-Based on the material in this book, a pragmatic deployment sequence for a new industrial application:
+Industrial rollout should be treated as a **sequence of admission gates**, not a fixed algorithm recipe. No offline RL method — including CQL, IQL, or physics-informed variants — is deployable from training metrics alone. Each gate asks whether you have enough evidence to move to the next level of authority over the plant.
 
-**Step 1 — Start with CQL+Physics.** Collect the existing historical log, define the operating constraints from engineering knowledge, calibrate the physics penalty weights using the Chapter 9 $\lambda$ heuristic, and train. This gives a safe baseline with minimal constraint violations and no dynamics model. Expected timeline: 2–4 weeks for a team with access to the process data.
+### Gate 1 — Data and support
 
-**Step 2 — Diagnose with DA and violation rate.** Use the `IndustrialEvaluator` metrics from Chapter 10. If DA > 0.80 and violation rate < 2%, the baseline policy is industrially deployable. If not, identify which variables are failing and whether the issue is data coverage, physics model accuracy, or constraint calibration.
+**Goal:** Confirm the problem is RL-shaped and the logs support the intended ambition (Chapters 1–3, 12).
 
-**Step 3 — Add hybrid dynamics if needed.** If reward performance is insufficient (the policy is safe but suboptimal), add `HybridEnsemble` for model-based diversity. Run `diagnose_physics_coverage` first — if overall coverage is below 70%, the physics model needs refinement before hybridization helps.
+- Document behavior-policy diversity, state/action coverage, reward definition, and hard constraints.
+- Run BC and at least one OPE method; flag regions where the target policy is unsupported.
 
-**Step 4 — Offline-to-online fine-tuning.** After an initial deployment period (1–4 weeks), collect online interaction data and fine-tune with the IQL offline-to-online procedure. Maintain the physics constraints throughout — they are not an artifact of offline training but a representation of physical reality.
+**Stop / fallback:** Do not promote a value-based offline policy. Stay on **BC + rules**, **MPC with a trusted model**, or the **current operator strategy** until data and reward quality improve.
 
-**Step 5 — Monitor distribution shift.** Track the distribution of observed states over time. If the fraction of observations outside the training distribution exceeds 5–10%, retrain on the combined historical + deployment data. This is not a failure mode — it is the expected lifecycle of an industrial ML model. For concrete design of **drift detection**, **fallback policies**, and **safe RL** checks in deployment, see Chapter 10 (Safe RL, Drift Detection, and Fallback).
+### Gate 2 — Offline evaluation
+
+**Goal:** Stress-test the candidate policy **before** it touches the process.
+
+- Compare OPE estimators; disagreement is a stop signal.
+- Replay or simulate constraint checks (`IndustrialEvaluator`-style metrics in Chapter 10).
+- Review failure modes: OOD actions, misspecified reward, physics model gaps.
+
+**Stop / fallback:** Keep the **behavior policy** or **BC baseline** in authority. Treat the offline-trained policy as experimental until offline evaluators align with engineering judgment.
+
+### Gate 3 — Shadow deployment
+
+**Goal:** Run the candidate policy **in parallel** with production control — compute recommended actions, log them, do **not** actuate (or actuate only in a high-fidelity simulator tied to live state).
+
+- Monitor proposed vs actual actions, constraint margins, and operator overrides.
+
+**Stop / fallback:** **Current controller** remains in the loop. Shadow mode continues until stakeholders agree the candidate is stable and interpretable enough for limited trials.
+
+### Gate 4 — Limited rollout
+
+**Goal:** Grant **bounded** control authority with continuous monitoring.
+
+- Cap step size, rate limits, or operating envelope; require **operator approval** for mode changes when risk warrants it.
+- Monitor distribution shift and trigger **retraining or rollback** when live states leave the training support (see Chapter 10: drift detection and fallback policies).
+- Optional offline-to-online fine-tuning only **after** a successful limited rollout, with constraints unchanged.
+
+**Stop / fallback:** Automatic revert to **BC/rules**, **baseline MPC**, or **manual control** on alarm — not “let the RL policy ride through.”
+
+---
+
+> **Example thresholds from the Chapter 10 case study (illustrative only).**  
+> In that coating-process example, the team used **Directional Accuracy (DA) > 0.80** and **constraint violation rate < 2%** as *internal* success checks before expanding shadow trials, treated **physics-model coverage below ~70%** on key variables as a blocker for hybrid model-based runs, and watched for **~5–10%** of live states falling outside the training envelope before scheduling a retrain. They compared **CQL+Physics** (fewer violations) with **HybridMOReL** (higher reward) — a **case-specific** tradeoff, not a universal standard.  
+> **Your** stop rules and numeric bars must be set from **process risk**: equipment damage, product quality, regulatory exposure, and reversibility of interventions. Do not import these numbers as industry-wide safety criteria.
 
 ---
 
@@ -233,7 +266,7 @@ The questions worth sitting with:
 
 *What does the physics model get wrong?* The residual tells you. Run `diagnose_physics_coverage` before every training run. A physics model with 60% coverage on a key variable is providing more noise than signal for that variable.
 
-*What would violating a constraint actually mean?* The answer determines whether CQL+Physics (minimize expected violations) or a formal safety approach (guarantee zero violations with high probability) is appropriate.
+*What would violating a constraint actually mean?* The answer determines whether expected-violation methods (e.g. Lagrangian / pessimistic offline RL) or a formal safety layer (hard limits, verified backup controller) is appropriate — and which **gate** must pass before any learned policy receives authority.
 
 The field will continue to develop — diffusion transformers will scale, offline-to-online methods will mature, LLM-based reward design will reduce the specification burden. But the fundamental structure of the problem — learning from fixed data, generalizing cautiously, respecting physics — will remain. The tools in this book are not a snapshot of a passing trend. They are the vocabulary in which the next decade of work will be written.
 
