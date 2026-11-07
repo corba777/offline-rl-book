@@ -190,18 +190,22 @@ def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
 
 class TD3BCAgent:
     """
-    TD3 with BC penalty. Critic: standard TD3 (double Q, target, delayed policy).
-    Actor: TD3+BC loss with normalized Q.
+    TD3 with BC penalty. Critic: standard TD3 — clipped double Q, target
+    networks, target policy smoothing (Gaussian noise, std policy_noise, clipped
+    at noise_clip, added to the target action) and an actor and target update
+    every policy_delay critic steps. Actor: TD3+BC loss with normalized Q.
     """
 
     def __init__(self, state_dim, action_dim, hidden_dim=256,
                  lambda_=0.25, gamma=0.99, tau=0.005, policy_delay=2,
-                 device='cpu'):
+                 policy_noise=0.2, noise_clip=0.5, device='cpu'):
         self.device = device
         self.lambda_ = lambda_
         self.gamma = gamma
         self.tau = tau
         self.policy_delay = policy_delay
+        self.policy_noise = policy_noise
+        self.noise_clip = noise_clip
         self._policy_update_counter = 0
 
         self.actor = Actor(state_dim, action_dim, hidden_dim).to(device)
@@ -223,7 +227,10 @@ class TD3BCAgent:
         dones = torch.FloatTensor(dones).to(self.device)
 
         with torch.no_grad():
-            a_next = self.actor_tgt(next_states)
+            # Target policy smoothing: a noisy target action averages Q over a
+            # small neighbourhood, so the critic cannot exploit a narrow peak.
+            noise = (torch.randn_like(actions) * self.policy_noise).clamp(-self.noise_clip, self.noise_clip)
+            a_next = (self.actor_tgt(next_states) + noise).clamp(-1.0, 1.0)
             q1_next = self.Q1_tgt(next_states, a_next)
             q2_next = self.Q2_tgt(next_states, a_next)
             q_next = torch.min(q1_next, q2_next)

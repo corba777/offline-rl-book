@@ -305,19 +305,25 @@ def plot_dynamics_waterfall(dynamics_data: dict, output_name: str = 'next_s1',
     sv_ord = sv[order]
     fig, ax = plt.subplots(figsize=(6, 2.2))
     cum = base
+    span = np.abs(sv).sum() + 1e-12
     for i, (v, idx) in enumerate(zip(sv_ord, order)):
         color = '#2166ac' if v > 0 else '#d73027'
         ax.barh(0, v, left=cum, height=0.5, color=color, alpha=0.9, edgecolor='k', linewidth=0.3)
-        ax.text(cum + v / 2, 0, f'{names[idx]}\n{v:+.3f}', ha='center', va='center',
-                fontsize=9, color='white', fontweight='bold')
+        if abs(v) > 0.15 * span:          # wide enough: label inside the bar
+            ax.text(cum + v / 2, 0, f'{names[idx]}\n{v:+.3f}', ha='center', va='center',
+                    fontsize=9, color='white', fontweight='bold')
+        else:                             # narrow: label above, staggered so labels do not collide
+            ax.text(cum + v / 2, 0.32 + 0.18 * (i % 2), f'{names[idx]} {v:+.3f}', ha='center',
+                    va='bottom', fontsize=8, color='black')
         cum += v
+    ax.set_ylim(-0.5, 0.85)
     ax.axvline(base, color='k', lw=1, ls='--', alpha=0.6, label=f'E[{output_name}]={base:.3f}')
     ax.axvline(pred, color='green', lw=1.5, alpha=0.8, label=f'{output_name}={pred:.3f}')
     ax.set_yticks([])
     ax.set_xlabel(f'Predicted {output_name}', fontsize=10)
     ax.set_title(f'Toy dynamics instance: (s₁={x[0]:.2f}, s₂={x[1]:.2f}, a={x[2]:.2f})',
                  fontsize=11, fontweight='bold')
-    ax.legend(loc='upper right', fontsize=8)
+    ax.legend(loc='upper left', fontsize=8)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()

@@ -44,6 +44,17 @@ def preprocess(text, figdir, anchor):
     text = re.sub(r"^# (?:Chapter \d+|Appendix): (.*)$", rf"# \1 {{#{anchor}}}", text, count=1, flags=re.M)
     text = re.sub(r"^---\s*$", "", text, flags=re.M)                          # horizontal rules
     text = text.replace("📄 ", "")
+    # Inside math, \_ and \* are escapes for the website's Markdown; LaTeX would print them.
+    def unescape(math):
+        # text-mode groups such as \text{next\_s1} need the escape and keep it
+        pieces = re.split(r"(\\(?:text|mathrm|texttt|operatorname)\{[^{}]*\})", math)
+        return "".join(q if j % 2 else q.replace(r"\_", "_").replace(r"\*", "*")
+                       for j, q in enumerate(pieces))
+
+    def unescape_math(chunk):
+        return re.sub(r"\$\$.*?\$\$|\$[^$\n]+\$", lambda m: unescape(m.group(0)), chunk, flags=re.S)
+    parts = re.split(r"(```.*?```|`[^`\n]*`)", text, flags=re.S)
+    text = "".join(p if i % 2 else unescape_math(p) for i, p in enumerate(parts))
     # GitHub-style ```math fences (Chapter 2) become display math.
     text = re.sub(r"^```math\n(.*?)\n```$", lambda m: "$$" + m.group(1).strip() + "$$",
                   text, flags=re.S | re.M)

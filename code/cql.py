@@ -234,7 +234,7 @@ def importance_sampled_logsumexp(q_rand, q_pi, log_pi, action_dim):
     return torch.logsumexp(weighted, dim=1) - math.log(2 * n)
 
 
-def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
+def compute_cql_loss(Q, Q_tgt, Q_other_tgt, policy,
                      states, actions, rewards, next_states, dones,
                      alpha_cql=1.0, alpha_ent=0.1, gamma=0.99, n_samples=10):
     """
@@ -365,10 +365,10 @@ class CQLAgent:
         s, a, r, s2, d = [x.to(self.device) for x in batch]
 
         # Q update
-        l1, i1 = compute_cql_loss(self.Q1, self.Q2, self.Q1_tgt, self.Q2_tgt,
+        l1, i1 = compute_cql_loss(self.Q1, self.Q1_tgt, self.Q2_tgt,
                                    self.policy, s, a, r, s2, d,
                                    self.alpha_cql, self.alpha_ent, self.gamma)
-        l2, i2 = compute_cql_loss(self.Q2, self.Q1, self.Q2_tgt, self.Q1_tgt,
+        l2, i2 = compute_cql_loss(self.Q2, self.Q2_tgt, self.Q1_tgt,
                                    self.policy, s, a, r, s2, d,
                                    self.alpha_cql, self.alpha_ent, self.gamma)
         self.q_opt.zero_grad()
