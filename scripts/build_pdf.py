@@ -32,10 +32,16 @@ def need(tool):
         sys.exit(f"{tool} not found; install it with: brew install pandoc tectonic librsvg")
 
 
-def preprocess(text, figdir):
+def chapter_id(rel):
+    """Anchor for a chapter file: en/chapter4.md -> ch4, en/appendix.md -> appendix."""
+    stem = Path(rel).stem
+    return "appendix" if stem == "appendix" else "ch" + stem.removeprefix("chapter")
+
+
+def preprocess(text, figdir, anchor):
     """Turn one chapter's Markdown into pandoc-friendly Markdown for LaTeX."""
     text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.S)                  # front matter
-    text = re.sub(r"^# (?:Chapter \d+|Appendix): (.*)$", r"# \1", text, count=1, flags=re.M)
+    text = re.sub(r"^# (?:Chapter \d+|Appendix): (.*)$", rf"# \1 {{#{anchor}}}", text, count=1, flags=re.M)
     text = re.sub(r"^---\s*$", "", text, flags=re.M)                          # horizontal rules
     text = text.replace("📄 ", "")
     # GitHub-style ```math fences (Chapter 2) become display math.
@@ -47,13 +53,19 @@ def preprocess(text, figdir):
         src = (ROOT / "en" / path).resolve()
         if src.suffix == ".svg":
             dst = figdir / (src.parent.name + "_" + src.stem + ".pdf")
-            subprocess.run(["rsvg-convert", "-f", "pdf", "-o", str(dst), str(src)], check=True)
+            # One sans font for every diagram, whatever the build machine has installed.
+            svg = re.sub(r'font-family="[^"]*"', 'font-family="DejaVu Sans, Helvetica, Arial, sans-serif"',
+                         src.read_text(encoding="utf-8"))
+            subprocess.run(["rsvg-convert", "-f", "pdf", "-o", str(dst)], input=svg.encode(), check=True)
         else:
             dst = figdir / (src.parent.name + "_" + src.name)
             shutil.copy(src, dst)
         return f"![{alt}](figures/{dst.name}){{width=95%}}"
 
     text = re.sub(r"!\[([^\]]*)\]\((\.\./figures/[^)]+)\)", figure, text)
+    # Links to other chapters jump inside the PDF; other site links stay absolute.
+    text = re.sub(r"\]\(/offline-rl-book/en/((?:chapter\d+|appendix))\.html(?:#[^)]*)?\)",
+                  lambda m: f"](#{chapter_id(m.group(1) + '.md')})", text)
     text = re.sub(r"\]\((/offline-rl-book/[^)]*)\)", lambda m: f"]({SITE}{m.group(1)})", text)
     return text
 
@@ -73,7 +85,7 @@ def main():
 
     parts = []
     for rel in CHAPTERS:
-        md = preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir)
+        md = preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel))
         if rel.endswith("appendix.md"):
             md = "\n```{=latex}\n\\appendix\n```\n\n" + md
         parts.append(md)
@@ -106,8 +118,19 @@ def main():
         for ch in ("/", r"\_", ".", "="):
             body = body.replace(ch, ch + r"\allowbreak{}")
         return r"\texttt{" + body + "}"
-    tex.write_text(re.sub(r"\\texttt\{([^{}]*)\}", breakable, tex.read_text(encoding="utf-8")),
-                   encoding="utf-8")
+    src = re.sub(r"\\texttt\{([^{}]*)\}", breakable, tex.read_text(encoding="utf-8"))
+
+    # Short tables stay on one page: forbid breaks between their rows (\\*) and
+    # move the whole table to the next page if it does not fit.
+    def keep_together(m):
+        body = m.group(0)
+        rows = len(re.findall(r"\\\\\s*$", body, flags=re.M))
+        if rows > 15:
+            return body
+        body = re.sub(r"\\\\(\s*)$", r"\\\\*\1", body, flags=re.M)
+        return f"\\needspace{{{rows + 4}\\baselineskip}}\n" + body
+    src = re.sub(r"\\begin\{longtable\}.*?\\end\{longtable\}", keep_together, src, flags=re.S)
+    tex.write_text(src, encoding="utf-8")
 
     if args.tex_only:
         print(f"LaTeX source: {out / 'offline-rl-book.tex'}")

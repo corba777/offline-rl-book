@@ -41,6 +41,13 @@
 \titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{0.8em}{}
 \titleformat{\subsubsection}{\normalfont\normalsize\bfseries\itshape}{\thesubsubsection}{0.8em}{}
 
+% Keep a heading together with the start of what follows it.
+\usepackage{needspace}
+\usepackage{etoolbox}
+\pretocmd{\section}{\needspace{7\baselineskip}}{}{}
+\pretocmd{\subsection}{\needspace{6\baselineskip}}{}{}
+\pretocmd{\subsubsection}{\needspace{5\baselineskip}}{}{}
+
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
