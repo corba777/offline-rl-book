@@ -92,9 +92,9 @@ This is why the code computes `q_policy - policy_log_probs` before the logsumexp
 
 **Theorem (Kumar et al., 2020).** Let $\hat{Q}^\pi$ be the Q-function learned by CQL and $Q^\pi$ be the true Q-function of policy $\pi$. Then:
 
-$$\hat{Q}^\pi(s, a) \leq Q^\pi(s, a) \quad \forall (s, a) \in \mathcal{D}$$
+$$\mathbb{E}_{a \sim \pi(\cdot \mid s)}\bigl[\hat{Q}^\pi(s, a)\bigr] \leq V^\pi(s) \quad \forall s \in \mathcal{D}$$
 
-under appropriate conditions on $\alpha$.
+under appropriate conditions on $\alpha$. (A penalty with only the first, push-down term gives the stronger pointwise bound $\hat{Q}^\pi(s,a) \leq Q^\pi(s,a)$; the full objective, which also lifts dataset actions, bounds the policy's value in expectation instead, which is tighter in practice.)
 
 In other words: **under the assumptions of the CQL analysis and sufficient optimization, CQL learns a conservative estimate whose expected value for the evaluated policy lower-bounds the true policy value at dataset points**. This reduces the incentive to exploit overestimated OOD actions, but does not guarantee safety or eliminate all overestimation in arbitrary neural implementations.
 
@@ -112,7 +112,7 @@ where $D_{CQL}$ is a divergence term that measures how far the learned policy dr
 
 ### Networks
 
-CQL typically uses a SAC-style architecture: two Q-networks (to reduce overestimation via double-Q), a stochastic actor, and entropy regularization.
+CQL is usually built on top of **Soft Actor-Critic (SAC)** (Haarnoja et al., 2018), an off-policy actor-critic algorithm whose stochastic policy maximizes reward plus an entropy bonus that keeps it from collapsing too early onto a single action. A SAC-style architecture has two Q-networks (to reduce overestimation via double-Q), a stochastic actor, and entropy regularization.
 
 ```python
 import math
@@ -320,6 +320,10 @@ ent_opt.step()
 
 The fixed `0.1` in our implementation works for the thermal control environment but may need adjustment for other tasks. When in doubt, use automatic tuning.
 
+---
+
+## Intuition: The Q-Landscape
+
 Think of the Q-function as a landscape over the state-action space. Standard Q-learning shapes this landscape using only data points as anchors — in between, the landscape is unconstrained and tends to rise due to optimistic generalization.
 
 CQL adds gravity: it pulls the entire landscape down, while the TD loss anchors it at data points. The result is a landscape that is high at dataset actions and low everywhere else.
@@ -344,7 +348,7 @@ Standard Q-landscape:        CQL Q-landscape:
 
 ## How to Choose α
 
-$\alpha$ is the most consequential hyperparameter in CQL. The right value depends on dataset quality, reward scale, and how much you trust the behavior policy.
+The right value of $\alpha$ depends on dataset quality, reward scale, and how much you trust the behavior policy.
 
 ### Step 1 — Sanity-check the CQL penalty sign
 
@@ -442,7 +446,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 | Data required | $(s, a, r, s')$ transitions with rewards |
 | Training objective | TD loss + CQL penalty (logsumexp − dataset Q) |
 | OOD handling | Explicit: Q-values pushed down for OOD actions |
-| Theoretical guarantee | Lower bound on true Q-function at dataset points |
+| Theoretical guarantee | Lower bound on the policy's value at dataset states (under the paper's assumptions) |
 | Key hyperparameter | $\alpha$ (conservatism strength) |
 | Implementation complexity | Medium |
 

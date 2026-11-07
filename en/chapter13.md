@@ -14,7 +14,7 @@ permalink: "/offline-rl-book/en/chapter13/"
 
 # Chapter 13: Conclusion and Future Directions
 
-> *"The goal of offline RL is not to replace online learning — it is to make the knowledge locked in historical data actionable without putting anything at risk."*
+> *"The goal of offline RL is not to replace online learning — it is to make the knowledge locked in historical data actionable without putting the process at risk while you learn."*
 
 ---
 
@@ -26,16 +26,21 @@ The caveats are not engineering details. They are structural features of the off
 
 **Behavioral cloning** (Chapter 1) answers it by ignoring it: clone the behavior policy and stay exactly where the data is. This works when the behavior policy is good and fails catastrophically when it is not — the compounding error problem. BC is not a bad algorithm; it is an honest one that makes no promises beyond the data it saw.
 
+**Off-policy evaluation** (Chapter 3) supplies the yardstick every later chapter relies on: an estimate of a candidate policy's value from logs alone, with its own coverage limits.
+
 **Conservative Q-Learning and IQL** (Chapters 4–5) answer it by pessimism in value space: penalize Q-values for actions not supported by the data, or design the value backup to avoid ever querying OOD actions. Both achieve the same goal — keep the policy's effective support inside the data distribution — through different algebraic routes.
 
-**MOPO and MOReL** (Chapter 8) answer it by expanding the data: learn a model of the world, generate synthetic experience, but penalize or hard-terminate transitions where the model is uncertain. Model-based methods trade compute for sample diversity — when the dynamics model is accurate, they outperform model-free methods significantly.
+**Policy-constraint methods and Decision Transformers** (Chapters 6–7) answer it from the policy side: keep the actor close to logged actions, or replace the value function with return-conditioned sequence modeling.
+
+**MOPO and MOReL** (Chapter 8) answer it by expanding the data: learn a model of the world, generate synthetic experience, but penalize or hard-terminate transitions where the model is uncertain. Model-based methods trade compute for sample diversity — when the dynamics model is accurate, they can outperform model-free methods, especially where data are sparse.
 
 **Physics-informed methods** (Chapter 9) answer it by borrowing structure: replace the unknown parts of the model with known physics, constrain the reward signal to respect physical laws, and enforce hard constraints via Lagrangian duality. This approach is only possible when engineering knowledge exists — but when it does, it is the most data-efficient of all.
 
 **The industrial case study** (Chapter 10) showed these tools composing in a setting where the stakes are real: a five-variable process with integrating dynamics, transport delay, non-uniform data coverage, and hard equipment constraints. No single algorithm dominated. The practical recommendation — CQL+Physics for minimal constraint violations, HybridMOReL when higher reward is needed — reflects not a winner but a complementary structure between model-free constraint enforcement and model-based diversity.
 
+**Explainability** (Chapter 11) makes these policies auditable: SHAP attributions for the critic, the actor and the dynamics model show what each component relies on, and consistency checks catch physically implausible models before deployment.
 
-**Tool-using LLM agents** (Chapter 12) extend the same offline RL framing to multi-turn agent traces — with messier states, sparse rewards, and infrastructure-first logging.
+**Tool-using LLM agents** (Chapter 12) carry the same framing over to multi-turn agent traces. States are messier and rewards sparser, and the first prerequisite is infrastructure: replayable logs, verifiers and an explicit evaluation contract.
 
 ---
 
@@ -79,7 +84,7 @@ Honesty requires naming what this field has not solved.
 
 **Uncertainty quantification.** Ensemble-based uncertainty (Chapters 8–9) measures epistemic uncertainty about the dynamics model. It does not measure uncertainty about the reward, the constraint specification, or the value of the offline policy itself. A policy with high ensemble-estimated uncertainty in its rollouts may still be perfectly safe if the physical constraints are conservative enough. Conversely, a policy with low uncertainty may violate constraints that were never represented in the training data. Calibrated uncertainty about the whole pipeline remains an open problem.
 
-**Interpretability.** The neural network policies trained in Chapters 1–10 are black boxes. An operator who needs to understand *why* the policy commanded a particular setpoint at a particular moment cannot interrogate the weights. This limits deployment in regulated industries where decisions must be explainable and auditable.
+**Interpretability.** The neural network policies trained in Chapters 1–10 are black boxes. Post-hoc tools such as the SHAP analysis of Chapter 11 show which inputs a policy relies on, but attribution is not justification. An operator who needs to understand *why* the policy commanded a particular setpoint at a particular moment cannot interrogate the weights. This limits deployment in regulated industries where decisions must be explainable and auditable.
 
 **Sim-to-real gap for physics models.** The hybrid dynamics models in Chapter 9 assume the physics model and the real process share the same structure, differing only in residuals. When the physics model is structurally wrong — wrong order, wrong coupling topology, wrong conservation laws — the residual network must learn a correction that the physics term actively fights. Detecting and handling structural model mismatch is not yet systematic.
 
@@ -99,17 +104,11 @@ At inference time you condition on a high target return — "I want cumulative r
 
 This approach is conceptually elegant: the entire offline RL pipeline reduces to supervised learning on sequences. No Bellman backups, no Q-functions, no explicit pessimism. The model simply learns from the data what sequences of actions lead to high returns and imitates that pattern conditioned on a high target.
 
-The practical implications are significant. Transformers scale with data and model size in ways that Q-function methods do not. A Decision Transformer trained on a large, diverse dataset generalizes across tasks and environments in a way that a task-specific CQL agent cannot. This is the connection to large language models: the same architecture that learns to predict text from internet data can learn to predict actions from trajectory data.
+The practical implications are significant. Transformers scale with data and model size in ways that Q-function methods do not. A Decision Transformer trained on a large, diverse dataset can generalize across tasks and environments in ways a task-specific CQL agent is not designed to. This is the connection to large language models: the same architecture that learns to predict text from internet data can learn to predict actions from trajectory data.
 
 **Trajectory Transformer** (Janner et al., NeurIPS 2021) pushes this further: model the entire trajectory $(s_1, a_1, r_1, s_2, a_2, r_2, \ldots)$ as a sequence, then use beam search over this sequence to find high-reward trajectories at inference time. This gives planning-like behavior without explicit dynamics learning.
 
 The limitation of sequence models is the same as BC's: they do not extrapolate beyond the return distribution in the training data. If the training dataset has maximum return $R_{max}$, conditioning on $R > R_{max}$ produces distribution-shifted inputs that the model was never trained on. Several papers (including **QDT** — Yamagata et al., 2023) address this by combining sequence modeling with Q-value guidance.
-
-### Diffusion Models for Offline RL
-
-**Diffusion probabilistic models** have emerged as one of the most powerful generative model families, and their application to sequential decision making is an active and productive direction.
-
-The core observation: learning a policy $\pi(a|s)$ is a conditional generation problem. Diffusion models excel at conditional generation. Why not learn the policy as a diffusion model?
 
 ### Imitation Learning vs. Offline RL: A Necessary Distinction
 
@@ -132,6 +131,12 @@ Offline RL addresses this not by better behavior cloning, but by optimizing for 
 **When to use which:** if you have expert demonstrations and care about replicating the behavior exactly (surgical robots, precise manipulation, teaching from a single demonstrator), IL is simpler and often sufficient. If you have heterogeneous historical logs — multiple operators with different strategies, suboptimal episodes, partial demonstrations — offline RL can extract a policy better than any individual demonstrator.
 
 In practice, the two approaches converge: offline RL with a behavior cloning regularizer (as in IQL and CQL+BC) uses IL as a constraint to stay close to the data distribution while optimizing reward.
+
+### Diffusion Models for Offline RL
+
+**Diffusion probabilistic models** have emerged as one of the most powerful generative model families, and their application to sequential decision making is an active and productive direction.
+
+The core observation: learning a policy $\pi(a|s)$ is a conditional generation problem. Diffusion models excel at conditional generation. Why not learn the policy as a diffusion model?
 
 ### The Multimodal Action Problem
 

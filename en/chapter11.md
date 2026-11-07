@@ -315,7 +315,7 @@ states_physical = results['states'] * s_std + s_mean
 
 SHAP is a well-established tool for *attribution* — which inputs the model uses for a prediction. A different line of work asks: can we make Offline RL agents reason in terms of *cause and effect*, so they generalize better and avoid spurious correlations?
 
-**Why causality matters in Offline RL.** Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones — e.g. in autonomous driving, "rain → wipers on" and "rain → braking" are correlated, but only one is a direct cause of the other.
+**Why causality matters in Offline RL.** Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones. In driving logs, for example, wipers being on and harder braking are strongly correlated, yet neither causes the other: both are caused by rain, a confounder. A model that learns "wipers on → brake harder" fails as soon as the wipers are switched on for another reason.
 
 **Causal RL in practice.** Recent work includes:
 
@@ -353,7 +353,7 @@ Three complementary SHAP explanations for a trained Offline RL agent:
 
 The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.
 
-Chapter 13 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.
+Chapter 12 carries the offline RL toolkit over to tool-using LLM agents, where states are contexts and actions are tool calls. Chapter 13 then closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.
 
 ---
 

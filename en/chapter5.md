@@ -62,7 +62,7 @@ $$L_\tau(u) = |\tau - \mathbf{1}[u < 0]| \cdot u^2 = \begin{cases} \tau \cdot u^
 
 At $\tau = 0.5$: standard MSE, estimate converges to the mean.
 At $\tau \to 1.0$: estimate converges to the maximum.
-At $\tau = 0.7$ (IQL default): estimate is between the median and the maximum — biased toward higher values.
+At $\tau = 0.7$ (IQL default): estimate lies between the mean and the maximum — biased toward higher values.
 
 This is the entire trick: by choosing $\tau > 0.5$, we make $V(s)$ approximate the value of a **better-than-average** action at state $s$, using only the actions present in the dataset.
 
@@ -76,9 +76,9 @@ No next states, no policy — just $(s, a)$ pairs from the dataset.
 
 **Q loss** (TD with $V$ as next-state value):
 
-$$\mathcal{L}_Q(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left(r + \gamma V_{\bar\psi}(s') - Q_\theta(s,a)\right)^2 \right]$$
+$$\mathcal{L}_Q(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left(r + \gamma V_{\psi}(s') - Q_\theta(s,a)\right)^2 \right]$$
 
-Here $\bar\psi$ denotes the target V-network. The key: $V_{\bar\psi}(s')$ replaces $\max_{a'} Q(s', a')$ entirely. No action sampling at next states.
+Here $V_\psi$ is the current V-network: IQL needs no separate target copy of $V$, and target networks are kept only for $Q$. The key: $V_{\psi}(s')$ replaces $\max_{a'} Q(s', a')$ entirely. No action sampling at next states.
 
 **Policy loss** (Advantage-Weighted Regression):
 
@@ -368,16 +368,16 @@ Following the IQL paper: the value loss uses **target** Q-networks (`Q1_tgt`, `Q
 The `show_expectile_intuition()` function in `iql.py` demonstrates this concretely. For a state with 5 dataset actions having Q-values $[-0.8, -0.3, 0.1, 0.4, 0.9]$:
 
 ```
-tau=0.1   V = -0.65    near minimum
-tau=0.3   V = -0.18    lower quartile
-tau=0.5   V =  0.06    median (standard MSE)
-tau=0.7   V =  0.38    upper quartile  ← IQL default
-tau=0.9   V =  0.74    near maximum
+tau=0.1   V = -0.47    well below the mean
+tau=0.3   V = -0.15    below the mean
+tau=0.5   V =  0.06    mean (standard MSE)
+tau=0.7   V =  0.27    above the mean  ← IQL default
+tau=0.9   V =  0.58    toward the maximum
 
-True Q values: [-0.8, -0.3, 0.1, 0.4, 0.9]
+True Q values: [-0.8, -0.3, 0.1, 0.4, 0.9]   (mean 0.06, median 0.10)
 ```
 
-At `tau=0.7`, $V(s)$ sits above most dataset actions but below the best one. This means $A(s, a) = Q(s,a) - V(s)$ is positive only for the top actions — exactly the ones the policy should imitate.
+Expectiles are the squared-loss counterpart of quantiles: $\tau = 0.5$ gives the mean, not the median, and as $\tau \to 1$ the estimate approaches the maximum. At `tau=0.7`, $V(s)$ sits above three of the five dataset actions but below the top two. This means $A(s, a) = Q(s,a) - V(s)$ is positive only for the top actions — exactly the ones the policy should imitate.
 
 ---
 
@@ -455,7 +455,7 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 IQL represents the cleanest solution to offline RL among the model-free methods: the pessimism is structural — baked into the architecture — rather than algorithmic. It is the method of choice when training stability matters more than aggressive improvement over the behavior policy.
 
-The next step beyond model-free methods: learn a model of the world and use it to generate synthetic data. This allows offline RL to reason about transitions never seen in the dataset — at the cost of model error. That is the subject of Chapter 8.
+Chapter 6 completes the model-free picture from the policy side, with policy-constraint methods (TD3+BC, AWAC), and Chapter 7 drops the Bellman backup altogether with Decision Transformers. The step beyond model-free methods is to learn a model of the world and use it to generate synthetic data. This allows offline RL to reason about transitions never seen in the dataset — at the cost of model error. That is the subject of Chapter 8.
 
 ---
 

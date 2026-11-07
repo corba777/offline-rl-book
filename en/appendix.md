@@ -30,7 +30,7 @@ This appendix is a **decision aid**, not a ranking. Use it with OPE (Chapter 3),
 | **Decision Transformer** | Sequence modeling on trajectories | Long horizons; multi-task logs; seq-model tooling | Return conditioning OOD; no Bellman credit | Small narrow dataset; need explicit constraints |
 | **MOPO / MOReL** | Model + uncertainty penalty | Rich transitions; simulator-like structure helps | Model bias; false confidence in ensembles | Dynamics hard to learn; logs from one narrow controller |
 | **FQE / DR (OPE)** | Evaluate without deployment | Compare candidates offline | Extrapolation; weak coverage | High-stakes deploy with no OPE agreement |
-| **Physics-informed** | Known structure + residuals | Engineering model exists | Structural model mismatch | No trustworthy physics or constraints |
+| **Physics-informed (Ch. 9)** | Known structure + residuals | Engineering model exists | Structural model mismatch | No trustworthy physics or constraints |
 
 ---
 
@@ -48,7 +48,7 @@ Each block: **paper → assumption → failure mode → when not to use**.
 ### CQL (Chapter 4)
 
 - **Original:** Kumar et al. (2020) [arXiv:2006.04779](https://arxiv.org/abs/2006.04779)
-- **Reference implementation:** [CORL / d3rlpy / author releases](https://github.com/corba777/offline-rl-book/tree/main/code/cql.py) *(educational)*
+- **Reference implementation:** [code/cql.py](https://github.com/corba777/offline-rl-book/blob/main/code/cql.py) *(educational)*; for production-grade code see CORL, d3rlpy or the authors' release
 - **Key assumption:** Sufficient coverage; conservative penalty tuned; optimization succeeds
 - **Main failure mode:** Over-pessimism; miscalibrated OOD Q; unstable Bellman backup
 - **When not to use:** BC already meets needs; reward is weak or confounded
@@ -78,7 +78,7 @@ Each block: **paper → assumption → failure mode → when not to use**.
 
 ### MOPO / MOReL (Chapter 8)
 
-- **Original:** Yu et al. (2020) MOPO [arXiv:2005.13202](https://arxiv.org/abs/2005.13202); Kidambi et al. (2020) MOReL [arXiv:2005.05951](https://arxiv.org/abs/2005.05951)
+- **Original:** Yu et al. (2020) MOPO [arXiv:2005.13239](https://arxiv.org/abs/2005.13239); Kidambi et al. (2020) MOReL [arXiv:2005.05951](https://arxiv.org/abs/2005.05951)
 - **Key assumption:** Learned dynamics useful in data support; uncertainty correlates with error
 - **Main failure mode:** Model exploitation; ensembles not calibrated OOD
 - **When not to use:** Non-stationary plant; unmodeled confounders dominate dynamics
@@ -111,7 +111,8 @@ Before trusting results in production:
 1. Chapters 1–2 (BC + extrapolation error)
 2. Chapter 3 (OPE) if deployment is costly
 3. BC baseline → CQL or IQL → TD3+BC if you need a lighter actor-critic line
-4. Chapter 8 if you have a learnable dynamics model
-5. Chapter 10–11 before any industrial rollout conversation
+4. Chapter 8 if you have a learnable dynamics model; Chapter 9 if you also have engineering knowledge of the physics
+5. Chapters 10–11 before any industrial rollout conversation
+6. Chapter 12 if the policy is a tool-using LLM agent
 
 Return to [Table of Contents](/offline-rl-book/).

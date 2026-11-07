@@ -64,8 +64,8 @@
 </blockquote>
 <hr />
 <h2>Beyond Model-Free</h2>
-<p>Chapters 2–7 attacked offline RL from the same angle: modify the value function to be pessimistic about actions not in the dataset. CQL pushes Q-values down for OOD actions. IQL avoids querying OOD actions entirely.</p>
-<p>Both methods share a fundamental limitation: <strong>they can only use the transitions the behavior policy collected</strong>. If critical regions of the state-action space are simply absent from the dataset, model-free methods have nothing to learn from.</p>
+<p>The model-free methods of Chapters 4–7 attacked offline RL in different ways. CQL pushes Q-values down for OOD actions; IQL never queries them; TD3+BC and AWAC keep the actor close to the data; Decision Transformers drop the value function altogether.</p>
+<p>All of them share a fundamental limitation: <strong>they can only use the transitions the behavior policy collected</strong>. If critical regions of the state-action space are simply absent from the dataset, model-free methods have nothing to learn from.</p>
 <p>Model-based offline RL takes a different approach: <strong>learn the dynamics of the system</strong>, then generate synthetic transitions in your head. Instead of constraining yourself to existing data, you construct a mental model and <em>imagine</em> what would happen under new actions.</p>
 <p>This is powerful — but dangerous. The model is wrong wherever the data is sparse, and a policy that exploits model errors will fail as catastrophically as one that exploits Q-function errors. The two algorithms in this chapter solve this differently:</p>
 <ul>
@@ -89,7 +89,7 @@
 <ol>
 <li><strong>Train a standard RL algorithm</strong> (SAC) on the combined real + synthetic data. The penalty ensures the agent avoids regions where the model is unreliable.</li>
 </ol>
-<p>The result: an effective dataset 10–100× larger than the original, with built-in safety from the uncertainty penalty.</p>
+<p>The result: an effective dataset 10–100× larger than the original, with a built-in safeguard against exploiting model errors.</p>
 <h3>Formalization</h3>
 <h4>The Dynamics Ensemble</h4>
 <p>We train an ensemble of $N$ probabilistic models $\{\hat{T}_i\}_{i=1}^N$, each outputting a Gaussian over next states:</p>
@@ -185,7 +185,7 @@
             <span class="n">state</span> <span class="o">=</span> <span class="n">next_state</span>  <span class="c1"># continue rollout</span>
 </code></pre></div>
 
-<p>The single subtraction <code>reward - self.lam * uncertainty</code> is what converts naive MBRL (dangerous) into MOPO (safe). Without it, the agent exploits model errors wherever the model erroneously predicts high reward. With it, uncertain predictions are automatically penalized — pushing the policy back toward data-supported regions.</p>
+<p>The single subtraction <code>reward - self.lam * uncertainty</code> is what turns naive model-based RL (easily exploited) into MOPO (far harder to exploit). Without it, the agent exploits model errors wherever the model erroneously predicts high reward. With it, uncertain predictions are automatically penalized — pushing the policy back toward data-supported regions.</p>
 <h4>Policy Training on Mixed Data</h4>
 <div class="codehilite"><pre><span></span><code>    <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">real_batch</span><span class="p">,</span> <span class="n">synthetic</span><span class="p">):</span>
         <span class="c1"># Combine real + synthetic at specified ratio</span>
@@ -214,12 +214,12 @@
 <p>The <strong>Pessimistic MDP</strong> $\tilde{\mathcal{M}} = (\mathcal{S} \cup \{s_\perp\}, \mathcal{A}, \tilde{T}, \tilde{r}, \gamma)$ is defined as:</p>
 <p><div class="math-display">$$\tilde{T}(s' | s, a) = \begin{cases} \hat{T}(s' | s, a) & \text{if } (s,a) \in \text{KNOWN} \\ \delta(s_\perp) & \text{if } (s,a) \in \text{UNKNOWN} \end{cases}$$</div></p>
 <p><div class="math-display">$$\tilde{r}(s, a) = \begin{cases} \hat{r}(s, a) & \text{if } s \neq s_\perp \\ -\kappa & \text{if } s = s_\perp \end{cases}$$</div></p>
-<p>where $s_\perp$ is an absorbing failure state and $\kappa > 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive.</p>
+<p>where $s_\perp$ is an absorbing failure state and $\kappa > 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive. The implementation below realizes the absorbing state as termination instead: the transition into UNKNOWN receives a single $-\kappa$ with <code>done=True</code>, so the TD target carries no future value. For $\gamma < 1$ the two forms are equivalent up to rescaling the penalty, since $-\kappa$ forever is worth $-\kappa/(1-\gamma)$ received once.</p>
 <h3>The Theoretical Guarantee</h3>
 <p><strong>Theorem (Kidambi et al., 2020).</strong> Let $\hat{\pi}$ be the optimal policy in the P-MDP $\tilde{\mathcal{M}}$. For any policy $\pi$, let $d^\pi$ denote its state-action occupancy measure. Then:</p>
 <p><div class="math-display">$$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^{\hat{\pi}}}[\text{UNKNOWN}]$$</div></p>
 <p>The bound says: the gap between the optimal policy and what MOReL finds is bounded by the probability of MOReL's policy entering the unknown region, weighted by the penalty. If the P-MDP is well-constructed (the known region covers $\hat{\pi}$'s trajectory), the gap is small.</p>
-<p>This is a stronger guarantee than MOPO's: it is <strong>distribution-free</strong> and does not require assumptions on the dynamics error distribution. The tradeoff is that the known/unknown boundary is hard and requires choosing $\epsilon$ carefully.</p>
+<p>Kidambi et al. state their results as <strong>PAC</strong> bounds (<em>probably approximately correct</em>: the bound holds with high probability once the dataset is large enough). This is a stronger guarantee than MOPO's: it is <strong>distribution-free</strong> and does not require assumptions on the dynamics error distribution. The tradeoff is that the known/unknown boundary is hard and requires choosing $\epsilon$ carefully.</p>
 <h3>Implementation</h3>
 <blockquote>
 <p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/morel.py"><code>morel.py</code></a></p>
@@ -500,7 +500,7 @@
 </tr>
 </tbody>
 </table>
-<p>Both MOPO and MOReL represent a qualitative shift from model-free offline RL: instead of constraining the policy to stay near the data, we expand the data to cover more of the state-action space. The ensemble ensures this expansion is safe — the agent only trusts the model where it is reliable.</p>
+<p>Both MOPO and MOReL represent a qualitative shift from model-free offline RL: instead of constraining the policy to stay near the data, we expand the data to cover more of the state-action space. The ensemble keeps this expansion in check — the agent trusts the model mainly where the ensemble agrees, which is only as good as the ensemble's calibration.</p>
 <p>The natural next question: can we do better than learning dynamics from scratch? If we know the physics of the system — conservation laws, differential equations, material properties — we can build that knowledge directly into the model and dramatically reduce the data needed. That is the subject of Chapter 9: Physics-Informed Offline RL.</p>
 <hr />
 <h2>References</h2>

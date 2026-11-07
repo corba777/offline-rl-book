@@ -50,6 +50,8 @@ $$\tilde{r}(s, a, s') = r(s, a) - \lambda \cdot \max\bigl(0,\ g(s')\bigr)$$
 
 The $\max(0, \cdot)$ activates the penalty only when the constraint is violated; inside the feasible region it contributes nothing. $\lambda$ controls the trade-off between reward maximization and constraint satisfaction.
 
+The same constraint functions appear in two roles in this chapter and the next, and it helps to keep them apart. Applied to logged or synthetic transitions as a **reward penalty**, $g$ discourages the *policy* from steering the process toward states that violate the constraint. Applied to the predictions of a learned dynamics model, the same functions check whether the *model* is physically consistent; there they act as a training loss or a diagnostic, not as a reward. Bounds and conservation laws serve both roles. Monotonicity and first-order consistency checks are mainly about the model: on real logged data they flag transitions that the simple physics fails to explain.
+
 ### Types of Physical Constraints
 
 **Monotone relationships.** Many physical relationships are guaranteed to be monotone. Viscosity of a liquid decreases with temperature (for most fluids in normal operating ranges). Conversion in a reactor increases with residence time up to some limit. If the learned dynamics model predicts the wrong sign, it is physically wrong.
@@ -137,17 +139,26 @@ def first_order_consistency(state, action, next_state,
 
 The penalty weight $\lambda$ has the same role as $\alpha$ in CQL: too small and violations persist; too large and the policy becomes overly conservative, ignoring the reward signal.
 
-A practical calibration: compute the typical base reward magnitude $\bar{r}$ on the dataset, then set $\lambda$ so that a typical violation (say, 5% mass balance error) costs about 20–50% of $\bar{r}$. This makes the constraint "expensive but not catastrophic."
+The book's code calibrates $\lambda$ with `calibrate_lambda` in `physics_informed.py`, which Chapter 10 reuses. It measures two quantities on the dataset — the largest observed violation $C_{max}$ and a typical discounted return $\bar{R} = \overline{|r|}/(1-\gamma)$ — and sets
+
+$$\lambda = \frac{2\, C_{max}}{f \cdot \bar{R}}, \qquad f = 0.1 \text{ by default.}$$
+
+This is a scaling heuristic, not a guarantee. It makes the penalty grow with the worst violation present in the data and shrink as rewards grow, so that the penalty stays a modest, tunable fraction $f$ of the return: "expensive but not catastrophic."
 
 ```python
-# Calibrate lambda from dataset statistics
-r_mean = np.abs(dataset['rewards']).mean()
-typical_violation = 0.05   # expected violation magnitude in the region of interest
-target_penalty_fraction = 0.3   # want penalty ≈ 30% of mean reward
-
-lam = (target_penalty_fraction * r_mean) / typical_violation
-print(f"Calibrated lambda = {lam:.2f}")
+def calibrate_lambda(dataset, constraint_fn, base_reward_fn,
+                     target_gap_fraction=0.1, gamma=0.99, device='cpu'):
+    n  = min(2000, len(dataset['states']))
+    s  = torch.FloatTensor(dataset['states'][:n]).to(device)
+    a  = torch.FloatTensor(dataset['actions'][:n]).to(device)
+    s2 = torch.FloatTensor(dataset['next_states'][:n]).to(device)
+    with torch.no_grad():
+        C_max    = constraint_fn(s, a, s2).max().item()
+        mean_ret = base_reward_fn(s, a, s2).abs().mean().item() / (1 - gamma)
+    return 2.0 * C_max / max(target_gap_fraction * mean_ret, 1e-8)
 ```
+
+After calibrating, check the result directly: on training data a typical violation should be clearly expensive without dominating the reward. Chapter 10 ("Constraint Calibration") shows such a check.
 
 ---
 
@@ -411,7 +422,7 @@ Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
                    └────────────┴─────────────┴──────────────┘
 ```
 
-The bottom-left cell (dense data, no physics) is the D4RL benchmark — where Chapters 4–8 shine. Industrial settings typically live in the top-right: sparse data, partial physics knowledge.
+The bottom-left cell (dense data, no physics) is the D4RL benchmark — the standard suite of offline datasets for MuJoCo-style simulated control, where Chapters 4–8 shine. Industrial settings typically live in the top row, with sparse data, and in one of its two right-hand cells: partial or strong physics knowledge.
 
 ---
 

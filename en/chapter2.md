@@ -119,7 +119,7 @@ In offline Q-learning, the distribution shift is in **action space**:
 
 The greedy policy will select actions outside the training distribution whenever the Q-function is overoptimistic there — which is exactly when no corrective training signal exists.
 
-This is sometimes called the **"deadly triad"**: function approximation + bootstrapping + off-policy learning. All three are present in offline Q-learning.
+Offline Q-learning also combines all three ingredients of what Sutton and Barto call the **"deadly triad"**: function approximation, bootstrapping and off-policy learning. The triad explains why errors can grow without bound once they appear; the action-space distribution shift above explains where those errors come from.
 
 ---
 
@@ -254,7 +254,7 @@ The answer depends on the quality and coverage of the behavior policy.
 
 In industrial settings, all four conditions for BC insufficiency typically hold. Operators are not optimal; different shifts make different decisions; a 30-minute prediction horizon requires long-term planning; and the reward function (filler%, temperature stability, energy use) is well-defined.
 
-This is the motivation for the methods in Chapters 3–7.
+This is the motivation for the methods in Chapters 3–9.
 
 ---
 

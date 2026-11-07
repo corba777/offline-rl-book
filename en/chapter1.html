@@ -234,7 +234,7 @@ Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger
 
 <hr />
 <h2>Practical Limitations for Industrial Processes</h2>
-<p>For a process like asphalt coating with state variables (filler%, temperature, viscosity) and a 30-minute horizon, BC has specific failure modes:</p>
+<p>The book uses one running example throughout: a continuous asphalt coating line, where operators adjust heating and filler feed to keep temperature, filler fraction and viscosity on target. The companion code models it as a small toy environment, <code>ThermalProcessEnv</code>, which Chapters 3–9 reuse; Chapter 10 replaces it with a richer five-variable version. For such a process, with state variables (filler%, temperature, viscosity) and a 30-minute horizon, BC has specific failure modes:</p>
 <p><strong>Multi-modal behavior.</strong> Human operators make different decisions in the same state depending on context not captured in the state vector (upcoming order, maintenance schedule, fatigue). BC averages over these modes, learning a policy that is suboptimal in all of them.</p>
 <p><strong>Coverage gaps.</strong> Operators rarely explore edge cases. If a disturbance drives the process outside the normal operating band, BC has no training data for those states and produces undefined behavior.</p>
 <p><strong>No reward awareness.</strong> BC copies what the operator <em>did</em>, not what they <em>should have done</em>. If the historical data contains suboptimal decisions (manual corrections, conservative setpoints), BC faithfully imitates those mistakes.</p>

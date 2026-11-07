@@ -28,7 +28,7 @@ However, once agent execution traces are logged as **state–action–reward tra
 task → context/observation → thought/plan → tool call/action → tool result → next state → reward/outcome
 ```
 
-The difference from MuJoCo or D4RL is not conceptual but practical:
+The difference from classical control benchmarks such as MuJoCo or the D4RL offline datasets is not conceptual but practical:
 
 | RL object | Classical control | Agentic LLM |
 |-----------|-------------------|-------------|
@@ -38,7 +38,7 @@ The difference from MuJoCo or D4RL is not conceptual but practical:
 | **Episode** | Fixed horizon rollout | Multi-turn interaction |
 | **Policy** | MLP / actor network | LLM or LLM router over tools |
 
-States are high-dimensional and partially observed; the action space is enormous and structured; rewards are often **sparse** and **delayed**; credit assignment spans many reasoning and tool steps. These are the same failure modes as offline DRL — extrapolation, distribution shift, and overoptimistic value estimates — but with messier observations and weaker simulators.
+States are high-dimensional and partially observed; the action space is enormous and structured; rewards are often **sparse** and **delayed**; credit assignment spans many reasoning and tool steps. These are the same failure modes as offline deep RL — extrapolation, distribution shift, and overoptimistic value estimates — but with messier observations and weaker simulators.
 
 This chapter maps the **ideas** from the rest of the book onto agentic AI. It does **not** claim that CQL, IQL, or TD3+BC drop into LangChain unchanged. It explains what transfers, what must be adapted, and what infrastructure (logging, verifiers, replay) must exist first.
 
@@ -79,39 +79,6 @@ Agent observability / tracing → trajectories → offline or off-policy RL data
 ```
 
 LangChain-, AutoGen-, or OpenAI Agents-style logs are not merely debugging artifacts — they are potential **RL training data** once rewards and state boundaries are defined.
-
----
-
-## From Agentic Offline RL to Offline MARL
-
-The rest of this chapter assumes a single tool-using agent. When several agents act in one episode, that assumption fails for a specific reason. If the other agents' policies are held fixed, each agent still faces a (PO)MDP: its teammates are part of the environment. Offline training, however, changes several policies at once, so the dynamics each agent experiences shift with its teammates' behavior, and logs collected under the old teammate policies no longer describe the new environment. The appropriate model is a stochastic (Markov) game; with local observations and a shared team reward, a Dec-POMDP. Concatenating all agents' turns into one transcript discards who observed what and who chose which action, which is exactly the information needed to estimate support and assign credit.
-
-**Notation.** With $N$ agents, let $s_t$ be the joint state (shared workspace or ticket state), $o_t^i$ the local observation of agent $i$ (its prompt, tools and private memory), and
-
-$$a_t = (a_t^1,\ldots,a_t^N)$$
-
-the joint action, where $a_t^i$ is a message, a tool call or a plan step. Rewards can be shared by the team ($r_t$), individual ($r_t^i$), or a mix of both. A usable log therefore records per-agent observations and actions, not only the merged conversation.
-
-Single-agent offline RL does not address three problems that arise here:
-
-1. **Joint-action coverage.** Support is defined over tuples $(a^1,\ldots,a^N)$, not over each agent's actions separately. Logs can contain "agent A searches" and "agent B edits" in different episodes and never the combination needed at deployment. If each agent is constrained only to its own logged actions, the team can still execute a joint action that never appears in the data.
-2. **Credit assignment across agents.** A team success does not indicate which agent's step produced it. Separating an agent's contribution from luck and from teammates' work requires agent- or role-level returns, counterfactual baselines or process rewards.
-3. **Coordination conventions.** Multi-agent logs encode who speaks when, which role owns which tool and how handoffs work. Improving each agent's policy separately can break the conventions that made the logged episodes succeed.
-
-LLM stacks often conflate two learning problems:
-
-| Level | What is learned | Typical offline data |
-|-------|-----------------|----------------------|
-| **Shared LLM (post-training)** | One base model used by several roles or prompts | Preference pairs, successful multi-agent traces for SFT, optionally per-agent credit |
-| **Orchestration policy** | Who acts next, when to hand off, how to route tools and messages | Logs of routers, schedulers or Autogen/LangGraph graphs, treated as a separate decision process |
-
-Fine-tuning the shared LLM on role-conditioned traces (DPO, SFT or single-agent offline RL) updates a different policy from the orchestration policy that chooses joint actions. State which of the two a method updates; otherwise multi-agent failure modes enter under the label of agent fine-tuning.
-
-**Example.** Agent 1 sends agent 2 a message $m \in \{A, B\}$; agent 2 then calls a tool $u \in \{a, b\}$. The team receives $r = 1$ only for the pairs $(A, a)$ and $(B, b)$. Under a uniformly random behavior policy, every individual message and every individual tool succeeds in half of the logged episodes, so per-agent action values are all equal and carry no signal; only the value of the pair distinguishes good from bad behavior. A single-agent update on the concatenated transcript credits each action by its marginal success rate and can converge to a mismatched pair such as $(A, b)$. Offline MARL methods model the joint action explicitly for this reason.
-
-Classical offline MARL already offers tools for this. MACCA ([Wang et al., 2025](https://arxiv.org/abs/2312.03644)) represents the offline data as a dynamic Bayesian network and identifies each agent's causal contribution to the reward. For LLM agents the nearest work is still online. LangMARL ([Yao et al., 2026](https://aclanthology.org/2026.emnlp-main.1837/)) uses a centralized language critic to assign credit to each agent and rewrites the agents' natural-language policies, their instructions and exemplars, rather than model weights, collecting fresh rollouts at every iteration. Carrying such agent-level credit over to fixed logs remains an open problem.
-
-The rest of the chapter deliberately stays with a single agent. If your product is multi-agent, the logging and evaluation practices below still apply. Single-agent conservative RL does not carry over directly: its support constraints and credit assignment must first be redefined for joint actions and team rewards.
 
 ---
 
@@ -166,7 +133,7 @@ The conceptual contrast:
 
 ### Mapping classical offline RL ideas
 
-Let $\pi_b$ denote the policy that collected the logs and $\pi_{\mathrm{ref}}$ the frozen reference model. TD3+BC fits actions actually observed in the dataset; [DPO](https://arxiv.org/abs/2305.18290) instead compares sequence probabilities relative to $\pi_{\mathrm{ref}}$. They may be close when the same SFT checkpoint collected the data with matching prompts and sampling, but mixtures of checkpoints, filtering and changed decoding break that correspondence. A reference penalty does not itself establish dataset support. DPO encodes reference regularization through its preference objective; the presence, coefficient and role of an explicit KL penalty in GRPO depend on the implementation.
+Let $\pi_b$ denote the policy that collected the logs and $\pi_{\mathrm{ref}}$ the frozen reference model. Two acronyms recur below. RLHF (reinforcement learning from human feedback) fine-tunes a model against a learned reward, usually with a KL penalty to the reference. GRPO (Group Relative Policy Optimization) is an online policy-gradient method that scores each sampled answer against others drawn for the same prompt. TD3+BC fits actions actually observed in the dataset; [DPO](https://arxiv.org/abs/2305.18290) instead compares sequence probabilities relative to $\pi_{\mathrm{ref}}$. They may be close when the same SFT checkpoint collected the data with matching prompts and sampling, but mixtures of checkpoints, filtering and changed decoding break that correspondence. A reference penalty does not itself establish dataset support. DPO encodes reference regularization through its preference objective; the presence, coefficient and role of an explicit KL penalty in GRPO depend on the implementation.
 
 Do **not** read this table as “drop in CQL unchanged.” Read it as **design vocabulary**:
 
@@ -385,6 +352,39 @@ Dataset: no multiplication support
 **Thesis (same as classical offline RL):** improvement is possible **inside** the action/state support of the dataset; conservative methods refuse unsupported gains; unconstrained value learning can overtrust unvisited actions.
 
 Start with this tabular agent before LLM confounders (stochastic decoding, prompt drift, missing log-probs, expensive OPE). A natural next step is replacing the tabular policy with a small classifier over trace states, then an LLM that proposes tool calls filtered by a support or critic model.
+
+---
+
+## From Agentic Offline RL to Offline MARL
+
+Everything so far has assumed a single tool-using agent. When several agents act in one episode, that assumption fails for a specific reason. If the other agents' policies are held fixed, each agent still faces a (PO)MDP: its teammates are part of the environment. Offline training, however, changes several policies at once, so the dynamics each agent experiences shift with its teammates' behavior, and logs collected under the old teammate policies no longer describe the new environment. The appropriate model is a stochastic (Markov) game; with local observations and a shared team reward, a Dec-POMDP. Concatenating all agents' turns into one transcript discards who observed what and who chose which action, which is exactly the information needed to estimate support and assign credit.
+
+**Notation.** With $N$ agents, let $s_t$ be the joint state (shared workspace or ticket state), $o_t^i$ the local observation of agent $i$ (its prompt, tools and private memory), and
+
+$$a_t = (a_t^1,\ldots,a_t^N)$$
+
+the joint action, where $a_t^i$ is a message, a tool call or a plan step. Rewards can be shared by the team ($r_t$), individual ($r_t^i$), or a mix of both. A usable log therefore records per-agent observations and actions, not only the merged conversation.
+
+Single-agent offline RL does not address three problems that arise here:
+
+1. **Joint-action coverage.** Support is defined over tuples $(a^1,\ldots,a^N)$, not over each agent's actions separately. Logs can contain "agent A searches" and "agent B edits" in different episodes and never the combination needed at deployment. If each agent is constrained only to its own logged actions, the team can still execute a joint action that never appears in the data.
+2. **Credit assignment across agents.** A team success does not indicate which agent's step produced it. Separating an agent's contribution from luck and from teammates' work requires agent- or role-level returns, counterfactual baselines or process rewards.
+3. **Coordination conventions.** Multi-agent logs encode who speaks when, which role owns which tool and how handoffs work. Improving each agent's policy separately can break the conventions that made the logged episodes succeed.
+
+LLM stacks often conflate two learning problems:
+
+| Level | What is learned | Typical offline data |
+|-------|-----------------|----------------------|
+| **Shared LLM (post-training)** | One base model used by several roles or prompts | Preference pairs, successful multi-agent traces for SFT, optionally per-agent credit |
+| **Orchestration policy** | Who acts next, when to hand off, how to route tools and messages | Logs of routers, schedulers or Autogen/LangGraph graphs, treated as a separate decision process |
+
+Fine-tuning the shared LLM on role-conditioned traces (DPO, SFT or single-agent offline RL) updates a different policy from the orchestration policy that chooses joint actions. State which of the two a method updates; otherwise multi-agent failure modes enter under the label of agent fine-tuning.
+
+**Example.** Agent 1 sends agent 2 a message $m \in \{A, B\}$; agent 2 then calls a tool $u \in \{a, b\}$. The team receives $r = 1$ only for the pairs $(A, a)$ and $(B, b)$. Under a uniformly random behavior policy, every individual message and every individual tool succeeds in half of the logged episodes, so per-agent action values are all equal and carry no signal; only the value of the pair distinguishes good from bad behavior. A single-agent update on the concatenated transcript credits each action by its marginal success rate and can converge to a mismatched pair such as $(A, b)$. Offline MARL methods model the joint action explicitly for this reason.
+
+Classical offline MARL already offers tools for this. MACCA ([Wang et al., 2025](https://arxiv.org/abs/2312.03644)) represents the offline data as a dynamic Bayesian network and identifies each agent's causal contribution to the reward. For LLM agents the nearest work is still online. LangMARL ([Yao et al., 2026](https://aclanthology.org/2026.emnlp-main.1837/)) uses a centralized language critic to assign credit to each agent and rewrites the agents' natural-language policies, their instructions and exemplars, rather than model weights, collecting fresh rollouts at every iteration. Carrying such agent-level credit over to fixed logs remains an open problem.
+
+This chapter deliberately stays with a single agent. If your product is multi-agent, the evaluation practices above and the logging schema below still apply; the schema includes a multi-agent extension. Single-agent conservative RL does not carry over directly: its support constraints and credit assignment must first be redefined for joint actions and team rewards.
 
 ---
 

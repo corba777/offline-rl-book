@@ -267,7 +267,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 <hr />
 <h2>Beyond SHAP: Causal AI in Offline RL</h2>
 <p>SHAP is a well-established tool for <em>attribution</em> — which inputs the model uses for a prediction. A different line of work asks: can we make Offline RL agents reason in terms of <em>cause and effect</em>, so they generalize better and avoid spurious correlations?</p>
-<p><strong>Why causality matters in Offline RL.</strong> Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones — e.g. in autonomous driving, "rain → wipers on" and "rain → braking" are correlated, but only one is a direct cause of the other.</p>
+<p><strong>Why causality matters in Offline RL.</strong> Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones. In driving logs, for example, wipers being on and harder braking are strongly correlated, yet neither causes the other: both are caused by rain, a confounder. A model that learns "wipers on → brake harder" fails as soon as the wipers are switched on for another reason.</p>
 <p><strong>Causal RL in practice.</strong> Recent work includes:</p>
 <ul>
 <li><strong>Causal world models.</strong> Instead of a single black-box $\hat{s}' = f(s, a)$, algorithms like FOCUS learn <em>causal structure</em> over state variables (which state factors cause which next-state factors). Theory shows that such structure can improve generalization bounds in offline model-based RL; experiments show more robust behavior when the environment or data distribution changes.</li>
@@ -322,7 +322,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 </tbody>
 </table>
 <p>The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.</p>
-<p>Chapter 13 closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
+<p>Chapter 12 carries the offline RL toolkit over to tool-using LLM agents, where states are contexts and actions are tool calls. Chapter 13 then closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
 <hr />
 <h2>Appendix 11.A: Choosing Between SHAP Variants</h2>
 <table>

@@ -133,7 +133,7 @@
 <td>High-stakes deploy with no OPE agreement</td>
 </tr>
 <tr>
-<td><strong>Physics-informed</strong></td>
+<td><strong>Physics-informed (Ch. 9)</strong></td>
 <td>Known structure + residuals</td>
 <td>Engineering model exists</td>
 <td>Structural model mismatch</td>
@@ -154,7 +154,7 @@
 <h3>CQL (Chapter 4)</h3>
 <ul>
 <li><strong>Original:</strong> Kumar et al. (2020) <a href="https://arxiv.org/abs/2006.04779">arXiv:2006.04779</a></li>
-<li><strong>Reference implementation:</strong> <a href="https://github.com/corba777/offline-rl-book/tree/main/code/cql.py">CORL / d3rlpy / author releases</a> <em>(educational)</em></li>
+<li><strong>Reference implementation:</strong> <a href="https://github.com/corba777/offline-rl-book/blob/main/code/cql.py">code/cql.py</a> <em>(educational)</em>; for production-grade code see CORL, d3rlpy or the authors' release</li>
 <li><strong>Key assumption:</strong> Sufficient coverage; conservative penalty tuned; optimization succeeds</li>
 <li><strong>Main failure mode:</strong> Over-pessimism; miscalibrated OOD Q; unstable Bellman backup</li>
 <li><strong>When not to use:</strong> BC already meets needs; reward is weak or confounded</li>
@@ -184,7 +184,7 @@
 </ul>
 <h3>MOPO / MOReL (Chapter 8)</h3>
 <ul>
-<li><strong>Original:</strong> Yu et al. (2020) MOPO <a href="https://arxiv.org/abs/2005.13202">arXiv:2005.13202</a>; Kidambi et al. (2020) MOReL <a href="https://arxiv.org/abs/2005.05951">arXiv:2005.05951</a></li>
+<li><strong>Original:</strong> Yu et al. (2020) MOPO <a href="https://arxiv.org/abs/2005.13239">arXiv:2005.13239</a>; Kidambi et al. (2020) MOReL <a href="https://arxiv.org/abs/2005.05951">arXiv:2005.05951</a></li>
 <li><strong>Key assumption:</strong> Learned dynamics useful in data support; uncertainty correlates with error</li>
 <li><strong>Main failure mode:</strong> Model exploitation; ensembles not calibrated OOD</li>
 <li><strong>When not to use:</strong> Non-stationary plant; unmodeled confounders dominate dynamics</li>
@@ -213,8 +213,9 @@
 <li>Chapters 1–2 (BC + extrapolation error)</li>
 <li>Chapter 3 (OPE) if deployment is costly</li>
 <li>BC baseline → CQL or IQL → TD3+BC if you need a lighter actor-critic line</li>
-<li>Chapter 8 if you have a learnable dynamics model</li>
-<li>Chapter 10–11 before any industrial rollout conversation</li>
+<li>Chapter 8 if you have a learnable dynamics model; Chapter 9 if you also have engineering knowledge of the physics</li>
+<li>Chapters 10–11 before any industrial rollout conversation</li>
+<li>Chapter 12 if the policy is a tool-using LLM agent</li>
 </ol>
 <p>Return to <a href="/offline-rl-book/">Table of Contents</a>.</p></main>
 <nav class="chapter-nav">

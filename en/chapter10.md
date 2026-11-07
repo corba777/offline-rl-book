@@ -20,7 +20,7 @@ permalink: "/offline-rl-book/en/chapter10/"
 
 ## From Benchmarks to Industry
 
-The preceding nine chapters (Chapters 1–9) built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on `ThermalProcessEnv` — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.
+The preceding nine chapters (Chapters 1–9) built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on `ThermalProcessEnv`, the toy version of the coating line introduced in Chapter 1: three state variables (temperature, filler fraction, viscosity), two control inputs and clean first-order dynamics — designed to make the algorithmic ideas visible.
 
 Real industrial processes differ from that environment in every dimension that matters.
 
@@ -166,6 +166,8 @@ DA is often more informative than RMSE in industrial settings because:
 - A fast policy with DA ≈ 0.4 requires fundamental retraining
 - Operators can visually verify DA from trend plots without numerical analysis
 
+In this case study we treat DA ≥ 80% as the bar operators would accept. The number is illustrative, chosen for this process; it is not an industry standard.
+
 ### RMSE and Constraint Violation Rate
 
 RMSE from setpoint is computed per variable:
@@ -293,14 +295,14 @@ class PhysicsInformedCQL:
         return self.cql.update((s, a, r - penalty, s2, d))
 ```
 
-The `lambdas` are calibrated via `calibrate_lambda` using the Chapter 9 heuristic (Part I, "Choosing $\lambda$"): set $\lambda$ so that a typical physics violation costs about 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.
+The `lambdas` are calibrated via `calibrate_lambda` using the Chapter 9 heuristic (Part I, "Choosing $\lambda$"): $\lambda$ is scaled to the largest violation observed in the data and to the typical discounted return, with the default fraction $f = 0.1$. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.
 
 Three constraints are active:
 1. **Operating bounds** — all five state variables within hard limits
 2. **Temperature first-order consistency** — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
 3. **Filler fraction first-order consistency** — same for filler
 
-The first-order consistency constraints do not punish the agent for choosing unusual setpoints — they punish the dynamics model for predicting physically impossible transitions, which indirectly constrains the policy to stay in regions where dynamics are predictable.
+CQL+Physics has no learned dynamics model, so the first-order consistency terms are evaluated on logged transitions: they penalize transitions whose observed change departs from the expected first-order response. They do not punish the agent for choosing unusual setpoints; they lower the value of poorly explained transitions, which indirectly keeps the policy in regions where the dynamics are predictable. In HybridMOReL below, the same checks apply to model predictions instead (Chapter 9, Part I, explains the two roles).
 
 ---
 
@@ -384,8 +386,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
 
 **CQL** improves across all metrics. Conservatism in the Q-function prevents the worst extrapolation failures. But violation rate remains at 2.8% — CQL has no mechanism to specifically avoid constraint boundaries.
 
-**CQL+Physics** reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions. The violation severity also drops even more than the rate, meaning that when violations do occur they are shallower.
-
+**CQL+Physics** reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions.
 **HybridMOReL** achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.
 
 ### The Complementary Structure
@@ -396,7 +397,7 @@ These results reveal a complementary structure worth understanding.
 
 **HybridMOReL** is the performance maximizer: model-based rollouts push the policy to higher reward and DA, but without explicit constraint penalties the violation rate is slightly elevated.
 
-In a real deployment, the natural combination is **HybridMOReL + physics reward shaping** — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to `train_hybrid_morel_agent`: pass the `PhysicsRewardWrapper` into the rollout generator. Chapter 9 showed exactly how to do this.
+In a real deployment, the natural combination is **HybridMOReL + physics reward shaping** — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to `train_hybrid_morel_agent`: pass the `PhysicsRewardWrapper` into the rollout generator. It is the same wrapper used for CQL+Physics above; only the place where it is applied changes.
 
 ---
 
@@ -442,7 +443,7 @@ Chapters 9 and 10 already use **physics-informed constraint penalties** and hard
 
 For higher assurance, two directions are relevant in industry:
 
-- **Safety critics** (see Chapter 13): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.
+- **Safety critics** (see Chapter 13): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep the estimated risk below a threshold, $Q_c(s,a) \leq d$ (e.g. Conservative Safety Critics; CVPO instead budgets the expected cumulative cost — see Chapter 13). This yields assumption-dependent, probabilistic safety estimates rather than ad hoc penalties.
 - **Action masking / safe sets:** At runtime, before applying the RL action, check whether it would push the state toward a constraint boundary. If the predicted next state (from a physics or hybrid model) violates a bound, replace the action with a safe alternative: e.g. clip to a conservative set, or switch to a PID that only corrects toward setpoint without aggressive moves. This is especially useful when the primary policy is model-based (HybridMOReL): the same ensemble that generates rollouts can predict $s'$ and flag unsafe actions.
 
 Neither approach removes the need for the constraint calibration described earlier; they add a second layer of checks at deployment.

@@ -20,9 +20,9 @@ permalink: "/offline-rl-book/en/chapter8/"
 
 ## Beyond Model-Free
 
-Chapters 2–7 attacked offline RL from the same angle: modify the value function to be pessimistic about actions not in the dataset. CQL pushes Q-values down for OOD actions. IQL avoids querying OOD actions entirely.
+The model-free methods of Chapters 4–7 attacked offline RL in different ways. CQL pushes Q-values down for OOD actions; IQL never queries them; TD3+BC and AWAC keep the actor close to the data; Decision Transformers drop the value function altogether.
 
-Both methods share a fundamental limitation: **they can only use the transitions the behavior policy collected**. If critical regions of the state-action space are simply absent from the dataset, model-free methods have nothing to learn from.
+All of them share a fundamental limitation: **they can only use the transitions the behavior policy collected**. If critical regions of the state-action space are simply absent from the dataset, model-free methods have nothing to learn from.
 
 Model-based offline RL takes a different approach: **learn the dynamics of the system**, then generate synthetic transitions in your head. Instead of constraining yourself to existing data, you construct a mental model and *imagine* what would happen under new actions.
 
@@ -49,7 +49,7 @@ $$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$
 
 3. **Train a standard RL algorithm** (SAC) on the combined real + synthetic data. The penalty ensures the agent avoids regions where the model is unreliable.
 
-The result: an effective dataset 10–100× larger than the original, with built-in safety from the uncertainty penalty.
+The result: an effective dataset 10–100× larger than the original, with a built-in safeguard against exploiting model errors.
 
 ### Formalization
 
@@ -173,7 +173,7 @@ Training with NLL rather than MSE is essential. MSE trains only the mean, leavin
             state = next_state  # continue rollout
 ```
 
-The single subtraction `reward - self.lam * uncertainty` is what converts naive MBRL (dangerous) into MOPO (safe). Without it, the agent exploits model errors wherever the model erroneously predicts high reward. With it, uncertain predictions are automatically penalized — pushing the policy back toward data-supported regions.
+The single subtraction `reward - self.lam * uncertainty` is what turns naive model-based RL (easily exploited) into MOPO (far harder to exploit). Without it, the agent exploits model errors wherever the model erroneously predicts high reward. With it, uncertain predictions are automatically penalized — pushing the policy back toward data-supported regions.
 
 #### Policy Training on Mixed Data
 
@@ -218,7 +218,7 @@ $$\tilde{T}(s' | s, a) = \begin{cases} \hat{T}(s' | s, a) & \text{if } (s,a) \in
 
 $$\tilde{r}(s, a) = \begin{cases} \hat{r}(s, a) & \text{if } s \neq s_\perp \\ -\kappa & \text{if } s = s_\perp \end{cases}$$
 
-where $s_\perp$ is an absorbing failure state and $\kappa > 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive.
+where $s_\perp$ is an absorbing failure state and $\kappa > 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive. The implementation below realizes the absorbing state as termination instead: the transition into UNKNOWN receives a single $-\kappa$ with `done=True`, so the TD target carries no future value. For $\gamma < 1$ the two forms are equivalent up to rescaling the penalty, since $-\kappa$ forever is worth $-\kappa/(1-\gamma)$ received once.
 
 ### The Theoretical Guarantee
 
@@ -228,7 +228,7 @@ $$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^
 
 The bound says: the gap between the optimal policy and what MOReL finds is bounded by the probability of MOReL's policy entering the unknown region, weighted by the penalty. If the P-MDP is well-constructed (the known region covers $\hat{\pi}$'s trajectory), the gap is small.
 
-This is a stronger guarantee than MOPO's: it is **distribution-free** and does not require assumptions on the dynamics error distribution. The tradeoff is that the known/unknown boundary is hard and requires choosing $\epsilon$ carefully.
+Kidambi et al. state their results as **PAC** bounds (*probably approximately correct*: the bound holds with high probability once the dataset is large enough). This is a stronger guarantee than MOPO's: it is **distribution-free** and does not require assumptions on the dynamics error distribution. The tradeoff is that the known/unknown boundary is hard and requires choosing $\epsilon$ carefully.
 
 ### Implementation
 
@@ -409,7 +409,7 @@ print(f"Calibrated epsilon = {epsilon:.4f}")
 | Best for | Maximizing performance on smooth dynamics | Hard safety requirements, need formal guarantees |
 | Limitation | Soft penalty can be insufficient for very unreliable models | $\epsilon$ calibration critical; hard boundary can be overly conservative |
 
-Both MOPO and MOReL represent a qualitative shift from model-free offline RL: instead of constraining the policy to stay near the data, we expand the data to cover more of the state-action space. The ensemble ensures this expansion is safe — the agent only trusts the model where it is reliable.
+Both MOPO and MOReL represent a qualitative shift from model-free offline RL: instead of constraining the policy to stay near the data, we expand the data to cover more of the state-action space. The ensemble keeps this expansion in check — the agent trusts the model mainly where the ensemble agrees, which is only as good as the ensemble's calibration.
 
 The natural next question: can we do better than learning dynamics from scratch? If we know the physics of the system — conservation laws, differential equations, material properties — we can build that knowledge directly into the model and dramatically reduce the data needed. That is the subject of Chapter 9: Physics-Informed Offline RL.
 

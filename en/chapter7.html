@@ -78,7 +78,7 @@
 <li><strong>Return-to-go</strong> $R_1, \ldots, R_t$ (the desired or observed cumulative future reward from each step)</li>
 </ol>
 <p>At <strong>test time</strong>, we choose a <strong>target return</strong> $R^*$ (e.g. the 90th percentile of returns in the dataset) and feed the model the same trajectory prefix plus $R^*$ as the current return-to-go. The model then generates actions that, in training data, were associated with that high return. No value function, no $\max_a$ — just autoregressive action prediction.</p>
-<p><strong>Why this avoids extrapolation error:</strong> The model is never asked to evaluate an action it hasn't seen in a similar context. It only predicts the next action given (state history, action history, return-to-go). All of these are observed in the dataset. The "policy" is implicit: high return-to-go → actions that led to high return in the data.</p>
+<p><strong>Why this avoids extrapolation error:</strong> The model is never asked to evaluate an action it hasn't seen in a similar context. It only predicts the next action given (state history, action history, return-to-go). During training all of these come from the dataset. At test time, however, we choose the target return ourselves, and a state paired with an ambitious return-to-go may be a combination the data never contained — the conditioning-sensitivity problem discussed under Limitations. The "policy" is implicit: high return-to-go → actions that led to high return in the data.</p>
 <hr />
 <h2>Formalization</h2>
 <h3>Sequence Representation</h3>
@@ -198,7 +198,7 @@
 </tr>
 </tbody>
 </table>
-<p>Decision Transformers offer a clean alternative to value-based offline RL: no Bellman backup, no extrapolation over actions, and a single supervised objective. They are well-suited to settings where you have long trajectories, multi-task or diverse data, and existing sequence-model infrastructure. For continuous control with a single task and strong performance guarantees, CQL and IQL (Chapters 4–5) and model-based methods (Chapter 8) remain the default choice.</p>
+<p>Decision Transformers offer a clean alternative to value-based offline RL: no Bellman backup, no extrapolation over actions, and a single supervised objective. They are well-suited to settings where you have long trajectories, multi-task or diverse data, and existing sequence-model infrastructure. For continuous control on a single task — especially when you want conservative value estimates (CQL's lower bound), fully in-sample updates (IQL), or uncertainty-aware synthetic data — CQL and IQL (Chapters 4–5) and model-based methods (Chapter 8) remain the default choice.</p>
 <p>Chapter 8 turns to <strong>model-based</strong> offline RL: learning a dynamics model and using it to generate synthetic data with uncertainty-aware penalties (MOPO, MOReL).</p>
 <hr />
 <h2>References</h2>

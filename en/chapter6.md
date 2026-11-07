@@ -34,7 +34,7 @@ This family is **policy-constraint** (or **actor-regularized**) offline RL. It i
 
 ### The Idea
 
-TD3 (Twin Delayed DDPG) is an off-policy actor-critic algorithm for continuous control. The actor is trained to maximize $Q(s, \pi(s))$. In the offline setting, $\pi(s)$ can be OOD, so $Q(s, \pi(s))$ is unreliable.
+TD3 (Twin Delayed Deep Deterministic Policy Gradient; Fujimoto et al., 2018) is an off-policy actor-critic algorithm for continuous control. A deterministic actor is trained to maximize a learned $Q(s, \pi(s))$; two critics, with the minimum taken over them, and delayed actor updates reduce the overestimation that plagued its predecessor DDPG. In the offline setting, $\pi(s)$ can be OOD, so $Q(s, \pi(s))$ is unreliable.
 
 TD3+BC modifies the actor objective to:
 
@@ -51,7 +51,7 @@ If raw Q-values are large (e.g. in the hundreds), the gradient from the Q-term d
 
 $$\tilde{Q}(s, a) = \frac{Q(s, a)}{\mathbb{E}_{(s,a) \sim \mathcal{B}} |Q(s,a)| + 10^{-6}}$$
 
-Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\pi(s) - a)^2 \bigr]$. With this scaling, a typical choice is $\lambda \in [0.1, 2.0]$; the paper uses $\alpha = 2.5$ with the same mean-$|Q|$ normalization.
+Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\pi(s) - a)^2 \bigr]$. The paper calls this weight $\alpha$ and uses $\alpha = 2.5$ with the same mean-$|Q|$ normalization; in this chapter $\lambda$ and $\alpha$ are the same knob. Our code defaults to $\lambda = 0.25$ on the toy task, which keeps the policy closer to the data; $[0.1, 2.5]$ is a reasonable search range.
 
 ### Formalization
 
@@ -61,7 +61,7 @@ Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\p
 
 $$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ -\lambda \, \tilde{Q}(s, \pi_\phi(s)) + \bigl(\pi_\phi(s) - a\bigr)^2 \right]$$
 
-Equivalently, with $\alpha = \lambda$ and batch mean $|Q|$: minimize $-\alpha \, Q(s,\pi_\phi(s)) / \bigl(\mathbb{E}_{\mathcal{B}}|Q| + \epsilon\bigr) + (\pi_\phi(s)-a)^2$. The paper uses $\alpha = 2.5$. This keeps the Q-term and BC-term on similar scale across batches.
+Written out with the batch mean $|Q|$: minimize $-\lambda \, Q(s,\pi_\phi(s)) / \bigl(\mathbb{E}_{\mathcal{B}}|Q| + \epsilon\bigr) + (\pi_\phi(s)-a)^2$. This keeps the Q-term and BC-term on similar scale across batches.
 
 **No theoretical guarantee** — unlike CQL, TD3+BC does not provide a lower bound on the true Q-function. It is an empirical, minimalist fix that works well in practice and is very easy to implement.
 
@@ -155,12 +155,12 @@ For a deterministic policy (as in TD3), you would use a Gaussian with small fixe
 
 | Hyperparameter | Typical range | Notes |
 |---|---|---|
-| $\lambda$ (or $\alpha$) | 0.1 – 2.0 | Higher → more weight on Q, less on BC |
+| $\lambda$ (the paper's $\alpha$) | 0.1 – 2.5 | Higher → more weight on Q, less on BC; paper default 2.5 |
 | Critic lr | 3e-4 | Same as TD3 |
 | Actor lr | 3e-4 | Same as TD3 |
 | Batch size | 256 | Standard for offline |
 
-Start with $\lambda = 0.25$ or use the paper's adaptive scaling. If the policy is too conservative (behaves like BC), increase $\lambda$. If the policy becomes unstable or OOD, decrease it.
+Start with the paper's $\lambda = 2.5$ on standard benchmarks, or with our more conservative $\lambda = 0.25$ on small, noisy industrial data. If the policy is too conservative (behaves like BC), increase $\lambda$. If the policy becomes unstable or OOD, decrease it.
 
 **AWAC**
 
@@ -173,7 +173,7 @@ Start with $\lambda = 0.25$ or use the paper's adaptive scaling. If the policy i
 
 - **TD3+BC**: Simplest policy-constraint method; good first baseline; deterministic policy; no theoretical guarantee.
 - **AWAC**: In-sample actor; good when you want to avoid any OOD policy sampling; similar to IQL's policy extraction.
-- **CQL / IQL**: Stronger theory and often better performance on hard benchmarks; use when you need maximum robustness.
+- **CQL / IQL**: CQL comes with a formal lower bound and IQL is fully in-sample; both are often stronger on hard benchmarks; use when you need maximum robustness.
 
 ---
 
@@ -183,7 +183,7 @@ Start with $\lambda = 0.25$ or use the paper's adaptive scaling. If the policy i
 
 **Sensitive to $\lambda$ / $\beta$.** The balance between exploiting the critic and staying close to the data is task-dependent. Poor tuning can yield either a near-BC policy (no improvement) or an overconfident one (OOD failure).
 
-**Deterministic policy (TD3+BC).** A deterministic policy cannot represent multimodal behavior. For highly multi-modal behavior policies, a stochastic method (AWAC, IQL, CQL) may be better.
+**Deterministic policy (TD3+BC).** A deterministic policy cannot represent multimodal behavior. For highly multi-modal behavior policies, a method with a stochastic actor (AWAC, CQL, or IQL with a Gaussian policy head instead of the deterministic one used in Chapter 5) may be better.
 
 ---
 

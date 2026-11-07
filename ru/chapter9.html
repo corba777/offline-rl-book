@@ -84,20 +84,21 @@
 <p><div class="math-display">$$\tilde{r}(s, a, s') = r(s, a) - \lambda \cdot \max\!\bigl(0,\; g(s, a, s')\bigr)$$</div></p>
 <p>$\max(0, \cdot)$ активирует штраф только при нарушении ограничения. Внутри допустимой области награда не меняется. $\lambda > 0$ регулирует, насколько дорогостоящими будут нарушения.</p>
 <p>Это превращает исходную <strong>ограниченную MDP (CMDP)</strong> — максимизировать награду при соблюдении ограничений — в стандартную неограниченную MDP с модифицированной наградой, которую любой Offline RL-алгоритм может решить напрямую.</p>
+<p>Одни и те же функции ограничений встречаются в этой и следующей главе в двух ролях, и их полезно различать. Применённые к залогированным или синтетическим переходам как <strong>штраф в награде</strong>, они удерживают <em>политику</em> от того, чтобы вести процесс к недопустимым состояниям. Применённые к предсказаниям обученной модели динамики, те же функции проверяют, физически ли согласована <em>модель</em>; там они работают как функция потерь или диагностика, а не как награда. Границы и законы сохранения годятся для обеих ролей. Проверки монотонности и согласованности с динамикой первого порядка относятся в основном к модели: на реальных логах они отмечают переходы, которые простая физика не объясняет.</p>
 <h3>Зазор оптимальности</h3>
-<p>Между решением задачи со штрафом и решением исходной ограниченной задачи всегда существует зазор. Насколько он велик?</p>
-<p><strong>Теорема 6.1 (Зазор оптимальности).</strong> Пусть $\hat\pi_\lambda$ — оптимальная политика в штрафной MDP. Предположим, что ограничение удовлетворяет $\|g\|_\infty \leq C_{max}$, CMDP допустима, и $\hat\pi_\lambda$ является допустимой. Тогда:</p>
-<p><div class="math-display">$$J(\pi^*) - J(\hat\pi_\lambda) \leq \frac{2\,C_{max}}{(1-\gamma)\,\lambda}$$</div></p>
-<p><em>Доказательство в Приложении 6.A.</em></p>
-<p><strong>Интерпретация.</strong> Зазор уменьшается при $\lambda \to \infty$ — но большое $\lambda$ делает награду подавляемой штрафным членом, смещая политику к максимальному соблюдению ограничений в ущерб исходной награде. Граница — это <em>верхняя оценка</em> потерь от использования штрафа вместо жёсткого ограничения.</p>
-<p>Практическая калибровка: установите $\lambda$ так, чтобы типичное нарушение ограничения стоило примерно 20–30% от средней награды за эпизод.</p>
+<p>Чем решение задачи со штрафом отличается от решения исходной ограниченной задачи?</p>
+<p><strong>Теорема 9.1 (цена мягкого штрафа).</strong> Пусть $|r| \leq R_{max}$, CMDP допустима и $\pi^*$ — её оптимальная политика, а $\hat\pi_\lambda$ — оптимальная политика в штрафной MDP. Обозначим дисконтированное нарушение $V_+(\pi) = \mathbb{E}_\pi\bigl[\sum_t \gamma^t \max(0, g(s_t, a_t, s_{t+1}))\bigr] \geq 0$. Тогда:</p>
+<p><div class="math-display">$$J(\hat\pi_\lambda) \geq J(\pi^*), \qquad V_+(\hat\pi_\lambda) \leq \frac{J(\hat\pi_\lambda) - J(\pi^*)}{\lambda} \leq \frac{2\,R_{max}}{(1-\gamma)\,\lambda}$$</div></p>
+<p><em>Доказательство в Приложении 9.A.</em></p>
+<p><strong>Интерпретация.</strong> По награде штрафная задача не проигрывает ограниченной: всё, что $\hat\pi_\lambda$ получает сверх $J(\pi^*)$, оплачено нарушением ограничения, и это нарушение убывает как $1/\lambda$. Если $\hat\pi_\lambda$ оказалась допустимой ($V_+ = 0$), она оптимальна и для исходной CMDP. Большое $\lambda$ приближает решение к допустимому, но подавляет исходную награду штрафным членом и усложняет оптимизацию.</p>
+<p>Практическая калибровка в коде книги — эвристика масштаба, а не гарантия. Функция <code>calibrate_lambda</code> измеряет на датасете наибольшее наблюдаемое нарушение $C_{max}$ и типичную дисконтированную отдачу $\bar R = \overline{|r|}/(1-\gamma)$ и полагает $\lambda = 2\,C_{max} / (f \cdot \bar R)$ с $f = 0.1$ по умолчанию: штраф растёт вместе с худшим нарушением в данных и остаётся умеренной долей отдачи. После калибровки проверьте результат напрямую (пример — в главе 10, «Калибровка ограничений»).</p>
 <div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">calibrate_lambda</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">constraint_fn</span><span class="p">,</span> <span class="n">base_reward_fn</span><span class="p">,</span>
                      <span class="n">target_gap_fraction</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cpu'</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Устанавливает λ так, чтобы зазор из Теоремы 6.1 ≤</span>
-<span class="sd">    target_gap_fraction * средний дисконтированный доход.</span>
-<span class="sd">    Из теоремы: зазор ≤ 2*C_max / ((1-γ)*λ)</span>
-<span class="sd">    =&gt; λ = 2*C_max / ((1-γ) * target_gap)</span>
+<span class="sd">    Эвристика масштаба (не гарантия):</span>
+<span class="sd">        λ = 2*C_max / (target_gap_fraction * mean_return),</span>
+<span class="sd">    где C_max — наибольшее наблюдаемое нарушение,</span>
+<span class="sd">    mean_return = mean|r| / (1-γ) — типичная дисконтированная отдача.</span>
 <span class="sd">    """</span>
     <span class="n">n</span>  <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">2000</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">]))</span>
     <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
@@ -111,7 +112,7 @@
     <span class="n">target_gap</span> <span class="o">=</span> <span class="n">target_gap_fraction</span> <span class="o">*</span> <span class="n">mean_ret</span>
     <span class="n">lam</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">C_max</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">target_gap</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  C_max=</span><span class="si">{</span><span class="n">C_max</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> | mean_return≈</span><span class="si">{</span><span class="n">mean_ret</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> "</span>
-          <span class="sa">f</span><span class="s2">"| λ=</span><span class="si">{</span><span class="n">lam</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">  (зазор ≤ </span><span class="si">{</span><span class="n">target_gap_fraction</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2"> дохода)"</span><span class="p">)</span>
+          <span class="sa">f</span><span class="s2">"| λ=</span><span class="si">{</span><span class="n">lam</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">lam</span>
 </code></pre></div>
 
@@ -164,10 +165,10 @@
 <h2>Часть II: Гибридные динамические модели</h2>
 <h3>Ограничение чисто black-box ансамблей</h3>
 <p>Ансамбль из главы 8 — чистая нейронная сеть. Неопределённость ансамбля защищает от эксплуатации OOD-областей, но у модели нет структурных причин соблюдать физику за пределами обучающего распределения. Её OOD-предсказания определяются тем, как обобщают веса сети, — а это может быть физически некорректным произвольным образом.</p>
-<p><strong>Предложение 6.2.</strong> Пусть $f_{phys}$ — известная физическая модель с ошибкой $\epsilon_{phys}$, а $\hat f_{res}$ — обученный остаток. Ошибка гибридной модели удовлетворяет:</p>
+<p><strong>Предложение 9.2 (неформально).</strong> Пусть $f_{phys}$ — известная физическая модель с ошибкой $\epsilon_{phys}$, а $\hat f_{res}$ — обученный остаток. Ошибка гибридной модели удовлетворяет:</p>
 <p><div class="math-display">$$\mathbb{E}_\rho\!\left[\|f_{hybrid} - f^*\|^2\right]^{1/2} \leq \epsilon_{res} + \epsilon_{phys}$$</div></p>
 <p>где $\epsilon_{res}$ — ошибка обобщения остатка, которая меньше ошибки чистой black-box модели $\epsilon_{BB}$ на тех же данных, поскольку остаток имеет меньшую амплитуду и меньшую эффективную константу Липшица. В OOD-областях, где $\hat f_{res} \approx 0$, гибридная модель возвращается к $f_{phys}$ — физически осмысленному прогнозу по умолчанию.</p>
-<p><em>Формальный вывод в Приложении 6.B.</em></p>
+<p><em>Неформальное обоснование — в Приложении 9.B.</em></p>
 <h3>Гибридное разложение</h3>
 <p>Гибридная модель разбивает предсказание на известную и неизвестную части:</p>
 <p><div class="math-display">$$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{известная физика}} + \underbrace{f_{NN}(s, a;\;\theta)}_{\text{обученный остаток}}$$</div></p>
@@ -291,10 +292,10 @@
 <h3>CMDP и двойственность Лагранжа</h3>
 <p>Задача — <strong>ограниченная MDP (CMDP)</strong>: максимизировать $J(\pi)$ при $k$ ограничениях $J_{C_i}(\pi) \leq d_i$. Релаксация Лагранжа:</p>
 <p><div class="math-display">$$L(\pi, \lambda) = J(\pi) - \sum_{i=1}^k \lambda_i \bigl(J_{C_i}(\pi) - d_i\bigr)$$</div></p>
-<p><strong>Теорема 6.3 (Сильная двойственность, Altman 1999).</strong> Для любой конечномерной CMDP с ограниченными наградами и штрафами:</p>
+<p><strong>Теорема 9.3 (Сильная двойственность, Altman 1999).</strong> Для любой допустимой CMDP с конечными пространствами состояний и действий и ограниченными наградами и штрафами:</p>
 <p><div class="math-display">$$\max_{\pi \in \Pi_C} J(\pi) = \min_{\lambda \geq 0}\; \max_\pi\; L(\pi, \lambda)$$</div></p>
 <p>Оптимальные множители удовлетворяют условиям дополняющей нежёсткости: $\lambda_i^*(J_{C_i}(\pi^*) - d_i) = 0$. Ограничение, выполняемое с запасом в оптимуме, имеет $\lambda_i^* = 0$.</p>
-<p><em>Доказательство через LP-двойственность на occupancy measures — в Приложении 6.C.</em></p>
+<p><em>Доказательство через LP-двойственность на occupancy measures — в Приложении 9.C.</em></p>
 <p><strong>Что это означает на практике.</strong> Решение неограниченной задачи минимакса по $(\pi, \lambda)$ даёт точный ограниченный оптимум. Множитель $\lambda_i$ действует как цена: растёт при нарушении ограничения и падает когда политика имеет запас по ограничению.</p>
 <h3>Алгоритм седловой точки для Offline RL</h3>
 <p>В офлайн-случае $J(\pi)$ и $J_{C_i}(\pi)$ оцениваются через обученные Q-функции. Обучение чередует шаги:</p>
@@ -389,11 +390,11 @@
   Покрытие     Редкое   │  Pure BC        │ Штраф в          │ Гибридная мод.   │
                          │  (Глава 1)      │ награде+MOReL    │ + MOReL          │
   данных       Плотное  │  CQL / IQL      │ CQL + штраф      │ Гибрид + CQL     │
-                         │  (Гл. 3–4)      │                  │                  │
+                         │  (Гл. 4–5)      │                  │                  │
                └──────────────────┴─────────────────┴──────────────────┘
 </code></pre></div>
 
-<p>D4RL-эталоны находятся внизу слева (плотные данные, нет физики). Промышленный Offline RL обычно — вверху справа.</p>
+<p>D4RL-эталоны (стандартный набор офлайн-датасетов для симулированного управления в духе MuJoCo) находятся внизу слева: плотные данные, нет физики. Промышленный Offline RL обычно находится в верхней строке, с редкими данными, и в одной из двух правых ячеек: частичная или хорошая физика.</p>
 <hr />
 <h2>Объединение трёх подходов</h2>
 <p>Три части этой главы хорошо сочетаются. Реалистичный pipeline physics-informed Offline RL может использовать:</p>
@@ -442,26 +443,22 @@
 <ul>
 <li>Altman, E. (1999). <em>Constrained Markov Decision Processes.</em> CRC Press.</li>
 <li>Banerjee, C., Nguyen, T., Fookes, C., &amp; Raissi, M. (2023). <em>A Survey on Physics Informed Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2309.01909">arXiv:2309.01909</a>.</li>
-<li>Paternain, S., Calvo-Fullana, M., Chamon, L., &amp; Ribeiro, A. (2022). <em>Safe Policies for Factored MDPs.</em> JMLR. <a href="https://arxiv.org/abs/2106.09155">arXiv:2106.09155</a>.</li>
+<li>Paternain, S., Chamon, L. F. O., Calvo-Fullana, M., &amp; Ribeiro, A. (2019). <em>Constrained Reinforcement Learning Has Zero Duality Gap.</em> NeurIPS. <a href="https://arxiv.org/abs/1910.13393">arXiv:1910.13393</a>.</li>
 <li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1711.10561">arXiv:1711.10561</a>.</li>
 <li>Lusch, B., Kutz, J.N., &amp; Brunton, S.L. (2018). <em>Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.</em> Nature Communications.</li>
 <li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
 </ul>
 <hr />
-<h2>Приложение 6.A — Доказательство Теоремы 6.1 (Зазор оптимальности)</h2>
-<p><strong>Обозначения.</strong> Пусть CMDP допустима с оптимальной политикой $\pi^*$. Пусть $\hat\pi_\lambda$ оптимальна в штрафной MDP с $\tilde r = r - \lambda\max(0,g)$. Обозначим нарушение ограничения $V_+(\pi) = \mathbb{E}_\pi[\sum_t \gamma^t \max(0, g(s_t,a_t))]/(1-\gamma) \geq 0$.</p>
-<p><strong>Доказательство.</strong> Так как $\hat\pi_\lambda$ оптимальна в штрафной MDP:</p>
-<p><div class="math-display">$$J(\hat\pi_\lambda) - \lambda(1-\gamma) V_+(\hat\pi_\lambda) \geq J(\pi^*) - \lambda(1-\gamma) V_+(\pi^*)$$</div></p>
-<p>Так как $\pi^* \in \Pi_C$, имеем $g \leq 0$ вдоль её траекторий, поэтому $V_+(\pi^*) = 0$:</p>
-<p><div class="math-display">$$J(\hat\pi_\lambda) - \lambda(1-\gamma) V_+(\hat\pi_\lambda) \geq J(\pi^*)$$</div></p>
-<p>Перегруппировывая:</p>
-<p><div class="math-display">$$J(\pi^*) - J(\hat\pi_\lambda) \leq -\lambda(1-\gamma) V_+(\hat\pi_\lambda) \leq 0$$</div></p>
-<p>При конечном $\lambda$ точная допустимость $\hat\pi_\lambda$ не выполняется; модель получает малое положительное нарушение. Используя $\|g\|_\infty \leq C_{max}$:</p>
-<p><div class="math-display">$$V_+(\hat\pi_\lambda) \leq \frac{C_{max}}{\lambda(1-\gamma)^2}$$</div></p>
-<p>Подставляя и используя двустороннюю оценку (см. Paternain et al., 2019, Prop. 1):</p>
-<p><div class="math-display">$$J(\pi^*) - J(\hat\pi_\lambda) \leq \frac{2\,C_{max}}{(1-\gamma)\,\lambda} \qquad \square$$</div></p>
+<h2>Приложение 9.A — Доказательство Теоремы 9.1</h2>
+<p>Так как $\hat\pi_\lambda$ оптимальна в штрафной MDP, её штрафная отдача не меньше, чем у любой другой политики, в том числе у $\pi^*$:</p>
+<p><div class="math-display">$$J(\hat\pi_\lambda) - \lambda V_+(\hat\pi_\lambda) \geq J(\pi^*) - \lambda V_+(\pi^*)$$</div></p>
+<p>Политика $\pi^*$ допустима, поэтому $g \leq 0$ вдоль её траекторий и $V_+(\pi^*) = 0$. Отсюда</p>
+<p><div class="math-display">$$\lambda V_+(\hat\pi_\lambda) \leq J(\hat\pi_\lambda) - J(\pi^*)$$</div></p>
+<p>Левая часть неотрицательна, значит $J(\hat\pi_\lambda) \geq J(\pi^*)$. Разделив на $\lambda > 0$ и учитывая, что $|J(\pi)| \leq R_{max}/(1-\gamma)$ для любой политики, получаем</p>
+<p><div class="math-display">$$V_+(\hat\pi_\lambda) \leq \frac{J(\hat\pi_\lambda) - J(\pi^*)}{\lambda} \leq \frac{2\,R_{max}}{(1-\gamma)\,\lambda} \qquad \square$$</div></p>
 <hr />
-<h2>Приложение 6.B — Граница ошибки гибридной модели (Предложение 6.2)</h2>
+<h2>Приложение 9.B — Обоснование Предложения 9.2 (неформально)</h2>
+<p>Рассуждение ниже эвристическое: оно объясняет, почему остаток обычно проще выучить, чем полную динамику, но не является строгим доказательством.</p>
 <p><strong>Обозначения.</strong> Пусть $f^*$ — истинная динамика. Физическая модель имеет ошибку $\epsilon_{phys}(s,a) = f_{phys}(s,a) - f^*(s,a)$, нейросеть остатка — ошибку $\epsilon_{res}(s,a) = \hat f_{NN}(s,a) - (f^*(s,a) - f_{phys}(s,a))$.</p>
 <p><strong>Доказательство.</strong> По определению:</p>
 <p><div class="math-display">$$f_{hybrid}(s,a) - f^*(s,a) = f_{phys}(s,a) + \hat f_{NN}(s,a) - f^*(s,a) = \epsilon_{res}(s,a)$$</div></p>
@@ -469,7 +466,7 @@
 <p><div class="math-display">$$\mathbb{E}_\rho[\|f_{hybrid} - f^*\|] = \mathbb{E}_\rho[\|\epsilon_{res}\|]$$</div></p>
 <p>Цель остатка $\delta^* = f^* - f_{phys}$ имеет <strong>меньшую эффективную вариацию</strong> везде, где $f_{phys}$ точна: $\text{Var}(\delta^*) < \text{Var}(f^*)$ когда $f_{phys}$ положительно коррелирует с $f^*$. По стандартной теории аппроксимации функций (ограничения Радемахера), ошибка обобщения масштабируется со сложностью класса функций цели. Поскольку $\delta^*$ лежит в классе меньшей сложности, чем $f^*$, имеем $\epsilon_{res} < \epsilon_{BB}$ при той же мощности модели и объёме обучающей выборки. В OOD-областях $\hat f_{NN} \to 0$, поэтому $f_{hybrid} \to f_{phys}$ — физически осмысленный fallback. $\square$</p>
 <hr />
-<h2>Приложение 6.C — Доказательство Теоремы 6.3 (Сильная двойственность)</h2>
+<h2>Приложение 9.C — Доказательство Теоремы 9.3 (Сильная двойственность)</h2>
 <p><strong>Переформулировка через occupancy measures.</strong> Определим нормированную дисконтированную occupancy measure:</p>
 <p><div class="math-display">$$d^\pi(s,a) = (1-\gamma)\sum_{t=0}^\infty \gamma^t \Pr^\pi(s_t=s,\, a_t=a)$$</div></p>
 <p>Множество допустимых occupancy measures — политоп, задаваемый потоковыми ограничениями Беллмана:</p>

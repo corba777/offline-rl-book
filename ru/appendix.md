@@ -27,10 +27,10 @@ permalink: "/offline-rl-book/ru/appendix/"
 | **AWAC** | In-sample policy с весами по advantage | Стохастическая политика; без OOD-запросов актора | Чувствительность к $\beta$; качество критика | Жёсткие latency / детерминизм |
 | **CQL** | Пессимистичная Q для OOD | Непрерывное управление; default value-pessimism | Слишком консервативно; нестабильный Q / $\alpha$ | BC уже достаточен; награда слабо определена |
 | **IQL** | Expectile V + AWR | In-sample обновления; без явного OOD max | $\tau$, $\beta$; мало хороших действий в данных | В логах нет действий лучше среднего поведения |
-| **Decision Transformer** | Sequence modeling | Длинные горизонты; multi-task логи | Return conditioning вне support | Узкий одноPolicy датасет; жёсткие ограничения |
+| **Decision Transformer** | Sequence modeling | Длинные горизонты; multi-task логи | Return conditioning вне support | Узкий датасет от одной политики; жёсткие ограничения |
 | **MOPO / MOReL** | Модель + штраф неопределённости | Богатые переходы; структура динамики помогает | Bias модели; ложная уверенность ансамблей | Динамика не учится; один узкий контроллер |
 | **FQE / DR (OPE)** | Оценка без rollout | Сравнение кандидатов offline | Экстраполяция; слабое покрытие | Высокий риск deploy при расхождении OPE |
-| **Physics-informed** | Структура + остатки | Есть инженерная модель | Структурное несоответствие модели | Нет надёжной физики / ограничений |
+| **Physics-informed (гл. 9)** | Структура + остатки | Есть инженерная модель | Структурное несоответствие модели | Нет надёжной физики / ограничений |
 
 ---
 
@@ -78,7 +78,7 @@ permalink: "/offline-rl-book/ru/appendix/"
 
 ### MOPO / MOReL (глава 8)
 
-- **Оригинал:** Yu et al. (2020); Kidambi et al. (2020)
+- **Оригинал:** Yu et al. (2020) MOPO [arXiv:2005.13239](https://arxiv.org/abs/2005.13239); Kidambi et al. (2020) MOReL [arXiv:2005.05951](https://arxiv.org/abs/2005.05951)
 - **Предположение:** Динамика учится в support; uncertainty коррелирует с ошибкой
 - **Failure mode:** Exploitation модели; некалиброванные ансамбли OOD
 - **Когда не использовать:** Нестационарный процесс; доминируют unmodeled confounders
@@ -111,7 +111,8 @@ permalink: "/offline-rl-book/ru/appendix/"
 1. Главы 1–2 (BC + extrapolation error)
 2. Глава 3 (OPE), если deploy дорог
 3. BC → CQL или IQL → TD3+BC при необходимости лёгкого actor-critic
-4. Глава 8 при обучаемой модели динамики
+4. Глава 8 при обучаемой модели динамики; глава 9, если есть и инженерное знание физики процесса
 5. Главы 10–11 перед industrial rollout
+6. Глава 12, если политика — tool-using LLM-агент
 
 [К оглавлению](/offline-rl-book/ru.html).

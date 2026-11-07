@@ -64,7 +64,7 @@
 </blockquote>
 <hr />
 <h2>From Benchmarks to Industry</h2>
-<p>The preceding nine chapters (Chapters 1–9) built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on <code>ThermalProcessEnv</code> — a simple, clean, three-variable toy environment designed to make the algorithmic ideas visible.</p>
+<p>The preceding nine chapters (Chapters 1–9) built a complete toolbox: behavioral cloning, CQL, IQL, MOPO, MOReL, physics-informed reward shaping, hybrid dynamics models, and Lagrangian constraint enforcement. Each algorithm was validated on <code>ThermalProcessEnv</code>, the toy version of the coating line introduced in Chapter 1: three state variables (temperature, filler fraction, viscosity), two control inputs and clean first-order dynamics — designed to make the algorithmic ideas visible.</p>
 <p>Real industrial processes differ from that environment in every dimension that matters.</p>
 <p><strong>More variables, more coupling.</strong> A realistic coating process has dozens of sensor readings. Even a simplified model has temperature, filler fraction, viscosity, bulk density, and a surge tank level — five variables with physical dependencies between all of them. The level is an integrating state that drifts without active control; viscosity is a nonlinear function of temperature and filler that the agent cannot observe independently of its inputs.</p>
 <p><strong>Non-uniform data coverage.</strong> Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.</p>
@@ -238,6 +238,7 @@
 - A slow policy with DA ≈ 1.0 can be sped up by tuning the action scaling
 - A fast policy with DA ≈ 0.4 requires fundamental retraining
 - Operators can visually verify DA from trend plots without numerical analysis</p>
+<p>In this case study we treat DA ≥ 80% as the bar operators would accept. The number is illustrative, chosen for this process; it is not an industry standard.</p>
 <h3>RMSE and Constraint Violation Rate</h3>
 <p>RMSE from setpoint is computed per variable:</p>
 <p><div class="math-display">$$\text{RMSE}_x = \sqrt{\frac{1}{T}\sum_t (x_t - x^*)^2}$$</div></p>
@@ -338,12 +339,12 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cql</span><span class="o">.</span><span class="n">update</span><span class="p">((</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span> <span class="o">-</span> <span class="n">penalty</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
 </code></pre></div>
 
-<p>The <code>lambdas</code> are calibrated via <code>calibrate_lambda</code> using the Chapter 9 heuristic (Part I, "Choosing $\lambda$"): set $\lambda$ so that a typical physics violation costs about 10% of the mean episode return. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.</p>
+<p>The <code>lambdas</code> are calibrated via <code>calibrate_lambda</code> using the Chapter 9 heuristic (Part I, "Choosing $\lambda$"): $\lambda$ is scaled to the largest violation observed in the data and to the typical discounted return, with the default fraction $f = 0.1$. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.</p>
 <p>Three constraints are active:
 1. <strong>Operating bounds</strong> — all five state variables within hard limits
 2. <strong>Temperature first-order consistency</strong> — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
 3. <strong>Filler fraction first-order consistency</strong> — same for filler</p>
-<p>The first-order consistency constraints do not punish the agent for choosing unusual setpoints — they punish the dynamics model for predicting physically impossible transitions, which indirectly constrains the policy to stay in regions where dynamics are predictable.</p>
+<p>CQL+Physics has no learned dynamics model, so the first-order consistency terms are evaluated on logged transitions: they penalize transitions whose observed change departs from the expected first-order response. They do not punish the agent for choosing unusual setpoints; they lower the value of poorly explained transitions, which indirectly keeps the policy in regions where the dynamics are predictable. In HybridMOReL below, the same checks apply to model predictions instead (Chapter 9, Part I, explains the two roles).</p>
 <hr />
 <h2>Algorithm 4: HybridMOReL</h2>
 <p><code>HybridMOReL</code> combines the model-based approach from Chapter 8 with the hybrid dynamics model from Chapter 9. The structure is a two-phase training loop.</p>
@@ -408,13 +409,13 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
 <h3>Reading the Results</h3>
 <p><strong>BC</strong> performs adequately in normal operation but fails during disturbances. Its DA is just above 60% — better than random, but below the 80% industrial threshold. Constraint violations occur because BC never saw the level variable near its bounds during training.</p>
 <p><strong>CQL</strong> improves across all metrics. Conservatism in the Q-function prevents the worst extrapolation failures. But violation rate remains at 2.8% — CQL has no mechanism to specifically avoid constraint boundaries.</p>
-<p><strong>CQL+Physics</strong> reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions. The violation severity also drops even more than the rate, meaning that when violations do occur they are shallower.</p>
-<p><strong>HybridMOReL</strong> achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.</p>
+<p><strong>CQL+Physics</strong> reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions.
+<strong>HybridMOReL</strong> achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.</p>
 <h3>The Complementary Structure</h3>
 <p>These results reveal a complementary structure worth understanding.</p>
 <p><strong>CQL+Physics</strong> is the violation minimizer: it explicitly penalizes constraint approaches and achieves the lowest violation rate. But it uses only real data — its synthetic experience is zero.</p>
 <p><strong>HybridMOReL</strong> is the performance maximizer: model-based rollouts push the policy to higher reward and DA, but without explicit constraint penalties the violation rate is slightly elevated.</p>
-<p>In a real deployment, the natural combination is <strong>HybridMOReL + physics reward shaping</strong> — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to <code>train_hybrid_morel_agent</code>: pass the <code>PhysicsRewardWrapper</code> into the rollout generator. Chapter 9 showed exactly how to do this.</p>
+<p>In a real deployment, the natural combination is <strong>HybridMOReL + physics reward shaping</strong> — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to <code>train_hybrid_morel_agent</code>: pass the <code>PhysicsRewardWrapper</code> into the rollout generator. It is the same wrapper used for CQL+Physics above; only the place where it is applied changes.</p>
 <hr />
 <h2>Engineering Decisions Revisited</h2>
 <p>Working through this case study surfaces several decisions that do not appear in benchmark papers.</p>
@@ -441,7 +442,7 @@ Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
 <p>Chapters 9 and 10 already use <strong>physics-informed constraint penalties</strong> and hard bounds: the policy is trained to avoid regions where constraints are violated. That gives <em>expected</em> constraint satisfaction — violations are rare but not provably zero.</p>
 <p>For higher assurance, two directions are relevant in industry:</p>
 <ul>
-<li><strong>Safety critics</strong> (see Chapter 13): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep this safety value above a threshold (e.g. Conservative Safety Critics, CVPO). This yields probabilistic safety certificates rather than ad hoc penalties.</li>
+<li><strong>Safety critics</strong> (see Chapter 13): Train a separate safety Q-function that estimates the risk of future constraint violation. The policy is then constrained to keep the estimated risk below a threshold, $Q_c(s,a) \leq d$ (e.g. Conservative Safety Critics; CVPO instead budgets the expected cumulative cost — see Chapter 13). This yields assumption-dependent, probabilistic safety estimates rather than ad hoc penalties.</li>
 <li><strong>Action masking / safe sets:</strong> At runtime, before applying the RL action, check whether it would push the state toward a constraint boundary. If the predicted next state (from a physics or hybrid model) violates a bound, replace the action with a safe alternative: e.g. clip to a conservative set, or switch to a PID that only corrects toward setpoint without aggressive moves. This is especially useful when the primary policy is model-based (HybridMOReL): the same ensemble that generates rollouts can predict $s'$ and flag unsafe actions.</li>
 </ul>
 <p>Neither approach removes the need for the constraint calibration described earlier; they add a second layer of checks at deployment.</p>

@@ -116,7 +116,7 @@
 <td>Sequence modeling</td>
 <td>Длинные горизонты; multi-task логи</td>
 <td>Return conditioning вне support</td>
-<td>Узкий одноPolicy датасет; жёсткие ограничения</td>
+<td>Узкий датасет от одной политики; жёсткие ограничения</td>
 </tr>
 <tr>
 <td><strong>MOPO / MOReL</strong></td>
@@ -133,7 +133,7 @@
 <td>Высокий риск deploy при расхождении OPE</td>
 </tr>
 <tr>
-<td><strong>Physics-informed</strong></td>
+<td><strong>Physics-informed (гл. 9)</strong></td>
 <td>Структура + остатки</td>
 <td>Есть инженерная модель</td>
 <td>Структурное несоответствие модели</td>
@@ -184,7 +184,7 @@
 </ul>
 <h3>MOPO / MOReL (глава 8)</h3>
 <ul>
-<li><strong>Оригинал:</strong> Yu et al. (2020); Kidambi et al. (2020)</li>
+<li><strong>Оригинал:</strong> Yu et al. (2020) MOPO <a href="https://arxiv.org/abs/2005.13239">arXiv:2005.13239</a>; Kidambi et al. (2020) MOReL <a href="https://arxiv.org/abs/2005.05951">arXiv:2005.05951</a></li>
 <li><strong>Предположение:</strong> Динамика учится в support; uncertainty коррелирует с ошибкой</li>
 <li><strong>Failure mode:</strong> Exploitation модели; некалиброванные ансамбли OOD</li>
 <li><strong>Когда не использовать:</strong> Нестационарный процесс; доминируют unmodeled confounders</li>
@@ -213,8 +213,9 @@
 <li>Главы 1–2 (BC + extrapolation error)</li>
 <li>Глава 3 (OPE), если deploy дорог</li>
 <li>BC → CQL или IQL → TD3+BC при необходимости лёгкого actor-critic</li>
-<li>Глава 8 при обучаемой модели динамики</li>
+<li>Глава 8 при обучаемой модели динамики; глава 9, если есть и инженерное знание физики процесса</li>
 <li>Главы 10–11 перед industrial rollout</li>
+<li>Глава 12, если политика — tool-using LLM-агент</li>
 </ol>
 <p><a href="/offline-rl-book/ru.html">К оглавлению</a>.</p></main>
 <nav class="chapter-nav">
