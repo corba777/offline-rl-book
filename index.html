@@ -45,6 +45,9 @@
     .ch-status.ready { background: #dcfce7; border-color: #86efac; color: #166534; }
     .byline { font-family: var(--sans); font-size: 0.9rem; color: var(--text-light); margin-bottom: 0.5rem; }
     .disclaimer { font-family: var(--sans); font-size: 0.88rem; color: var(--text-light); background: var(--bg-code); border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; margin: 1.25rem 0 1.5rem; line-height: 1.55; }
+    .hero { margin: 0 0 1.75rem; }
+    .hero img { display: block; width: 100%; height: auto; border-radius: 14px; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
     .site-footer { border-top: 1px solid var(--border); padding: 2rem 0; text-align: center; font-family: var(--sans); font-size: 0.8rem; color: var(--text-light); line-height: 1.6; }
     .site-footer a { color: var(--accent); }
   </style>
@@ -59,7 +62,8 @@
 </header>
 
 <main>
-  <h1>Offline RL: From Theory to Industrial Practice</h1>
+  <h1 class="visually-hidden">Offline RL: From Theory to Industrial Practice</h1>
+  <p class="hero"><img src="/offline-rl-book/figures/readme/banner.svg" alt="Offline RL: from theory to industrial practice. A policy learns from logged operator actions recorded earlier on the plant, without trial actions on the plant while learning." /></p>
 
   <p class="byline">Created and maintained by <strong>Artem Zvyagintsev</strong></p>
 
