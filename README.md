@@ -79,10 +79,11 @@ python code/agentic_offline_rl_toy.py   # stdlib only
 python code/extrapolation_error.py      # PyTorch: out-of-data overestimation (Chapter 2)
 ```
 
-The full Chapter 10 benchmark (five seeds, about 30 minutes on a laptop) writes [`code/results/ch10_benchmark.json`](code/results/ch10_benchmark.json), which the chapter quotes:
+The full Chapter 10 benchmark (ten seeds, about an hour on a laptop CPU for each variant) writes [`code/results/ch10_benchmark.json`](code/results/ch10_benchmark.json) and, with the delayed feed commands in the state, [`ch10_benchmark_lagged.json`](code/results/ch10_benchmark_lagged.json); the chapter quotes both:
 
 ```bash
-python code/chapter10.py --seeds 0 1 2 3 4
+python code/chapter10.py                 # state as logged
+python code/chapter10.py --lagged-flow   # Markov state with the feed commands in transit
 ```
 
 To check that every script still runs (about two minutes on a laptop):

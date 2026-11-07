@@ -149,9 +149,15 @@ class CoatingProcessEnv:
 
     def __init__(self, noise_std: float = 0.015,
                  max_steps: int = 200,
-                 seed: int = 42):
+                 seed: int = 42,
+                 lagged_flow: bool = False):
         self.noise_std = noise_std
         self.max_steps = max_steps
+        # The filler responds to the feed two steps late, so the 5 process
+        # variables alone are not a Markov state. With lagged_flow=True the
+        # observation also carries the two feed commands still in transit.
+        self.lagged_flow = lagged_flow
+        self.obs_dim   = self.STATE_DIM + (2 if lagged_flow else 0)
         self.rng       = np.random.default_rng(seed)
         self.state     = None
         self.t         = 0
@@ -168,7 +174,13 @@ class CoatingProcessEnv:
         self.state = np.array([T, f, v, d, L], dtype=np.float32)
         self._filler_buffer = [f, f]
         self.t = 0
-        return self.state.copy()
+        return self.observe()
+
+    def observe(self) -> np.ndarray:
+        """Process variables, plus [u_f(t-2), u_f(t-1)] when lagged_flow is on."""
+        if not self.lagged_flow:
+            return self.state.copy()
+        return np.concatenate([self.state, np.array(self._filler_buffer, dtype=np.float32)])
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
         action  = np.clip(action, -1.0, 1.0)
@@ -209,7 +221,7 @@ class CoatingProcessEnv:
         reward     = self._reward(self.state, action)
         done       = (self.t >= self.max_steps)
         info       = {'constraint_violation': self._violation(self.state)}
-        return self.state.copy(), float(reward), done, info
+        return self.observe(), float(reward), done, info
 
     def _reward(self, state: np.ndarray, action: np.ndarray) -> float:
         T, f, v, d, L = state
@@ -243,6 +255,7 @@ def collect_industrial_dataset(
     noise_scale:  float = 0.30,
     seed:         int   = 0,
     regime_split: Tuple[float, float, float] = (0.60, 0.25, 0.15),
+    lagged_flow:  bool  = False,
 ) -> Dict[str, np.ndarray]:
     """
     Simulate industrial operating logs with three regimes.
@@ -255,7 +268,7 @@ def collect_industrial_dataset(
     dense data near nominal operation, sparse data near physical boundaries.
     Algorithms must handle this imbalance without explicit correction.
     """
-    env = CoatingProcessEnv(noise_std=0.015, seed=seed)
+    env = CoatingProcessEnv(noise_std=0.015, seed=seed, lagged_flow=lagged_flow)
     rng = np.random.default_rng(seed)
 
     states, actions, rewards, next_states, dones = [], [], [], [], []
@@ -276,11 +289,11 @@ def collect_industrial_dataset(
                     env.state[0] + rng.normal(0, 0.15), 0.35, 0.85))
                 env.state[1] = float(np.clip(
                     env.state[1] + rng.normal(0, 0.12), 0.20, 0.75))
-                obs = env.state.copy()
+                obs = env.observe()
             elif ep_type == 'disturbance':
                 noise_ep = noise_scale * 1.5
                 env.state[4] = float(rng.uniform(0.15, 0.35))
-                obs = env.state.copy()
+                obs = env.observe()
             else:
                 noise_ep = noise_scale * 0.8
 
@@ -300,7 +313,9 @@ def collect_industrial_dataset(
                 actions.append(action.copy())
                 rewards.append(r)
                 next_states.append(s2.copy())
-                dones.append(float(done))
+                # Episodes end on a time limit, not in a terminal state, so the
+                # stored flag stays 0 and TD targets keep bootstrapping.
+                dones.append(0.0)
                 obs = s2
                 if done:
                     break
@@ -371,7 +386,8 @@ class IndustrialEvaluator:
 
     METRICS = ['reward', 'T_iae', 'f_iae', 'L_iae', 'T_rmse', 'f_rmse', 'L_rmse',
                'da_T', 'da_f', 'overshoot_T', 'overshoot_f',
-               'viol_rate', 'viol_severity',
+               'viol_rate', 'viol_severity', 'viol_max',
+               'reward_nominal', 'reward_disturbed', 'L_iae_nominal',
                'viol_rate_disturbed', 'L_iae_disturbed']
 
     def __init__(self, env: CoatingProcessEnv,
@@ -397,13 +413,13 @@ class IndustrialEvaluator:
             env.state[4] = float(rng.uniform(0.15, 0.25))
             env.state[0] = float(np.clip(env.state[0] + rng.choice([-1, 1]) * 0.12, 0.35, 0.85))
             env.state[1] = float(np.clip(env.state[1] + rng.choice([-1, 1]) * 0.10, 0.20, 0.75))
-            obs = env.state.copy()
+            obs = env.observe()
         tgt  = {'T': env.T_TARGET, 'f': env.F_TARGET}
         idx  = {'T': env.STATE_T_IDX, 'f': env.STATE_F_IDX}
         err  = {k: [] for k in ('T', 'f', 'L')}
         da   = {'T': [], 'f': []}
         over = {'T': [], 'f': []}
-        ep_r, steps, viol_steps, viol_total, done = 0.0, 0, 0, 0.0, False
+        ep_r, steps, viol_steps, viol_total, viol_max, done = 0.0, 0, 0, 0.0, 0.0, False
 
         while not done:
             prev = {k: float(obs[idx[k]]) for k in ('T', 'f')}
@@ -424,6 +440,7 @@ class IndustrialEvaluator:
             if v > 0:
                 viol_steps += 1
                 viol_total += v
+                viol_max = max(viol_max, v)
 
         m = {'reward': ep_r}
         for k in ('T', 'f', 'L'):
@@ -435,6 +452,7 @@ class IndustrialEvaluator:
             m[f'overshoot_{k}'] = float(np.mean(over[k])) if over[k] else float('nan')
         m['viol_rate']     = viol_steps / max(steps, 1)
         m['viol_severity'] = viol_total / viol_steps if viol_steps else 0.0
+        m['viol_max']      = viol_max
         m['disturbed']     = disturbed
         return m
 
@@ -443,8 +461,14 @@ class IndustrialEvaluator:
         eps = [self._episode(agent, self.seed_base + ep, disturbed=(ep % 2 == 1))
                for ep in range(self.n_episodes)]
         dist = [e for e in eps if e['disturbed']]
+        nom  = [e for e in eps if not e['disturbed']]
+        split = ('_disturbed', '_nominal')
         out = {k: float(np.nanmean([e[k] for e in eps]))
-               for k in self.METRICS if not k.endswith('_disturbed')}
+               for k in self.METRICS if not k.endswith(split) and k != 'viol_max'}
+        out['viol_max']            = float(np.max([e['viol_max'] for e in eps]))
+        out['reward_nominal']      = float(np.mean([e['reward'] for e in nom]))
+        out['reward_disturbed']    = float(np.mean([e['reward'] for e in dist]))
+        out['L_iae_nominal']       = float(np.mean([e['L_iae'] for e in nom]))
         out['viol_rate_disturbed'] = float(np.mean([e['viol_rate'] for e in dist]))
         out['L_iae_disturbed']     = float(np.mean([e['L_iae'] for e in dist]))
         out['episodes'] = eps
@@ -472,8 +496,10 @@ def coating_physics_fn(state: torch.Tensor,
     Implements the known part of the dynamics; leaves cross-coupling, transport
     delay, and nonlinear viscosity corrections to the neural residual network.
 
-    Omitted on purpose: the 0.03*f*u_T cross-coupling, the 2-step filler delay,
-    and the 0.12*f*(1-T) viscosity term. Measure how much each dimension's
+    Omitted on purpose: the 0.03*f*u_T cross-coupling and the 0.12*f*(1-T)
+    viscosity term. The 2-step filler delay is omitted too when the state has
+    only the 5 process variables; with the lagged feed commands appended
+    (lagged_flow=True, 7 columns) the delay is applied exactly. Measure how much each dimension's
     increment the model explains with HybridEnsemble.diagnose_physics_coverage.
       level:           mass balance (exact up to noise)
     """
@@ -490,8 +516,11 @@ def coating_physics_fn(state: torch.Tensor,
     heat_in = action[:, 0] * 0.5 + 0.5
     flow_in = action[:, 1] * 0.5 + 0.5
 
+    lagged  = state.shape[1] > CoatingProcessEnv.STATE_DIM
+    feed_f  = state[:, 5] if lagged else flow_in      # the feed that reaches the zone now
+
     T_new = (1 - DT / TAU_T) * T + (DT / TAU_T) * K_T * heat_in
-    f_new = (1 - DT / TAU_F) * f + (DT / TAU_F) * K_F * flow_in
+    f_new = (1 - DT / TAU_F) * f + (DT / TAU_F) * K_F * feed_f
 
     # Linearized viscosity: viscosity ≈ 0.75 - 0.45*T + 0.38*f
     v_new = (0.75 - 0.45 * T_new + 0.38 * f_new).clamp(0.0, 1.0)
@@ -503,7 +532,10 @@ def coating_physics_fn(state: torch.Tensor,
     inflow  = flow_in * 0.4
     L_new   = (L + DT * (inflow - CoatingProcessEnv.Q_OUT)).clamp(0.0, 1.0)
 
-    return torch.stack([T_new, f_new, v_new, d_new, L_new], dim=1)
+    out = [T_new, f_new, v_new, d_new, L_new]
+    if lagged:
+        out += [state[:, 6], flow_in]                  # shift the feed commands in transit
+    return torch.stack(out, dim=1)
 
 
 def coating_reward_torch(next_state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
@@ -551,8 +583,10 @@ def make_bounds_penalty(dataset_raw: Dict, units: Units,
     lower = [lo for lo, hi in CoatingProcessEnv.BOUNDS]
     upper = [hi for lo, hi in CoatingProcessEnv.BOUNDS]
 
+    n = CoatingProcessEnv.STATE_DIM                    # bounds apply to the process variables
+
     def bounds_raw(s, a, s2):
-        return bounds_constraint(s, a, s2, lower=lower, upper=upper)
+        return bounds_constraint(s[:, :n], a, s2[:, :n], lower=lower, upper=upper)
 
     def reward_raw(s, a, s2):
         return coating_reward_torch(s2, a)
@@ -739,6 +773,7 @@ def run_industrial_benchmark(seed: int = 0, device: str = 'cpu',
                              n_train_ep: int = 400, n_bc_epochs: int = 60,
                              n_cql_epochs: int = 80, n_morel_iters: int = 15,
                              n_eval_ep: int = 20, batch_size: int = 256,
+                             lagged_flow: bool = False,
                              quick_test: bool = False) -> Dict[str, object]:
     """
     One seed of the 4-algorithm comparison. The seed controls the logged
@@ -749,10 +784,10 @@ def run_industrial_benchmark(seed: int = 0, device: str = 'cpu',
 
     torch.manual_seed(seed)
     np.random.seed(seed)
-    S, A = CoatingProcessEnv.STATE_DIM, CoatingProcessEnv.ACTION_DIM
-    env  = CoatingProcessEnv(seed=seed)
+    env  = CoatingProcessEnv(seed=seed, lagged_flow=lagged_flow)
+    S, A = env.obs_dim, CoatingProcessEnv.ACTION_DIM
 
-    dataset = collect_industrial_dataset(n_episodes=n_train_ep, seed=seed)
+    dataset = collect_industrial_dataset(n_episodes=n_train_ep, seed=seed, lagged_flow=lagged_flow)
     norm_dataset, s_mean, s_std = normalize_dataset(dataset)
     r_std  = float(dataset['rewards'].std() + 1e-8)
     units  = Units(s_mean, s_std, r_std, device)
@@ -800,27 +835,44 @@ def run_industrial_benchmark(seed: int = 0, device: str = 'cpu',
     return out
 
 
-def bootstrap_ci(values, n_boot: int = 10_000, alpha: float = 0.05, seed: int = 0):
-    """Percentile bootstrap CI of the mean."""
+def t_interval(values, alpha: float = 0.05):
+    """Mean and Student-t confidence interval over per-seed values. With few
+    seeds this is more honest than a percentile bootstrap, which undercovers."""
+    from scipy import stats
     v = np.asarray([x for x in values if not np.isnan(x)], dtype=float)
     if len(v) == 0:
         return float('nan'), float('nan'), float('nan')
-    rng = np.random.default_rng(seed)
-    boots = rng.choice(v, size=(n_boot, len(v)), replace=True).mean(1)
-    return float(v.mean()), float(np.quantile(boots, alpha / 2)), float(np.quantile(boots, 1 - alpha / 2))
+    if len(v) == 1:
+        return float(v[0]), float('nan'), float('nan')
+    half = stats.t.ppf(1 - alpha / 2, len(v) - 1) * v.std(ddof=1) / np.sqrt(len(v))
+    return float(v.mean()), float(v.mean() - half), float(v.mean() + half)
 
 
-def summarize(runs: List[Dict]) -> Dict[str, Dict[str, Tuple[float, float, float]]]:
+PAIRS = [('CQL', 'BC'), ('CQL+Physics', 'CQL'), ('HybridMOReL', 'BC')]
+PAIR_METRICS = ['reward', 'L_iae', 'f_iae', 'viol_rate_disturbed']
+
+
+def summarize(runs: List[Dict]) -> Dict[str, Dict]:
     """
-    Hierarchical bootstrap over seeds: per-seed means are resampled, so the
-    interval reflects seed-to-seed variation (dataset + training), which is
-    larger than the episode-to-episode noise within one trained policy.
+    Per method and metric: mean over seeds with a t-interval, plus the worst
+    and best seed. Per pair of methods: the paired per-seed difference, which
+    removes the variation that both methods share through the same dataset.
     """
     methods = list(runs[0]['results'].keys())
-    summary = {}
+    summary = {'methods': {}, 'pairs': {}}
     for mth in methods:
-        summary[mth] = {k: bootstrap_ci([r['results'][mth][k] for r in runs])
-                        for k in IndustrialEvaluator.METRICS}
+        summary['methods'][mth] = {}
+        for k in IndustrialEvaluator.METRICS:
+            vals = [r['results'][mth][k] for r in runs]
+            m, lo, hi = t_interval(vals)
+            summary['methods'][mth][k] = {'mean': m, 'lo': lo, 'hi': hi,
+                                          'min': float(np.nanmin(vals)), 'max': float(np.nanmax(vals))}
+    for a, b in PAIRS:
+        summary['pairs'][f'{a} - {b}'] = {}
+        for k in PAIR_METRICS:
+            diff = [r['results'][a][k] - r['results'][b][k] for r in runs]
+            m, lo, hi = t_interval(diff)
+            summary['pairs'][f'{a} - {b}'][k] = {'mean': m, 'lo': lo, 'hi': hi}
     return summary
 
 
@@ -831,23 +883,33 @@ def print_summary(summary) -> None:
             ('overshoot_T', 'Overshoot T', '{:.1%}'), ('overshoot_f', 'Overshoot f', '{:.1%}'),
             ('viol_rate', 'Violation rate', '{:.1%}'),
             ('viol_rate_disturbed', 'Viol. (disturbed)', '{:.1%}'),
+            ('viol_max', 'Max excursion', '{:.3f}'),
+            ('reward_nominal', 'Return (nominal)', '{:+.1f}'),
+            ('reward_disturbed', 'Return (disturbed)', '{:+.1f}'),
             ('L_iae_disturbed', 'Level IAE (dist.)', '{:.4f}')]
-    names = list(summary.keys())
+    methods = summary['methods']
+    names = list(methods.keys())
     print("\n" + "=" * 100)
-    print("  CHAPTER 10 — mean over seeds [95% bootstrap CI]")
+    print("  CHAPTER 10 — mean over seeds [95% t-interval]")
     print("=" * 100)
     print(f"{'Metric':16}" + "".join(f"{n:>21}" for n in names))
     for key, label, fmt in rows:
         cells = []
         for n in names:
-            m, lo, hi = summary[n][key]
-            cells.append(f"{fmt.format(m)} [{fmt.format(lo)}, {fmt.format(hi)}]")
+            c = methods[n][key]
+            cells.append(f"{fmt.format(c['mean'])} [{fmt.format(c['lo'])}, {fmt.format(c['hi'])}]")
         print(f"{label:16}" + "".join(f"{c:>21}" for c in cells))
+    print("\n  Paired per-seed differences [95% t-interval]")
+    for pair, d in summary['pairs'].items():
+        print(f"  {pair:24}" + "  ".join(
+            f"{k}={v['mean']:+.4f} [{v['lo']:+.4f}, {v['hi']:+.4f}]" for k, v in d.items()))
 
 
 def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
-                   quick_test: bool = False, device: str = 'cpu') -> Dict:
-    runs = [run_industrial_benchmark(seed=s, device=device, quick_test=quick_test) for s in seeds]
+                   quick_test: bool = False, device: str = 'cpu',
+                   lagged_flow: bool = False) -> Dict:
+    runs = [run_industrial_benchmark(seed=s, device=device, quick_test=quick_test,
+                                     lagged_flow=lagged_flow) for s in seeds]
     summary = summarize(runs)
     print_summary(summary)
     if out_path:
@@ -857,9 +919,9 @@ def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                  'results': {m: {k: v for k, v in res.items() if k != 'episodes'}
                              for m, res in r['results'].items()}} for r in runs]
         with open(out_path, 'w') as fh:
-            json.dump({'seeds': list(seeds), 'runs': slim,
-                       'summary': {m: {k: list(v) for k, v in d.items()} for m, d in summary.items()}},
-                      fh, indent=2)
+            json.dump({'seeds': list(seeds), 'lagged_flow': lagged_flow,
+                       'interval': '95% Student-t over per-seed means',
+                       'runs': slim, 'summary': summary}, fh, indent=2)
         print(f"\nSaved {out_path}")
     return {'runs': runs, 'summary': summary}
 
@@ -868,9 +930,14 @@ if __name__ == '__main__':
     import argparse
     p = argparse.ArgumentParser()
     p.add_argument('--quick', action='store_true')
-    p.add_argument('--seeds', type=int, nargs='+', default=[0, 1, 2, 3, 4])
-    p.add_argument('--out', default=os.path.join(_HERE, 'results', 'ch10_benchmark.json'))
+    p.add_argument('--seeds', type=int, nargs='+', default=list(range(10)))
+    p.add_argument('--lagged-flow', action='store_true',
+                   help='append the two feed commands in transit to the state (Markov state)')
+    p.add_argument('--out', default=None,
+                   help='default: results/ch10_benchmark.json, or ch10_benchmark_lagged.json')
     p.add_argument('--device', default='cpu')
     args = p.parse_args()
-    run_multi_seed(tuple(args.seeds), out_path=None if args.quick else args.out,
-                   quick_test=args.quick, device=args.device)
+    out = args.out or os.path.join(_HERE, 'results', 'ch10_benchmark_lagged.json' if args.lagged_flow
+                                   else 'ch10_benchmark.json')
+    run_multi_seed(tuple(args.seeds), out_path=None if args.quick else out,
+                   quick_test=args.quick, device=args.device, lagged_flow=args.lagged_flow)
