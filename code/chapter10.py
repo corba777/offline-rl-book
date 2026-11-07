@@ -547,6 +547,81 @@ def coating_reward_torch(next_state: torch.Tensor, action: torch.Tensor) -> torc
             - 0.05 * action.pow(2).sum(-1))
 
 
+def coating_true_dynamics_torch(state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+    """
+    The environment's own dynamics without noise, for batches in raw units.
+    Needs the lagged state (7 columns): the filler responds to the feed command
+    issued two steps earlier. Used only for the oracle ablation.
+    """
+    E = CoatingProcessEnv
+    T, f, L, u_lag2, u_lag1 = state[:, 0], state[:, 1], state[:, 4], state[:, 5], state[:, 6]
+    heat_in = action[:, 0].clamp(-1, 1) * 0.5 + 0.5
+    flow_in = action[:, 1].clamp(-1, 1) * 0.5 + 0.5
+    T_new = ((1 - E.DT / E.TAU_T) * T + (E.DT / E.TAU_T) * E.K_T * heat_in
+             + 0.03 * f * heat_in).clamp(0.0, 1.0)
+    f_new = ((1 - E.DT / E.TAU_F) * f + (E.DT / E.TAU_F) * E.K_F * u_lag2).clamp(0.0, 1.0)
+    v_new = (0.75 - 0.45 * T_new + 0.38 * f_new + 0.12 * f_new * (1 - T_new)).clamp(0.0, 1.0)
+    d_new = (0.55 + 0.25 * f_new - 0.10 * T_new).clamp(0.0, 1.0)
+    L_new = (L + E.DT * (0.4 * flow_in - E.Q_OUT)).clamp(0.0, 1.0)
+    return torch.stack([T_new, f_new, v_new, d_new, L_new, u_lag1, flow_in], dim=1)
+
+
+class OracleDynamics:
+    """
+    Stand-in for a dynamics ensemble that knows the true (noise-free) dynamics:
+    same interface as DynamicsEnsemble, zero uncertainty, so MOReL never halts.
+    """
+    def __init__(self, units: 'Units'):
+        self.units = units
+
+    def predict_with_uncertainty(self, s_norm: torch.Tensor, a: torch.Tensor):
+        with torch.no_grad():
+            nxt = self.units.norm(coating_true_dynamics_torch(self.units.raw(s_norm), a))
+        return nxt, torch.zeros(len(s_norm), device=s_norm.device)
+
+
+def uncertainty_calibration(ensemble, units: 'Units', norm_dataset: Dict, policy=None,
+                            n: int = 4000, seed: int = 0) -> Dict[str, Dict[str, float]]:
+    """
+    Does the ensemble's uncertainty u predict its actual one-step error? The
+    oracle gives the true next state anywhere, so the error can be measured on
+    dataset actions, on the trained policy's actions and on random actions.
+    Reports the Spearman correlation of u with the error, the mean error in the
+    lowest and highest quintile of u, and the error among pairs MOReL would call
+    KNOWN (u <= epsilon) versus UNKNOWN.
+    """
+    from scipy.stats import spearmanr
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(len(norm_dataset['states']), size=min(n, len(norm_dataset['states'])), replace=False)
+    s = torch.FloatTensor(norm_dataset['states'][idx])
+    sources = {'dataset actions': torch.FloatTensor(norm_dataset['actions'][idx]),
+               'random actions': torch.FloatTensor(rng.uniform(-1, 1, size=(len(idx), 2)))}
+    if policy is not None:
+        with torch.no_grad():
+            sources['policy actions'] = torch.as_tensor(policy.act(s, deterministic=True),
+                                                        dtype=torch.float32).reshape(len(idx), -1)
+    eps = getattr(ensemble, 'epsilon_used', None)
+    out = {}
+    for name, a in sources.items():
+        with torch.no_grad():
+            pred, u = ensemble.predict_with_uncertainty(s, a)
+            true = units.norm(coating_true_dynamics_torch(units.raw(s), a))
+        err = (pred - true)[:, :CoatingProcessEnv.STATE_DIM].norm(dim=-1).numpy()
+        u = u.numpy()
+        q = np.quantile(u, [0.2, 0.8])
+        row = {'spearman': float(spearmanr(u, err)[0]),
+               'err_low_u': float(err[u <= q[0]].mean()),
+               'err_high_u': float(err[u >= q[1]].mean()),
+               'mean_u': float(u.mean()), 'mean_err': float(err.mean())}
+        if eps is not None:
+            known = u <= eps
+            row['known_frac'] = float(known.mean())
+            row['err_known'] = float(err[known].mean()) if known.any() else float('nan')
+            row['err_unknown'] = float(err[~known].mean()) if (~known).any() else float('nan')
+        out[name] = row
+    return out
+
+
 class Units:
     """
     Converts between the normalized space the agents train in and the raw
@@ -835,6 +910,58 @@ def run_industrial_benchmark(seed: int = 0, device: str = 'cpu',
     return out
 
 
+def run_oracle_ablation(seed: int = 0, device: str = 'cpu', n_train_ep: int = 400,
+                        n_morel_iters: int = 15, n_eval_ep: int = 20, batch_size: int = 256,
+                        quick_test: bool = False) -> Dict[str, object]:
+    """
+    One seed of the oracle ablation, on the Markov (lagged) state: the same
+    MOReL policy optimizer (SAC, rollout horizon, reward, budget) trained once
+    with the hybrid ensemble and once with the true noise-free dynamics. If the
+    oracle version is much better, the model is the bottleneck; if not, the
+    policy optimization is. Also measures how well the hybrid ensemble's
+    uncertainty predicts its own error.
+    """
+    if quick_test:
+        n_train_ep, n_morel_iters, n_eval_ep = 40, 2, 3
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    env  = CoatingProcessEnv(seed=seed, lagged_flow=True)
+    S, A = env.obs_dim, CoatingProcessEnv.ACTION_DIM
+    dataset = collect_industrial_dataset(n_episodes=n_train_ep, seed=seed, lagged_flow=True)
+    norm_dataset, s_mean, s_std = normalize_dataset(dataset)
+    units = Units(s_mean, s_std, float(dataset['rewards'].std() + 1e-8), device)
+    evaluator = IndustrialEvaluator(env, s_mean, s_std, n_eval_ep,
+                                    seed_base=8000 + 100 * seed, device=device)
+    kappa = max(100.0, 2.0 * float(np.abs(norm_dataset['rewards']).max()) / (1 - 0.99))
+    sac = dict(n_outer_iters=n_morel_iters, sac_steps_per_iter=300 if not quick_test else 20)
+    out = {'seed': seed, 'results': {}, 'extra': {}}
+
+    print(f"\n[seed {seed}] HybridMOReL (lagged state)")
+    torch.manual_seed(seed + 1)
+    hm = HybridMOReL(S, A, units, kappa=kappa, device=device)
+    train_hybrid_morel_agent(hm, norm_dataset, env, s_mean, s_std,
+                             n_dynamics_epochs=30 if not quick_test else 2,
+                             batch_size=batch_size, device=device, **sac)
+    out['results']['HybridMOReL'] = evaluator.evaluate(hm)
+    hm.hybrid_ensemble.epsilon_used = hm.morel_agent.epsilon
+    out['extra']['calibration'] = uncertainty_calibration(
+        hm.hybrid_ensemble, units, norm_dataset, policy=hm.policy, seed=seed)
+    out['extra']['halt_rate_last'] = float(hm.morel_agent.halt_rate_history[-1])
+
+    print(f"\n[seed {seed}] OracleMOReL (true dynamics, same optimizer)")
+    torch.manual_seed(seed + 1)                        # same policy initialization
+    om = MOReeLAgent(S, A, n_ensemble=4, rollout_horizon=5, kappa=kappa, device=device)
+    om._model_reward = units.reward_fn
+    om.ensemble = OracleDynamics(units)
+    om.epsilon = 1.0                                   # uncertainty is 0: never HALT
+    train_morel(agent=om, dataset=norm_dataset, env=env, s_mean=s_mean, s_std=s_std,
+                batch_size=batch_size, device=device, eval_every=n_morel_iters + 1, **sac)
+    out['results']['OracleMOReL'] = evaluator.evaluate(om)
+    for name, m in out['results'].items():
+        evaluator.print_results(f"{name} (seed {seed})", m)
+    return out
+
+
 def t_interval(values, alpha: float = 0.05):
     """Mean and Student-t confidence interval over per-seed values. With few
     seeds this is more honest than a percentile bootstrap, which undercovers."""
@@ -867,7 +994,10 @@ def summarize(runs: List[Dict]) -> Dict[str, Dict]:
             m, lo, hi = t_interval(vals)
             summary['methods'][mth][k] = {'mean': m, 'lo': lo, 'hi': hi,
                                           'min': float(np.nanmin(vals)), 'max': float(np.nanmax(vals))}
-    for a, b in PAIRS:
+    pairs = [(a, b) for a, b in PAIRS if a in methods and b in methods]
+    if set(methods) == {'HybridMOReL', 'OracleMOReL'}:
+        pairs = [('OracleMOReL', 'HybridMOReL')]
+    for a, b in pairs:
         summary['pairs'][f'{a} - {b}'] = {}
         for k in PAIR_METRICS:
             diff = [r['results'][a][k] - r['results'][b][k] for r in runs]
@@ -907,9 +1037,12 @@ def print_summary(summary) -> None:
 
 def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                    quick_test: bool = False, device: str = 'cpu',
-                   lagged_flow: bool = False) -> Dict:
-    runs = [run_industrial_benchmark(seed=s, device=device, quick_test=quick_test,
-                                     lagged_flow=lagged_flow) for s in seeds]
+                   lagged_flow: bool = False, oracle_ablation: bool = False) -> Dict:
+    if oracle_ablation:
+        runs = [run_oracle_ablation(seed=s, device=device, quick_test=quick_test) for s in seeds]
+    else:
+        runs = [run_industrial_benchmark(seed=s, device=device, quick_test=quick_test,
+                                         lagged_flow=lagged_flow) for s in seeds]
     summary = summarize(runs)
     print_summary(summary)
     if out_path:
@@ -919,7 +1052,8 @@ def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                  'results': {m: {k: v for k, v in res.items() if k != 'episodes'}
                              for m, res in r['results'].items()}} for r in runs]
         with open(out_path, 'w') as fh:
-            json.dump({'seeds': list(seeds), 'lagged_flow': lagged_flow,
+            json.dump({'seeds': list(seeds), 'lagged_flow': lagged_flow or oracle_ablation,
+                       'oracle_ablation': oracle_ablation,
                        'interval': '95% Student-t over per-seed means',
                        'runs': slim, 'summary': summary}, fh, indent=2)
         print(f"\nSaved {out_path}")
@@ -933,11 +1067,15 @@ if __name__ == '__main__':
     p.add_argument('--seeds', type=int, nargs='+', default=list(range(10)))
     p.add_argument('--lagged-flow', action='store_true',
                    help='append the two feed commands in transit to the state (Markov state)')
+    p.add_argument('--oracle-ablation', action='store_true',
+                   help='HybridMOReL vs MOReL with the true dynamics, on the lagged state')
     p.add_argument('--out', default=None,
-                   help='default: results/ch10_benchmark.json, or ch10_benchmark_lagged.json')
+                   help='default: results/ch10_benchmark{,_lagged,_oracle}.json')
     p.add_argument('--device', default='cpu')
     args = p.parse_args()
-    out = args.out or os.path.join(_HERE, 'results', 'ch10_benchmark_lagged.json' if args.lagged_flow
-                                   else 'ch10_benchmark.json')
+    name = ('ch10_benchmark_oracle.json' if args.oracle_ablation else
+            'ch10_benchmark_lagged.json' if args.lagged_flow else 'ch10_benchmark.json')
+    out = args.out or os.path.join(_HERE, 'results', name)
     run_multi_seed(tuple(args.seeds), out_path=None if args.quick else out,
-                   quick_test=args.quick, device=args.device, lagged_flow=args.lagged_flow)
+                   quick_test=args.quick, device=args.device, lagged_flow=args.lagged_flow,
+                   oracle_ablation=args.oracle_ablation)

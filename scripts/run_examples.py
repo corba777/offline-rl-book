@@ -35,6 +35,7 @@ SCRIPTS = [
     ("morel.py",                  ["--quick"]),
     ("physics_informed.py",       ["--quick"]),
     ("chapter10.py",              ["--quick"]),
+    ("chapter10.py",              ["--quick", "--oracle-ablation"]),
     ("chapter11.py",              ["--quick"]),
     ("chapter11_toy_figures.py",  []),
     ("chapter11_causal_toy.py",   []),

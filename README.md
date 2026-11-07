@@ -84,6 +84,7 @@ The full Chapter 10 benchmark (ten seeds, about an hour on a laptop CPU for each
 ```bash
 python code/chapter10.py                 # state as logged
 python code/chapter10.py --lagged-flow   # Markov state with the feed commands in transit
+python code/chapter10.py --oracle-ablation   # same MOReL with the learned vs the true dynamics
 ```
 
 To check that every script still runs (about two minutes on a laptop):

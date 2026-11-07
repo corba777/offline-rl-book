@@ -323,7 +323,7 @@ The budgets differ and should be stated with the results. With 40,000 transition
 
 ## Results
 
-`python code/chapter10.py` runs all four algorithms on ten seeds and writes `code/results/ch10_benchmark.json`; `python code/chapter10.py --lagged-flow` repeats the benchmark on the augmented state and writes `ch10_benchmark_lagged.json`. Each takes about an hour on a laptop CPU. The numbers below come from those files: the mean over seeds with a 95% $t$-interval.
+`python code/chapter10.py` runs all four algorithms on ten seeds and writes `code/results/ch10_benchmark.json`; `python code/chapter10.py --lagged-flow` repeats the benchmark on the augmented state and writes `ch10_benchmark_lagged.json`. Each takes about an hour on a laptop CPU; the oracle ablation below has its own flag. The numbers below come from those files: the mean over seeds with a 95% $t$-interval.
 
 **State as logged (five variables):**
 
@@ -357,19 +357,42 @@ The budgets differ and should be stated with the results. With 40,000 transition
 
 Overshoot was negligible for every method (at most 0.1% of steps): these first-order processes are slow enough that none of the policies drives a variable through its setpoint.
 
+### Oracle Ablation: Is the Model the Bottleneck?
+
+HybridMOReL could fall short because its model is wrong or because its policy optimization — few SAC updates on short synthetic rollouts — is weak. To separate the two, `python code/chapter10.py --oracle-ablation` trains the same MOReL agent twice on each seed's Markov-state dataset: once with the hybrid ensemble, once with the true noise-free dynamics in its place (zero uncertainty, so it never halts). Everything else — SAC, rollout horizon, reward, budget, policy initialization — is identical. Results are in `ch10_benchmark_oracle.json`.
+
+| Metric (ten seeds) | HybridMOReL | MOReL, true dynamics |
+|---|---|---|
+| Return (200 steps) | −7.6 [−13.5, −1.7] | −1.2 [−1.3, −1.2] |
+| Level IAE | 0.175 [0.070, 0.281] | 0.013 [0.011, 0.015] |
+| Temperature IAE | 0.043 [0.036, 0.050] | 0.019 [0.019, 0.020] |
+| Seeds with violations from disturbed starts | 3 of 10 (100%, 77%, 11% of steps) | 0 of 10 |
+
+With the true dynamics the same optimizer becomes the best method in the chapter: paired by seed it beats HybridMOReL by +6.4 [+0.5, +12.3] and CQL on the same datasets by +0.19 [+0.15, +0.24], with a level error half of CQL's. The bottleneck is the learned model, not the policy optimization. The hybrid run also revises the previous table: on the same Markov-state datasets, with a different random initialization, two of ten seeds failed (returns −26.6 and −18.0). The first Markov-state run simply had no failure; across the twenty Markov-state runs there were two.
+
+The oracle also measures something MOReL relies on and never checks: whether the ensemble's uncertainty $u$ predicts its actual error. Error is the distance between the ensemble's predicted next state and the true noise-free one, over the five process variables in normalized units, on 4,000 states per seed:
+
+| Actions | Spearman($u$, error) | Error, lowest / highest 20% of $u$ | Error, KNOWN / UNKNOWN | Share KNOWN |
+|---|---|---|---|---|
+| Logged | 0.42 | 0.018 / 0.036 | 0.020 / 0.036 | 80% |
+| Trained policy | 0.41 | 0.017 / 0.033 | 0.019 / 0.036 | 85% |
+| Uniformly random | 0.40 | 0.021 / 0.041 | 0.024 / 0.036 | 64% |
+
+The uncertainty is informative but weak. The quintile with the highest $u$ has about twice the error of the lowest, and random actions are labelled UNKNOWN more often than logged ones; but the rank correlation is only about 0.4, and the KNOWN set keeps more than half the error rate of the UNKNOWN one. One-step errors are also small on average, so the failures come from where the policy steers the model over several steps — classic model exploitation, which an uncertainty this loosely tied to the error cannot prevent. These are one-step measurements on dataset states; errors along the policy's own multi-step rollouts are not measured here.
+
 ### Reading the Results
 
 **CQL improves clearly on the logging policy and on BC**, with or without the lagged commands. It removes the steady-state offsets that the proportional operators left behind: the temperature error falls by about a third and the level stays two to three times closer to its setpoint, which accounts for most of the difference in return. BC reproduces the operators, offsets included. The gain is not free on every axis: CQL tracks the filler fraction slightly worse than BC (IAE 0.026 against 0.024, a small but consistent paired difference). The reward trades filler against level, and with one actuator for both, CQL leans toward the level.
 
 **The constraint penalty helped a little, and only a paired comparison shows it.** Side by side, the CQL+Physics and CQL intervals overlap on every metric, and neither violated a bound even from disturbed starts. Paired by seed, the penalty raises the return by about 0.06 (4%) in both versions of the state, mostly through better level tracking. A plausible mechanism, not tested here: the penalty makes the logged low-level excursions more costly, which pushes the policy to keep the tank fuller, closer to its setpoint. With a dozen paired comparisons in the table, one should expect a borderline result or two by chance, so treat this one as suggestive. It is still a useful lesson about method: overlapping intervals of two means are not evidence of no difference.
 
-**HybridMOReL was unstable on the logged state and merely mediocre on the Markov one.** With five variables, nine seeds landed between −2.1 and −5.7, and one drove the level out of bounds in 62% of steps from disturbed starts. With the lagged commands, where the physics prior is no longer wrong on the filler loop, no seed failed: returns ranged from −2.1 to −5.0 and there were no violations. That supports the explanation the coverage diagnostic suggests — a delay-blind prior on a non-Markov state, with an ensemble whose shared physics hides its own errors — although one failure in ten seeds is too few to estimate a failure rate. It does not make the method competitive: on the Markov state HybridMOReL is no better than BC and far behind CQL. What remains could come from the policy optimization (fewer, model-generated updates), the short rollouts, or the uncertainty threshold; the ablations that would separate these — oracle dynamics, other HALT thresholds, CQL trained on the same synthetic rollouts — are not run here.
+**HybridMOReL was unstable on both versions of the state.** With five variables, nine seeds landed between −2.1 and −5.7, and one drove the level out of bounds in 62% of steps from disturbed starts. With the lagged commands, where the physics prior is no longer wrong on the filler loop, the first run had no failing seed, but the oracle ablation repeated it on the same datasets with a different initialization and two of ten seeds failed. Fixing the prior improved the model a great deal on the filler loop, and the stable runs got better, but it did not make the method reliable; one failure in ten runs against two in twenty is far too little data to say whether the failure rate changed. The oracle ablation locates the problem: with exact dynamics the same optimizer is the best method in the chapter, so what holds HybridMOReL back is the learned model and an uncertainty that only loosely tracks its error.
 
 **The calibrated $\lambda$ varied more than thirtyfold across seeds**, from about 2 to 73, because it depends on the single largest violation in each logged dataset. A rule keyed to the worst observation inherits that observation's randomness; in practice, use a robust reference such as a high quantile of the violations, or set the cost of a violation from engineering judgment.
 
 ### What This Case Study Shows
 
-One might expect the model-based method with a physics prior to win on reward and the penalized method to win on safety. Measured over ten seeds, with intervals and paired comparisons, the picture is less tidy and more useful: the simple conservative method won; the penalty added a small gain that only a paired comparison could detect; and the hybrid model failed when its prior and its state missed the transport delay, and was merely stable once they did not. Before trusting a comparison like this one, check four things: that the state is Markov, or that you know what it is missing; that physical quantities are computed in physical units; that the physics model beats persistence on the variables that matter; and that the result survives several seeds when compared pairwise.
+One might expect the model-based method with a physics prior to win on reward and the penalized method to win on safety. Measured over ten seeds, with intervals and paired comparisons, the picture is less tidy and more useful: the simple conservative method won among the methods that learn from data alone; the penalty added a small gain that only a paired comparison could detect; the hybrid model stayed unreliable even after its prior and its state accounted for the transport delay; and the oracle ablation showed that with a perfect model the same model-based optimizer would have beaten everything else. A good model is worth a lot — and an ensemble's uncertainty is a poor guarantee that you have one. Before trusting a comparison like this one, check four things: that the state is Markov, or that you know what it is missing; that physical quantities are computed in physical units; that the physics model beats persistence on the variables that matter; and that the result survives several seeds when compared pairwise.
 
 ---
 
@@ -383,7 +406,7 @@ The filler equation has a two-step delay: the agent's flow input at time $t$ aff
 
 It is tempting to leave the delay to the hybrid ensemble's residual network, but on the five logged variables the residual cannot learn it: the command that reaches the filler now was issued two steps ago, and it is not among the network's inputs. The tell-tale sign of a delay mismatch is a systematic residual that is positive when `flow_input` recently increased and negative when it recently decreased. In this case study the coverage diagnostic shows the problem plainly: the filler dimension scores about −40%, worse than the trivial no-change model. A negative score on a variable whose physics you trust is the signature of a timing error such as an unmodeled delay.
 
-The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model use them. Here $k = 2$ turned the filler score from −40% to +54% and removed the failures of HybridMOReL. The engineering knowledge required is only the approximate delay length; if it is uncertain, include a few more lags than you think you need and let the residual learn which ones matter.
+The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model use them. Here $k = 2$ turned the filler score from −40% to +54%. It did not by itself make HybridMOReL reliable (see the oracle ablation), which is a reminder that a better one-step model is necessary but not sufficient. The engineering knowledge required is only the approximate delay length; if it is uncertain, include a few more lags than you think you need and let the residual learn which ones matter.
 
 ### Constraint Calibration
 
@@ -463,11 +486,11 @@ This chapter translated the tools from Chapters 1–9 into an industrial pipelin
 | Algorithm | Relies on | In this case study (ten seeds) |
 |---|---|---|
 | BC | Imitating the logs | Reproduces the operators, steady-state offsets included |
-| CQL | Conservative Q-values | Best return together with CQL+Physics; removes the offsets; no violations |
-| CQL+Physics | CQL + bounds penalty | A small paired gain over CQL (about 4% in return), no violations |
-| HybridMOReL | Model-based, hybrid dynamics | Unstable on the logged state; stable but no better than BC once the state includes the delayed commands |
+| CQL | Conservative Q-values | Best return together with CQL+Physics; removes the offsets; no violations observed |
+| CQL+Physics | CQL + bounds penalty | A small paired gain over CQL (about 4% in return); no violations observed |
+| HybridMOReL | Model-based, hybrid dynamics | Unreliable on both versions of the state (failing seeds in 1 of 10 and 2 of 20 runs); with the true dynamics the same optimizer is the best method |
 
-The practical recommendation: **start with a conservative model-free method such as CQL**, check what the state is missing, measure whether the policy approaches the operating limits from realistic disturbed starts, and add a constraint penalty if it does. Add a learned or hybrid dynamics model only after the physics prior beats persistence on the variables that matter — and judge every step across several seeds, comparing methods pairwise.
+The practical recommendation: **start with a conservative model-free method such as CQL**, check what the state is missing, measure whether the policy approaches the operating limits from realistic disturbed starts, and add a constraint penalty if it does. Add a learned or hybrid dynamics model only after the physics prior beats persistence on the variables that matter, and check that its uncertainty actually tracks its error — and judge every step across several seeds, comparing methods pairwise.
 
 Chapter 11 turns to explainability: how to interrogate a trained agent's Q-function, policy, and dynamics model with SHAP so an operator can understand — and an auditor can certify — why the agent chose a given action.
 
