@@ -138,41 +138,41 @@
 <p>Логи LangChain-, AutoGen- или OpenAI Agents-style — потенциальные <strong>RL training data</strong>, если заданы rewards и границы state.</p>
 <hr />
 <h2>От agentic offline RL к offline MARL</h2>
-<p>Дальше глава про <strong>одного</strong> tool-using агента. Несколько агентов в одном эпизоде — это <strong>не</strong> «более длинная single-agent trajectory»: процесс — <strong>Markov game</strong> (stochastic game), а не MDP с большим context window.</p>
-<p><strong>Минимальные объекты.</strong> При $N$ агентах: совместное состояние $s_t$ (workspace / ticket), локальные наблюдения $o_t^i$ у каждого агента $i$, <strong>совместное действие</strong></p>
-<p><div class="math-display">$$a_t = (a_t^1,\ldots,a_t^N),$$</div></p>
-<p>где $a_t^i$ — сообщение, tool call или шаг плана. Награды: <strong>shared</strong> $r_t$, <strong>individual</strong> $r_t^i$ или смесь. В логе — multi-agent trajectory с per-agent observations/actions; плоская склейка transcript’а не даёт корректный credit для OREO/IQL в single-agent смысле.</p>
-<p>Три новые проблемы:</p>
+<p>Остальная часть главы рассматривает одного агента. Когда в эпизоде действуют несколько агентов, эта постановка перестаёт работать. Пока политики остальных агентов зафиксированы, для каждого отдельного агента задача остаётся (PO)MDP: партнёры просто входят в среду. Но offline-обучение меняет сразу несколько политик, и динамика, которую видит агент, меняется вместе с поведением партнёров. Логи, собранные при старых политиках партнёров, перестают описывать новую среду. Правильная модель здесь — Markov game (stochastic game), а при локальных наблюдениях и общей награде — Dec-POMDP. Если склеить реплики всех агентов в один transcript, теряется, кто что наблюдал и кто какое действие выбрал, то есть именно те сведения, которые нужны для оценки support и credit assignment.</p>
+<p><strong>Обозначения.</strong> При $N$ агентах $s_t$ — совместное состояние (общий workspace или состояние тикета), $o_t^i$ — локальное наблюдение агента $i$ (его prompt, инструменты и собственная память), а</p>
+<p><div class="math-display">$$a_t = (a_t^1,\ldots,a_t^N)$$</div></p>
+<p>— joint action, где $a_t^i$ — сообщение, tool call или шаг плана. Награда может быть общей для команды ($r_t$), индивидуальной ($r_t^i$) или смешанной. Поэтому в логе нужны наблюдения и действия каждого агента, а не только общая переписка.</p>
+<p>Single-agent offline RL не решает три задачи, которые здесь появляются:</p>
 <ol>
-<li><strong>Combinatorial joint-action coverage.</strong> Support — по <em>кортежам</em> $(a^1,\ldots,a^N)$, не по маргиналам. В логах могут быть «A ищет» и «B правит» по отдельности, но не нужный <em>совместный</em> паттерн. Conservative / support-constrained методы должны учитывать joint support.</li>
-<li><strong>Multi-agent credit assignment.</strong> Team success не говорит, <em>чей</em> шаг создал результат. Нужны agent-/role-level returns, counterfactual baselines или process rewards, отделяющие вклад от удачи и работы партнёров.</li>
-<li><strong>Coordination conventions в логах.</strong> Кто говорит, кому «принадлежат» tools, какой handoff. Offline improvement локальных политик может сломать координацию, из‑за которой логи вообще успешны.</li>
+<li><strong>Joint-action coverage.</strong> Support определяется на кортежах $(a^1,\ldots,a^N)$, а не на действиях каждого агента по отдельности. В логах могут быть «A ищет» и «B правит» в разных эпизодах, но ни разу — нужная при развёртывании комбинация. Если ограничить каждого агента только его собственными действиями из логов, команда всё равно может выполнить joint action, которого в данных нет.</li>
+<li><strong>Multi-agent credit assignment.</strong> Успех команды не говорит, чей шаг к нему привёл. Чтобы отделить вклад агента от удачи и от работы партнёров, нужны returns на уровне агента или роли, counterfactual baselines или process rewards.</li>
+<li><strong>Coordination conventions.</strong> Multi-agent логи фиксируют, кто когда говорит, какой роли принадлежит какой инструмент и как устроены handoffs. Если улучшать политику каждого агента по отдельности, можно сломать conventions, благодаря которым эпизоды в логах были успешными.</li>
 </ol>
-<p>Два <strong>уровня</strong> не смешивать:</p>
+<p>В LLM-системах часто смешивают две разные задачи обучения:</p>
 <table>
 <thead>
 <tr>
 <th>Уровень</th>
-<th>Что учим</th>
-<th>Типичный offline-субстрат</th>
+<th>Что обучается</th>
+<th>Типичные offline-данные</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><strong>Shared LLM (post-training)</strong></td>
-<td>Одна base model под несколько roles / prompts</td>
-<td>Preferences, успешные multi-agent traces как SFT, опционально MARL-aware credit</td>
+<td>Одна базовая модель для нескольких ролей или prompts</td>
+<td>Preference pairs, успешные multi-agent traces для SFT, при необходимости per-agent credit assignment</td>
 </tr>
 <tr>
 <td><strong>Orchestration policy</strong></td>
-<td>Кто действует, handoff, маршрутизация tools / messages</td>
-<td>Логи routers, schedulers, графов Autogen/LangGraph как отдельный decision process</td>
+<td>Кто действует следующим, когда передавать управление, как маршрутизировать tools и сообщения</td>
+<td>Логи routers, schedulers или графов Autogen/LangGraph как отдельного процесса принятия решений</td>
 </tr>
 </tbody>
 </table>
-<p>Улучшить shared LLM ≠ выучить кооперативную orchestration policy над joint actions.</p>
-<p><strong>Мини-пример.</strong> Два агента: агент 1 выбирает сообщение $m$, агент 2 — tool action $u$; в конце один team reward $r \in \{0,1\}$. Успешные $(m,u,r)$ в логе <strong>не</strong> показывают, создал результат $m$, $u$ или только пара $(m,u)$. Single-agent update по склеенному transcript усиливает «не того» говорящего. Offline MARL начинается там, где эта неоднозначность — first-class, а не где OREO/IQL клеят на более длинный чат.</p>
-<p>Глава остаётся single-agent намеренно. Граница Markov game — <strong>стоп-сигнал</strong>: для multi-agent продукта берите логирование и OPE-дисциплину отсюда, но не переносите single-agent conservative RL на joint actions и team rewards без адаптации.</p>
+<p>Дообучение shared LLM на traces с ролями (DPO, SFT или single-agent offline RL) обновляет другую политику, чем orchestration policy, которая выбирает joint actions. Указывайте, какую из двух обновляет метод; иначе multi-agent проблемы попадают в систему под видом обычного дообучения агента.</p>
+<p><strong>Пример.</strong> Агент 1 отправляет агенту 2 сообщение $m \in \{A, B\}$, затем агент 2 вызывает инструмент $u \in \{a, b\}$. Команда получает $r = 1$ только за пары $(A, a)$ и $(B, b)$. При равномерно случайной behavior policy каждое отдельное сообщение и каждый отдельный инструмент успешны в половине эпизодов, поэтому ценности действий отдельных агентов равны и ничего не сообщают; хорошее поведение от плохого отличает только ценность пары. Single-agent обновление по склеенному transcript оценивает каждое действие по его частоте успеха и может прийти к несогласованной паре, например $(A, b)$. Поэтому offline MARL методы явно моделируют joint action.</p>
+<p>Глава намеренно остаётся single-agent. Для multi-agent продукта используйте отсюда логирование и практики оценки, но не применяйте single-agent conservative RL к joint actions и team rewards, не адаптировав support constraints и credit assignment.</p>
 <hr />
 <h2>Интерфейс политики определяет метод обучения</h2>
 <p>До выбора функции потерь определите, какую политику обновляете. Классификатор действий остаётся политикой $\pi(a\mid s)$, даже если использует энкодер LLM; генерация текста для этого не обязательна.</p>
@@ -196,7 +196,7 @@
 <td>Классификатор действий</td>
 <td>Конечный набор tools / action labels</td>
 <td>Cross-entropy BC на action logits</td>
-<td>Discrete CQL, IQL с categorical actor, value learning с ограничением поддержки</td>
+<td>Discrete CQL, IQL с categorical actor, support-constrained value learning</td>
 </tr>
 <tr>
 <td>Router / orchestrator</td>
@@ -308,7 +308,7 @@
 <ol>
 <li><strong>Точное воспроизведение trace</strong> подаёт в pipeline прежние действия и observations. Оно проверяет parsing, восстановление state и регрессии, но не return политики, выбирающей другие действия.</li>
 <li><strong>Повторное исполнение в среде</strong> выполняет реальные действия кандидата в сбрасываемом sandbox. Это оценка в тестовой среде, а не только по фиксированному датасету; перенос зависит от fidelity sandbox, версий tools и репрезентативности начальных задач.</li>
-<li><strong>Rollout в симуляторе</strong> создаёт observations с учётом нового действия и текущего simulated state. Обученный simulator добавляет model bias, особенно вне поддержки логов; его нужно отдельно валидировать и сообщать неопределённость.</li>
+<li><strong>Rollout в симуляторе</strong> создаёт observations с учётом нового действия и текущего simulated state. Обученный simulator добавляет model bias, особенно вне support логов; его нужно отдельно валидировать и сообщать неопределённость.</li>
 </ol>
 <p>Cached response можно переиспользовать, только если совпадают полный запрос и релевантное состояние среды: arguments, права доступа, snapshot документа/базы, версия tool и случайные входы, влияющие на результат. Одной детерминированности недостаточно, если snapshot изменился. Cache miss должен приводить к исполнению в sandbox, проверенной симуляции или явному unsupported outcome; подставлять ответ другого действия нельзя.</p>
 <p>Например, результат <code>open_pdf(page=42)</code> нельзя выдавать после <code>open_pdf(page=43)</code>. Даже одинакового номера страницы недостаточно, если изменился исходный документ. Старая observation скрывает последствия решения кандидата и создаёт недействительный контрфактуал.</p>
@@ -441,9 +441,9 @@
 <p>📄 Код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/agentic_offline_rl_toy.py"><code>agentic_offline_rl_toy.py</code></a></p>
 </blockquote>
 <p><strong>Среда:</strong> задачи <code>x+y</code>, <code>x-y</code>, <code>x*y</code>; tools <code>lookup_x</code>, <code>lookup_y</code>, <code>add</code>, <code>sub</code>, <code>mul</code>, <code>final</code>. Награды: +1 / −1 / −0.02 за шаг.</p>
-<p><strong>Четыре политики:</strong> Behavior (logger), BC (majority action), naive FQI (tabular Q), support-constrained FQI (argmax только по actions из dataset на state — маска поддержки, а не функция потерь CQL).</p>
+<p><strong>Четыре политики:</strong> Behavior (logger), BC (majority action), naive FQI (tabular Q), support-constrained FQI (argmax только по actions из dataset на state — support mask, а не функция потерь CQL).</p>
 <p><strong>Два режима данных:</strong> (1) <code>mul</code> есть в логах; (2) на mul-задачах behavior никогда не вызывает <code>mul</code>.</p>
-<p>В неизвестном состоянии или при пустом наборе допустимых поддержанных действий constrained policy отказывается от действия (<code>None</code>); оценка учитывает это как неуспешное завершение. Поддержанная операция иногда случайно даёт правильный ответ на mul-задаче, поэтому успех может быть ненулевым даже без <code>mul</code>.</p>
+<p>В неизвестном состоянии или при пустом наборе допустимых действий из support constrained policy отказывается от действия (<code>None</code>); оценка учитывает это как неуспешное завершение. Операция из support иногда случайно даёт правильный ответ на mul-задаче, поэтому успех может быть ненулевым даже без <code>mul</code>.</p>
 <p>Запуск: <code>python code/agentic_offline_rl_toy.py</code></p>
 <p>Типичный qualitative результат:</p>
 <ul>
