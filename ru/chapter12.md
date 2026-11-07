@@ -109,6 +109,8 @@ Single-agent offline RL не решает три задачи, которые з
 
 **Пример.** Агент 1 отправляет агенту 2 сообщение $m \in \{A, B\}$, затем агент 2 вызывает инструмент $u \in \{a, b\}$. Команда получает $r = 1$ только за пары $(A, a)$ и $(B, b)$. При равномерно случайной behavior policy каждое отдельное сообщение и каждый отдельный инструмент успешны в половине эпизодов, поэтому ценности действий отдельных агентов равны и ничего не сообщают; хорошее поведение от плохого отличает только ценность пары. Single-agent обновление по склеенному transcript оценивает каждое действие по его частоте успеха и может прийти к несогласованной паре, например $(A, b)$. Поэтому offline MARL методы явно моделируют joint action.
 
+В классическом offline MARL для этого уже есть инструменты. MACCA ([Wang et al., 2025](https://arxiv.org/abs/2312.03644)) представляет offline-данные как динамическую байесовскую сеть и выделяет причинный вклад каждого агента в награду. Для LLM-агентов ближайшие работы пока online. LangMARL ([Yao et al., 2026](https://aclanthology.org/2026.emnlp-main.1837/)) с помощью централизованного языкового critic назначает credit каждому агенту и переписывает его политику на естественном языке — инструкции и примеры, а не веса модели, — собирая новые rollouts на каждой итерации. Перенести такой agent-level credit assignment на фиксированные логи — пока открытая задача.
+
 Глава намеренно остаётся single-agent. Для multi-agent продукта используйте отсюда логирование и практики оценки, но не применяйте single-agent conservative RL к joint actions и team rewards, не адаптировав support constraints и credit assignment.
 
 ---
@@ -124,6 +126,8 @@ Single-agent offline RL не решает три задачи, которые з
 | Router / orchestrator | Выбор агента, tool, handoff или расписания | BC на routing decisions | Offline RL для процесса маршрутизации со своими observations, rewards и support constraints |
 
 DPO оптимизирует предпочтения и не заменяет trajectory-level credit assignment. Token-level ILQL и language-model SFT требуют token policy и LM head; classifier обучается через action logits. Текстовая retrospection может дать annotations или features, но loss генерации текста нельзя напрямую перенести на classifier без совместимой выходной головы и targets.
+
+Для строки router / orchestrator уже есть пример в реалистичном масштабе. HarnessMDP ([Yi & Song, 2026](https://arxiv.org/abs/2607.05458)) оставляет LLM-исполнителя замороженным и обучает лишь небольшой контроллер, который выбирает одну из семи структурных операций: observe, retrieve, call tool, draft, check, revise и submit. Контроллер обучается с помощью advantage-weighted regression на траекториях существующих harnesses и улучшает результат на задачах программирования, τ-bench и AgentBench. Авторы прямо называют предел метода: контроллер усиливает паттерны, которые уже есть в буфере, но не может выучить стратегии вне его support, а выигрыш зависит от качества и покрытия логов. Калькулятор ниже приводит к тому же выводу, только в куда меньшем масштабе.
 
 Пример калькулятора ниже реализует **табличную политику**; классификатор и LLM предложены как дальнейшие расширения. Замена модели не устраняет необходимость определить action support; замена интерфейса может потребовать другого objective.
 
@@ -182,6 +186,8 @@ DPO оптимизирует предпочтения и не заменяет t
 
 Для offline: process rewards, step-level value targets, verifier-backed labels.
 
+У редкой терминальной награды есть и статистический предел. Ren и Xie ([2026](https://arxiv.org/abs/2606.18531)) изучают offline RL в ситуации, когда у каждой траектории есть лишь одна итоговая метка, и предлагают OPAC — пессимистичный actor-critic, который обучает скрытую пошаговую награду вместе с value function. Их нижняя оценка объясняет, почему выбор метки так важен: для all-success objective, где эпизод засчитывается, только если успешен каждый шаг, исход несёт информацию лишь об экспоненциально малой доле траекторий, и любому алгоритму нужно порядка $2^H$ эпизодов, чтобы приблизиться к оптимальной политике. Process rewards возвращают в данные ту информацию, которую теряет единственный итоговый бит. Недавний обзор credit assignment для LLM-агентов ([Zhang, 2026](https://arxiv.org/abs/2604.09459)) добавляет второе предостережение: если в логе есть только текстовые истории, а прежнее состояние нельзя восстановить, может оставаться неопределённым даже знак credit отдельного шага.
+
 ---
 
 ## OPE для агентов
@@ -206,6 +212,8 @@ Cached response можно переиспользовать, только есл
 Например, результат `open_pdf(page=42)` нельзя выдавать после `open_pdf(page=43)`. Даже одинакового номера страницы недостаточно, если изменился исходный документ. Старая observation скрывает последствия решения кандидата и создаёт недействительный контрфактуал.
 
 Для каждой метрики указывайте, какая операция её породила. Exact replay подтверждает воспроизводимость прежнего запуска, но не улучшение success новой политики. Если среда недоступна, используйте статистическую OPE или learned value estimates с явными предположениями и ограничениями покрытия, а не выдавайте cached transcript за новый rollout.
+
+Недавние работы подкрепляют это предупреждение измерениями. В *The Replay Gap* ([Gonuguntla, 2026](https://arxiv.org/abs/2608.08239)), workshop-исследовании на SWE-bench Verified, траектории агента разветвляют посередине и продолжают другой моделью. Смена модели переписывает от 61 до 94% последующих действий, а оценщик, склеивающий записанные ответы, ошибается во всех пяти случаях, где успех действительно изменился. Выборка мала, но направление однозначно: склеенный лог оценивает мир, в который новая политика никогда бы не попала. Конструктивная альтернатива — обученный simulator. ADWM ([Liu et al., 2026](https://arxiv.org/abs/2606.05558)) моделирует каждый transition multi-turn агента латентной диффузионной world model, обученной на логах, и на HotpotQA, ScienceWorld, ALFWorld и WebShop ранжирует политики надёжнее, чем direct method, FQE, importance sampling и doubly robust оценки. Авторы аккуратно очерчивают границы: эксперименты не покрывают политики полностью вне support, а ранговая корреляция ничего не говорит о калибровке абсолютных значений.
 
 ### Контракт оценки политики агента
 
@@ -427,3 +435,10 @@ Reward hacking, spurious tool use, template collapse (RAGEN-2), unsupported tool
 - Hong, J., Dragan, A., & Levine, S. (2025). *Planning without Search: Refining Frontier LLMs with Offline Goal-Conditioned RL.* NeurIPS 2025. [arXiv:2505.18098](https://arxiv.org/abs/2505.18098).
 - Wang et al. (2025). *RAGEN.* [arXiv:2504.20073](https://arxiv.org/abs/2504.20073).
 - Wang et al. (2026). *RAGEN-2.* [arXiv:2604.06268](https://arxiv.org/abs/2604.06268), [project](https://ragen-ai.github.io/v2/).
+- Yi, H., & Song, X. (2026). *HarnessMDP: Learning to Control LLM Agent Harnesses with Offline Reinforcement Learning.* [arXiv:2607.05458](https://arxiv.org/abs/2607.05458).
+- Ren, X., & Xie, T. (2026). *When Does Trajectory-Level Supervision Permit Efficient Offline Reinforcement Learning?* [arXiv:2606.18531](https://arxiv.org/abs/2606.18531).
+- Zhang, C. (2026). *From Reasoning to Agentic: Credit Assignment in Reinforcement Learning for Large Language Models.* [arXiv:2604.09459](https://arxiv.org/abs/2604.09459).
+- Gonuguntla, A. (2026). *The Replay Gap: Static Evaluation of Model Switching in LLM Agents Scores the Wrong World.* Efficient Reasoning Workshop, COLM. [arXiv:2608.08239](https://arxiv.org/abs/2608.08239).
+- Liu, K., Xiong, G., Zhang, W., & Tang, S. (2026). *Autoregressive Diffusion World Models for Off-Policy Evaluation of LLM Agents (ADWM).* [arXiv:2606.05558](https://arxiv.org/abs/2606.05558).
+- Wang, Z., Du, Y., Zhang, Y., Fang, M., & Huang, B. (2025). *MACCA: Offline Multi-agent Reinforcement Learning with Causal Credit Assignment.* TMLR. [arXiv:2312.03644](https://arxiv.org/abs/2312.03644).
+- Yao, H., Da, L., Liu, X., Fleming, C., Chen, T., & Wei, H. (2026). *LangMARL: Natural Language Multi-Agent Reinforcement Learning via Semantic Credit Assignment.* EMNLP. [ACL Anthology](https://aclanthology.org/2026.emnlp-main.1837/), [arXiv:2604.00722](https://arxiv.org/abs/2604.00722).

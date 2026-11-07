@@ -109,6 +109,8 @@ Fine-tuning the shared LLM on role-conditioned traces (DPO, SFT or single-agent 
 
 **Example.** Agent 1 sends agent 2 a message $m \in \{A, B\}$; agent 2 then calls a tool $u \in \{a, b\}$. The team receives $r = 1$ only for the pairs $(A, a)$ and $(B, b)$. Under a uniformly random behavior policy, every individual message and every individual tool succeeds in half of the logged episodes, so per-agent action values are all equal and carry no signal; only the value of the pair distinguishes good from bad behavior. A single-agent update on the concatenated transcript credits each action by its marginal success rate and can converge to a mismatched pair such as $(A, b)$. Offline MARL methods model the joint action explicitly for this reason.
 
+Classical offline MARL already offers tools for this. MACCA ([Wang et al., 2025](https://arxiv.org/abs/2312.03644)) represents the offline data as a dynamic Bayesian network and identifies each agent's causal contribution to the reward. For LLM agents the nearest work is still online. LangMARL ([Yao et al., 2026](https://aclanthology.org/2026.emnlp-main.1837/)) uses a centralized language critic to assign credit to each agent and rewrites the agents' natural-language policies, their instructions and exemplars, rather than model weights, collecting fresh rollouts at every iteration. Carrying such agent-level credit over to fixed logs remains an open problem.
+
 The chapter stays single-agent deliberately. For a multi-agent product, reuse its logging and evaluation practices, but do not apply single-agent conservative RL to joint actions and team rewards without adapting support constraints and credit assignment.
 
 ---
@@ -124,6 +126,8 @@ Specify which policy is being updated before choosing a loss. A structured class
 | Router / orchestrator | Agent, tool, handoff or scheduling decisions | BC on routing decisions | Offline RL on the routing process, with its own observations, rewards and support constraints |
 
 DPO is preference optimization, not a replacement for trajectory-level credit assignment. Token-level ILQL and language-model SFT require a token policy and an LM head; a classifier instead learns through its action logits. Text retrospection can supply annotations or features, but a text-generation loss cannot directly train a classifier without a compatible output head and targets.
+
+The orchestrator row already has a worked example at realistic scale. HarnessMDP ([Yi & Song, 2026](https://arxiv.org/abs/2607.05458)) keeps the LLM executor frozen and trains only a small controller that chooses among seven structural operations: observe, retrieve, call a tool, draft, check, revise and submit. The controller is fitted by advantage-weighted regression on trajectories from existing harnesses and improves task performance on coding tasks, τ-bench and AgentBench. Its authors state the limit plainly: the controller can amplify patterns already present in the buffer, but cannot learn strategies outside its support, and its gains depend on the quality and coverage of the logs. The same lesson emerges from the calculator below, on a much smaller stage.
 
 The calculator example below implements the **tabular** stage; a classifier and then an LLM are possible extensions. Changing the model does not remove the need to define action support; changing the interface can require a different training objective.
 
@@ -194,6 +198,8 @@ For offline settings, prefer:
 - **step-level value targets** when trajectories include both successes and failures,
 - **verifier-backed labels** instead of pure LLM-as-judge when possible.
 
+Sparse terminal rewards also impose a statistical limit. Ren and Xie ([2026](https://arxiv.org/abs/2606.18531)) study offline RL when each trajectory carries a single outcome label, and propose OPAC, a pessimistic actor-critic that learns a latent per-step reward together with the value function. Their lower bound explains why the choice of label matters: under an all-success objective, where an episode counts only if every step succeeds, the outcome is informative on an exponentially small set of trajectories, and any learner needs on the order of $2^H$ episodes to come close to the optimal policy. Process rewards return to the data the information that a single terminal bit discards. A recent survey of credit assignment for LLM agents ([Zhang, 2026](https://arxiv.org/abs/2604.09459)) adds a second caution: when the log holds only text histories and an earlier state cannot be restored, even the sign of a step's credit may be unidentifiable.
+
 ---
 
 ## OPE for Agents
@@ -222,6 +228,8 @@ A cached response may be reused only when the complete request and relevant envi
 For example, a recorded `open_pdf(page=42)` result cannot become the observation after `open_pdf(page=43)`. Even the same page number is insufficient if the underlying filing changed. Reusing the old observation hides the consequences of the candidate's decision and creates an invalid counterfactual.
 
 Report which operation produced each metric. Exact replay can establish that a pipeline reproduces a logged run; it cannot establish that a new policy improves task success. For unavailable environments, use supported statistical OPE or learned value estimates with their assumptions and coverage limitations, rather than treating cached transcripts as new rollouts.
+
+Recent work gives this warning a measurement. In *The Replay Gap* ([Gonuguntla, 2026](https://arxiv.org/abs/2608.08239)), a workshop study on SWE-bench Verified, agent trajectories are forked midway and continued with a different model. The switch rewrites 61–94% of the subsequent actions, and an evaluator that stitches logged outputs together mispredicts all five cases in which success actually changed. The sample is small, yet the direction is clear: a stitched log scores a world the new policy would never visit. A learned simulator is the constructive alternative. ADWM ([Liu et al., 2026](https://arxiv.org/abs/2606.05558)) models each transition of a multi-turn agent with a latent diffusion world model trained on logged trajectories; on HotpotQA, ScienceWorld, ALFWorld and WebShop it ranks candidate policies more reliably than the direct method, FQE, importance sampling and doubly robust estimators. The authors are careful about scope: the experiments do not cover fully out-of-support policies, and rank correlation says nothing about the calibration of absolute values.
 
 ### Evaluation Contract for an Agent Policy
 
@@ -520,3 +528,10 @@ See the [Appendix: Algorithm Selection Guide](/offline-rl-book/en/appendix.html)
 - Hong, J., Dragan, A., & Levine, S. (2025). *Planning without Search: Refining Frontier LLMs with Offline Goal-Conditioned RL.* NeurIPS 2025. [arXiv:2505.18098](https://arxiv.org/abs/2505.18098).
 - Wang et al. (2025). *RAGEN: Understanding Self-Evolution in LLM Agents via Multi-Turn RL.* [arXiv:2504.20073](https://arxiv.org/abs/2504.20073).
 - Wang et al. (2026). *RAGEN-2: Reasoning Collapse in Agentic RL.* [arXiv:2604.06268](https://arxiv.org/abs/2604.06268), [project](https://ragen-ai.github.io/v2/).
+- Yi, H., & Song, X. (2026). *HarnessMDP: Learning to Control LLM Agent Harnesses with Offline Reinforcement Learning.* [arXiv:2607.05458](https://arxiv.org/abs/2607.05458).
+- Ren, X., & Xie, T. (2026). *When Does Trajectory-Level Supervision Permit Efficient Offline Reinforcement Learning?* [arXiv:2606.18531](https://arxiv.org/abs/2606.18531).
+- Zhang, C. (2026). *From Reasoning to Agentic: Credit Assignment in Reinforcement Learning for Large Language Models.* [arXiv:2604.09459](https://arxiv.org/abs/2604.09459).
+- Gonuguntla, A. (2026). *The Replay Gap: Static Evaluation of Model Switching in LLM Agents Scores the Wrong World.* Efficient Reasoning Workshop, COLM. [arXiv:2608.08239](https://arxiv.org/abs/2608.08239).
+- Liu, K., Xiong, G., Zhang, W., & Tang, S. (2026). *Autoregressive Diffusion World Models for Off-Policy Evaluation of LLM Agents (ADWM).* [arXiv:2606.05558](https://arxiv.org/abs/2606.05558).
+- Wang, Z., Du, Y., Zhang, Y., Fang, M., & Huang, B. (2025). *MACCA: Offline Multi-agent Reinforcement Learning with Causal Credit Assignment.* TMLR. [arXiv:2312.03644](https://arxiv.org/abs/2312.03644).
+- Yao, H., Da, L., Liu, X., Fleming, C., Chen, T., & Wei, H. (2026). *LangMARL: Natural Language Multi-Agent Reinforcement Learning via Semantic Credit Assignment.* EMNLP. [ACL Anthology](https://aclanthology.org/2026.emnlp-main.1837/), [arXiv:2604.00722](https://arxiv.org/abs/2604.00722).
