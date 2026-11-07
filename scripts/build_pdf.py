@@ -131,6 +131,23 @@ def main():
         return r"\texttt{" + body + "}"
     src = re.sub(r"\\texttt\{([^{}]*)\}", breakable, tex.read_text(encoding="utf-8"))
 
+    # Height of a table in text lines: p{} columns wrap, so a row takes as many
+    # lines as its longest cell needs at that column's share of ~95 characters.
+    def table_lines(body):
+        widths = [float(w) for w in re.findall(r"\\real\{([\d.]+)\}", body)]
+        lines = 0
+        for row in re.split(r"\\\\\*?\s*\n", body.split("\\endlastfoot")[-1]):
+            cells = row.split("&")
+            if not row.strip() or row.lstrip().startswith("\\bottomrule") and len(cells) == 1:
+                continue
+            need = 1
+            for i, cell in enumerate(cells):
+                if widths and i < len(widths):
+                    text = re.sub(r"\\[a-zA-Z]+|[{}$]", "", cell)
+                    need = max(need, -(-len(text.strip()) // max(1, int(95 * widths[i]))))
+            lines += need
+        return lines
+
     # Short tables stay on one page: forbid breaks between their rows (\\*) and
     # move the whole table to the next page if it does not fit.
     def keep_together(m):
@@ -139,8 +156,27 @@ def main():
         if rows > 15:
             return body
         body = re.sub(r"\\\\(\s*)$", r"\\\\*\1", body, flags=re.M)
-        return f"\\needspace{{{rows + 4}\\baselineskip}}\n" + body
+        return f"\\needspace{{{table_lines(body) + 3}\\baselineskip}}\n" + body
     src = re.sub(r"\\begin\{longtable\}.*?\\end\{longtable\}", keep_together, src, flags=re.S)
+
+    # A heading followed by a kept-together table, or by further headings, must
+    # reserve room for the whole group; otherwise the table's \needspace is met
+    # after the heading and leaves it alone at the bottom of the page. Pandoc
+    # may wrap the table in a "{\def\LTcaptype{none}" group, which is kept.
+    heading = r"\\(?:sub){0,2}section\{[^{}]*?\}\\label\{[^}]*\}\n\s*"   # titles may wrap
+    wrapper = r"(?:\{\\def\\LTcaptype\{none\}[^\n]*\n)?"
+    def hoist(m):
+        heads = m.group("heads")
+        n = int(m.group("n")) + 3 * len(re.findall(heading, heads))
+        return f"\\needspace{{{n}\\baselineskip}}\n" + heads + m.group("wrap")
+    src = re.sub(rf"(?P<heads>(?:{heading})+)(?P<wrap>{wrapper})\\needspace\{{(?P<n>\d+)\\baselineskip\}}\n",
+                 hoist, src)
+    # Two or more headings in a row (a section opening with a subsection) stay
+    # together with a few lines of what follows.
+    def group(m):
+        k = len(re.findall(heading, m.group(0)))
+        return f"\\needspace{{{3 * k + 4}\\baselineskip}}\n" + m.group(0)
+    src = re.sub(rf"(?<!baselineskip\}}\n)(?:{heading}){{2,}}", group, src)
     tex.write_text(src, encoding="utf-8")
 
     if args.tex_only:

@@ -580,6 +580,69 @@ class OracleDynamics:
         return nxt, torch.zeros(len(s_norm), device=s_norm.device)
 
 
+class OracleWithLearnedUncertainty:
+    """True dynamics for the predictions, the hybrid ensemble's u for HALT:
+    the oracle arm of the 2x2 ablation with the same termination mechanism."""
+    def __init__(self, units: 'Units', ensemble):
+        self.oracle, self.ensemble = OracleDynamics(units), ensemble
+
+    def predict_with_uncertainty(self, s_norm: torch.Tensor, a: torch.Tensor):
+        nxt, _ = self.oracle.predict_with_uncertainty(s_norm, a)
+        with torch.no_grad():
+            _, u = self.ensemble.predict_with_uncertainty(s_norm, a)
+        return nxt, u
+
+
+def rollout_error_analysis(ensemble, units: 'Units', norm_dataset: Dict, policy, epsilon: float,
+                           horizons=(1, 2, 5, 10, 20), n_starts: int = 400,
+                           episode_len: int = 100, seed: int = 0) -> Dict[str, Dict[str, Dict]]:
+    """
+    Multi-step error of the hybrid model against the true noise-free dynamics,
+    from the same start states. Open loop: both follow the same logged action
+    sequence. Closed loop: the trained policy acts on its own trajectory in
+    each — on the model's predicted states in one, on the true states in the
+    other — which is what MOReL's synthetic rollouts look like. For each
+    horizon k: RMS error over the five process variables (normalized units),
+    the mean uncertainty u at step k, the share of rollouts whose u has
+    exceeded epsilon by step k (where MOReL would have halted), and the rank
+    correlation of u with the error at step k.
+    """
+    from scipy.stats import spearmanr
+    rng = np.random.default_rng(seed)
+    H = max(horizons)
+    n_ep = len(norm_dataset['states']) // episode_len
+    ep = rng.integers(0, n_ep, size=n_starts)
+    off = rng.integers(0, episode_len - H, size=n_starts)
+    start = ep * episode_len + off
+    P = CoatingProcessEnv.STATE_DIM
+    out = {}
+    for mode in ('open loop', 'closed loop'):
+        s_mod = torch.FloatTensor(norm_dataset['states'][start])
+        s_true = s_mod.clone()
+        halted = torch.zeros(n_starts, dtype=torch.bool)
+        rows = {}
+        for k in range(1, H + 1):
+            with torch.no_grad():
+                if mode == 'open loop':
+                    a_mod = a_true = torch.FloatTensor(norm_dataset['actions'][start + k - 1])
+                else:
+                    a_mod = torch.as_tensor(policy.act(s_mod, deterministic=True),
+                                            dtype=torch.float32).reshape(n_starts, -1)
+                    a_true = torch.as_tensor(policy.act(s_true, deterministic=True),
+                                             dtype=torch.float32).reshape(n_starts, -1)
+                s_mod, u = ensemble.predict_with_uncertainty(s_mod, a_mod)
+                s_true = units.norm(coating_true_dynamics_torch(units.raw(s_true), a_true))
+            halted |= u > epsilon
+            if k in horizons:
+                err = (s_mod - s_true)[:, :P].norm(dim=-1)
+                rows[k] = {'rmse': float(err.pow(2).mean().sqrt()),
+                           'mean_u': float(u.mean()),
+                           'halted_by_k': float(halted.float().mean()),
+                           'spearman_u_err': float(spearmanr(u.numpy(), err.numpy())[0])}
+        out[mode] = rows
+    return out
+
+
 def uncertainty_calibration(ensemble, units: 'Units', norm_dataset: Dict, policy=None,
                             n: int = 4000, seed: int = 0) -> Dict[str, Dict[str, float]]:
     """
@@ -915,11 +978,11 @@ def run_oracle_ablation(seed: int = 0, device: str = 'cpu', n_train_ep: int = 40
                         quick_test: bool = False) -> Dict[str, object]:
     """
     One seed of the oracle ablation, on the Markov (lagged) state: the same
-    MOReL policy optimizer (SAC, rollout horizon, reward, budget) trained once
-    with the hybrid ensemble and once with the true noise-free dynamics. If the
-    oracle version is much better, the model is the bottleneck; if not, the
-    policy optimization is. Also measures how well the hybrid ensemble's
-    uncertainty predicts its own error.
+    MOReL policy optimizer (SAC, rollout horizon, reward, budget, policy
+    initialization) trained in a 2x2 design — learned hybrid or true
+    noise-free dynamics, with HALT driven by the hybrid ensemble's uncertainty
+    or with no HALT. Also measures how well that uncertainty predicts the
+    model's one-step error and how the error grows over multi-step rollouts.
     """
     if quick_test:
         n_train_ep, n_morel_iters, n_eval_ep = 40, 2, 3
@@ -957,6 +1020,30 @@ def run_oracle_ablation(seed: int = 0, device: str = 'cpu', n_train_ep: int = 40
     train_morel(agent=om, dataset=norm_dataset, env=env, s_mean=s_mean, s_std=s_std,
                 batch_size=batch_size, device=device, eval_every=n_morel_iters + 1, **sac)
     out['results']['OracleMOReL'] = evaluator.evaluate(om)
+
+    # Second half of the 2x2 design: each model with the other termination rule.
+    print(f"\n[seed {seed}] HybridMOReL without HALT (learned dynamics, never halts)")
+    torch.manual_seed(seed + 1)
+    hn = MOReeLAgent(S, A, n_ensemble=4, rollout_horizon=5, kappa=kappa, device=device)
+    hn._model_reward = units.reward_fn
+    hn.ensemble = hm.hybrid_ensemble
+    hn.epsilon = float('inf')
+    train_morel(agent=hn, dataset=norm_dataset, env=env, s_mean=s_mean, s_std=s_std,
+                batch_size=batch_size, device=device, eval_every=n_morel_iters + 1, **sac)
+    out['results']['HybridMOReL-noHALT'] = evaluator.evaluate(hn)
+
+    print(f"\n[seed {seed}] OracleMOReL with HALT (true dynamics, the hybrid ensemble's u)")
+    torch.manual_seed(seed + 1)
+    oh = MOReeLAgent(S, A, n_ensemble=4, rollout_horizon=5, kappa=kappa, device=device)
+    oh._model_reward = units.reward_fn
+    oh.ensemble = OracleWithLearnedUncertainty(units, hm.hybrid_ensemble)
+    oh.epsilon = hm.morel_agent.epsilon
+    train_morel(agent=oh, dataset=norm_dataset, env=env, s_mean=s_mean, s_std=s_std,
+                batch_size=batch_size, device=device, eval_every=n_morel_iters + 1, **sac)
+    out['results']['OracleMOReL-HALT'] = evaluator.evaluate(oh)
+
+    out['extra']['rollout_error'] = rollout_error_analysis(
+        hm.hybrid_ensemble, units, norm_dataset, hm.policy, hm.morel_agent.epsilon, seed=seed)
     for name, m in out['results'].items():
         evaluator.print_results(f"{name} (seed {seed})", m)
     return out
@@ -995,8 +1082,10 @@ def summarize(runs: List[Dict]) -> Dict[str, Dict]:
             summary['methods'][mth][k] = {'mean': m, 'lo': lo, 'hi': hi,
                                           'min': float(np.nanmin(vals)), 'max': float(np.nanmax(vals))}
     pairs = [(a, b) for a, b in PAIRS if a in methods and b in methods]
-    if set(methods) == {'HybridMOReL', 'OracleMOReL'}:
-        pairs = [('OracleMOReL', 'HybridMOReL')]
+    if 'OracleMOReL' in methods:
+        pairs = [('OracleMOReL', 'HybridMOReL'), ('HybridMOReL-noHALT', 'HybridMOReL'),
+                 ('OracleMOReL-HALT', 'HybridMOReL'), ('OracleMOReL', 'OracleMOReL-HALT')]
+        pairs = [(a, b) for a, b in pairs if a in methods and b in methods]
     for a, b in pairs:
         summary['pairs'][f'{a} - {b}'] = {}
         for k in PAIR_METRICS:
