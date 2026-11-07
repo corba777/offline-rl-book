@@ -173,11 +173,13 @@ def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
       -lambda_ * Q_norm(s, pi(s)) + ||pi(s) - a||^2
     Equivalent maximization:
       lambda_ * Q_norm(s, pi(s)) - ||pi(s) - a||^2
-    Per Fujimoto & Gu (2021), Q_norm = Q / mean|Q| over the batch.
+    Per Fujimoto & Gu (2021), Q_norm = Q / mean|Q|, where the mean is taken over
+    Q(s, pi(s)) in the current batch and treated as a constant (detached), as in
+    the authors' reference implementation: the scale must not receive gradients.
     """
     pi = actor(states)
     q = Q1(states, pi)
-    q_norm = q / (q.abs().mean() + 1e-6)
+    q_norm = q / (q.abs().mean().detach() + 1e-6)
     bc_loss = ((pi - actions) ** 2).mean()
     return -q_norm.mean() * lambda_ + bc_loss
 

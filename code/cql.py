@@ -207,6 +207,33 @@ class GaussianPolicy(nn.Module):
 # 4. CQL LOSS
 # ============================================================================
 
+def importance_sampled_logsumexp(q_rand, q_pi, log_pi, action_dim):
+    """
+    Monte Carlo estimate of log ∫ exp(Q(s,a)) da over the action box [-1, 1]^d,
+    the soft maximum in CQL(H) (Kumar et al., 2020, Appendix F):
+
+        log ∫ exp Q da = log( 1/2 E_{a~Unif}[exp Q / Unif(a)] + 1/2 E_{a~π}[exp Q / π(a|s)] )
+
+    Both proposals must be divided by their own density. The uniform density on
+    [-1, 1]^d is 2^{-d}, so its log-correction is +d·log 2. Without it, the uniform
+    term estimates log ∫ exp Q − d·log 2 while the policy term estimates
+    log ∫ exp Q, and mixing the two skews their relative weight.
+
+    Args:
+        q_rand:  (B, N) Q-values at N uniform actions per state
+        q_pi:    (B, N) Q-values at N policy actions per state
+        log_pi:  (B, N) log π(a|s) of those policy actions (tanh-squashed density)
+        action_dim: d
+    Returns:
+        (B,) estimate of log ∫ exp Q(s, a) da
+    """
+    n = q_rand.shape[1]
+    log_unif = -action_dim * math.log(2.0)
+    weighted = torch.cat([q_rand - log_unif, q_pi - log_pi], dim=1)   # (B, 2N)
+    # One logsumexp over all 2N samples, divided by 2N, equals the 1/2–1/2 mixture.
+    return torch.logsumexp(weighted, dim=1) - math.log(2 * n)
+
+
 def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
                      states, actions, rewards, next_states, dones,
                      alpha_cql=1.0, alpha_ent=0.1, gamma=0.99, n_samples=10):
@@ -217,11 +244,11 @@ def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
     The factor is absorbed by the learning rate and alpha in practice,
     so we omit it here — consistent with most open-source implementations.
 
-    CQL_penalty = E_s[ logsumexp_a Q(s,a) ] - E_{s,a~D}[ Q(s,a) ]
+    CQL_penalty = E_s[ log ∫ exp Q(s,a) da ] - E_{s,a~D}[ Q(s,a) ]
 
-    logsumexp is approximated via importance sampling:
-      - n_samples random actions  (uniform proposal, no IS correction needed)
-      - n_samples policy actions  (proposal = pi_theta, IS correction applied)
+    The integral is estimated by importance sampling with two proposals,
+    n_samples uniform actions and n_samples policy actions per state, each
+    corrected by its own log-density (see importance_sampled_logsumexp).
     """
     B = states.shape[0]
     dev = states.device
@@ -238,41 +265,23 @@ def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
     td_loss = F.mse_loss(q_data, td_target)
 
     # ── CQL penalty ───────────────────────────────────────────────────────
-    # Expand states: (B, D) -> (B*n_samples, D)
     s_rep = states.unsqueeze(1).expand(-1, n_samples, -1).reshape(B * n_samples, -1)
-
-    # Random OOD actions (uniform over [-1, 1])
-    # Uniform proposal: log μ(a) = const  →  cancels in logsumexp, no IS correction needed.
     a_rand = torch.FloatTensor(B * n_samples, actions.shape[-1]).uniform_(-1, 1).to(dev)
-
-    # Policy actions (on-policy, but may differ from behavior policy)
     a_pi, lp_pi = policy.sample(s_rep)
 
     q_rand = Q(s_rep, a_rand).reshape(B, n_samples)
-
-    # Importance weight correction for policy proposal (μ = π_θ):
-    #
-    #   log E_{a~π}[ exp(Q(s,a)) / π(a|s) ]
-    #   ≈  logsumexp_i[ Q(s, a_i) - log π(a_i|s) ]  + const
-    #
-    # Subtracting log π(a|s) turns a plain Monte Carlo average of Q into
-    # the soft-maximum (logsumexp) that CQL requires.
-    q_pi = (Q(s_rep, a_pi) - lp_pi.detach()).reshape(B, n_samples)
-
-    # Average the two proposal distributions separately, then combine (avoid mixing
-    # uniform and policy samples in one logsumexp, which distorts importance weights):
-    #   log E[exp(Q)] ≈ log( (1/2) E_rand[exp(Q)] + (1/2) E_pi[exp(Q)] )
-    term_rand = torch.logsumexp(q_rand, dim=1) - math.log(n_samples)
-    term_pi   = torch.logsumexp(q_pi, dim=1) - math.log(n_samples)
-    logsumexp = torch.logsumexp(torch.stack([term_rand, term_pi], dim=1), dim=1) - math.log(2)
-    cql_penalty = (logsumexp - q_data).mean()
+    q_pi   = Q(s_rep, a_pi).reshape(B, n_samples)
+    lse = importance_sampled_logsumexp(q_rand, q_pi,
+                                       lp_pi.detach().reshape(B, n_samples),
+                                       actions.shape[-1])
+    cql_penalty = (lse - q_data).mean()
 
     loss = td_loss + alpha_cql * cql_penalty
     return loss, {
         'td_loss':     td_loss.item(),
         'cql_penalty': cql_penalty.item(),
         'q_data':      q_data.mean().item(),
-        'q_ood':       logsumexp.mean().item(),
+        'q_ood':       lse.mean().item(),
     }
 
 
