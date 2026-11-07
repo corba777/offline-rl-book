@@ -20,3 +20,6 @@ env/
 *.bak
 *.patch
 *_old.html
+
+# Generated PDF and its LaTeX source
+build/

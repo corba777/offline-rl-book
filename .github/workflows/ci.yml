@@ -45,3 +45,31 @@ jobs:
             echo "::error::HTML is stale. Run 'python scripts/md2html.py' and commit the result."
             exit 1
           fi
+
+  pdf:
+    name: PDF of the English edition
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pandoc, tectonic and rsvg-convert
+        run: |
+          curl -fsSL -o pandoc.deb https://github.com/jgm/pandoc/releases/download/3.13/pandoc-3.13-1-amd64.deb
+          sudo apt-get install -y ./pandoc.deb librsvg2-bin
+          curl -fsSL https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.17.0/tectonic-0.17.0-x86_64-unknown-linux-musl.tar.gz | tar -xz -C /usr/local/bin
+          pandoc --version | head -1 && tectonic --version
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/Tectonic
+          key: tectonic-${{ hashFiles('scripts/pdf/*.tex') }}
+          restore-keys: tectonic-
+      - run: python3 scripts/build_pdf.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: offline-rl-book-pdf
+          path: |
+            build/pdf/offline-rl-book.pdf
+            build/pdf/offline-rl-book.tex
+            build/pdf/preamble.tex
+            build/pdf/title.tex
+            build/pdf/figures/

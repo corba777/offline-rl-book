@@ -31,6 +31,7 @@
   <a href="#run-the-examples">Run the examples</a> ·
   <a href="#repository-layout">Layout</a> ·
   <a href="#writing-and-building">Writing and building</a> ·
+  <a href="#pdf">PDF</a> ·
   <a href="#license">License</a>
 </p>
 
@@ -90,7 +91,7 @@ python scripts/run_examples.py                       # all chapter scripts, quic
 python -m unittest discover -s code -p 'test_*.py'   # numerical checks for CQL, TD3+BC and the Chapter 12 toy
 ```
 
-GitHub Actions runs both on every push and also checks that the chapter HTML was rebuilt after the Markdown changed.
+GitHub Actions runs both on every push, checks that the chapter HTML was rebuilt after the Markdown changed, and builds the PDF.
 
 ## Repository layout
 
@@ -109,7 +110,9 @@ GitHub Actions runs both on every push and also checks that the chapter HTML was
 │   └── results/                                          # saved benchmark results
 ├── scripts/
 │   ├── md2html.py             # Markdown → chapter HTML
-│   └── run_examples.py        # smoke-runs every chapter script
+│   ├── run_examples.py        # smoke-runs every chapter script
+│   ├── build_pdf.py           # English edition → preprint-style PDF
+│   └── pdf/                   # LaTeX preamble and title page for the PDF
 ├── .github/workflows/ci.yml   # tests, quick runs, stale-HTML check
 └── requirements.txt           # dependencies and the chapter → script map
 ```
@@ -145,6 +148,17 @@ python scripts/md2html.py
 ```
 
 The HTML was built with markdown 3.11.3, Pygments 2.21.0 and PyYAML 6.0.3; other versions change the markup, not the content, and CI checks with exactly these.
+
+## PDF
+
+The English edition also builds as a single preprint-style PDF (Times-like STIX Two fonts, numbered chapters, one table of contents):
+
+```bash
+brew install pandoc tectonic librsvg   # once; tectonic fetches the LaTeX packages it needs
+python scripts/build_pdf.py            # -> build/pdf/offline-rl-book.pdf
+```
+
+`build/pdf/` also holds the LaTeX source and its figures, which is what arXiv expects for a TeX-built paper. The styling lives in `scripts/pdf/`. CI builds the PDF on every push; download it from the run's artifacts (*offline-rl-book-pdf*) on the [Actions](https://github.com/corba777/offline-rl-book/actions/workflows/ci.yml) page.
 
 ## License
 
