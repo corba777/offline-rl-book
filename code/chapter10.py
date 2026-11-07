@@ -1049,6 +1049,60 @@ def run_oracle_ablation(seed: int = 0, device: str = 'cpu', n_train_ep: int = 40
     return out
 
 
+def run_halt_study(seed: int = 0, device: str = 'cpu', lagged_flow: bool = True,
+                   n_train_ep: int = 400, n_morel_iters: int = 15, n_eval_ep: int = 20,
+                   batch_size: int = 256, quick_test: bool = False) -> Dict[str, object]:
+    """
+    One seed of the HALT study: one hybrid ensemble, then the same MOReL agent
+    (same policy initialization, SAC budget, kappa) with three termination
+    rules — epsilon at the 80th percentile of the ensemble's uncertainty on the
+    data, at the 99th, or no HALT. On the lagged state the first arm repeats
+    HybridMOReL of the oracle ablation exactly.
+    """
+    if quick_test:
+        n_train_ep, n_morel_iters, n_eval_ep = 40, 2, 3
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    env  = CoatingProcessEnv(seed=seed, lagged_flow=lagged_flow)
+    S, A = env.obs_dim, CoatingProcessEnv.ACTION_DIM
+    dataset = collect_industrial_dataset(n_episodes=n_train_ep, seed=seed, lagged_flow=lagged_flow)
+    norm_dataset, s_mean, s_std = normalize_dataset(dataset)
+    units = Units(s_mean, s_std, float(dataset['rewards'].std() + 1e-8), device)
+    evaluator = IndustrialEvaluator(env, s_mean, s_std, n_eval_ep,
+                                    seed_base=8000 + 100 * seed, device=device)
+    kappa = max(100.0, 2.0 * float(np.abs(norm_dataset['rewards']).max()) / (1 - 0.99))
+    sac = dict(n_outer_iters=n_morel_iters, sac_steps_per_iter=300 if not quick_test else 20)
+    out = {'seed': seed, 'results': {}, 'extra': {'lagged_flow': lagged_flow}}
+
+    print(f"\n[seed {seed}] HALT at the 80th percentile")
+    torch.manual_seed(seed + 1)
+    hm = HybridMOReL(S, A, units, kappa=kappa, device=device)
+    train_hybrid_morel_agent(hm, norm_dataset, env, s_mean, s_std,
+                             n_dynamics_epochs=30 if not quick_test else 2,
+                             batch_size=batch_size, device=device, **sac)
+    out['results']['HALT p80'] = evaluator.evaluate(hm)
+    out['extra']['halt_rate p80'] = float(np.mean(hm.morel_agent.halt_rate_history))
+
+    eps99 = hm.hybrid_ensemble.calibrate_epsilon(norm_dataset, percentile=99.0)
+    for name, eps in [('HALT p99', eps99), ('no HALT', float('inf'))]:
+        print(f"\n[seed {seed}] {name}")
+        torch.manual_seed(seed + 1)
+        np.random.seed(seed + 1)
+        ag = MOReeLAgent(S, A, n_ensemble=4, rollout_horizon=5, kappa=kappa, device=device)
+        ag._model_reward = units.reward_fn
+        ag.ensemble = hm.hybrid_ensemble
+        ag.epsilon = eps
+        train_morel(agent=ag, dataset=norm_dataset, env=env, s_mean=s_mean, s_std=s_std,
+                    batch_size=batch_size, device=device, eval_every=n_morel_iters + 1, **sac)
+        out['results'][name] = evaluator.evaluate(ag)
+        out['extra'][f'halt_rate {name.split()[-1]}'] = float(np.mean(ag.halt_rate_history))
+    out['extra'].update({'epsilon p80': float(hm.morel_agent.epsilon), 'epsilon p99': eps99,
+                         'kappa': kappa})
+    for name, m in out['results'].items():
+        evaluator.print_results(f"{name} (seed {seed})", m)
+    return out
+
+
 def t_interval(values, alpha: float = 0.05):
     """Mean and Student-t confidence interval over per-seed values. With few
     seeds this is more honest than a percentile bootstrap, which undercovers."""
@@ -1082,7 +1136,9 @@ def summarize(runs: List[Dict]) -> Dict[str, Dict]:
             summary['methods'][mth][k] = {'mean': m, 'lo': lo, 'hi': hi,
                                           'min': float(np.nanmin(vals)), 'max': float(np.nanmax(vals))}
     pairs = [(a, b) for a, b in PAIRS if a in methods and b in methods]
-    if 'OracleMOReL' in methods:
+    if 'HALT p80' in methods:
+        pairs = [('HALT p99', 'HALT p80'), ('no HALT', 'HALT p80'), ('no HALT', 'HALT p99')]
+    elif 'OracleMOReL' in methods:
         pairs = [('OracleMOReL', 'HybridMOReL'), ('HybridMOReL-noHALT', 'HybridMOReL'),
                  ('OracleMOReL-HALT', 'HybridMOReL'), ('OracleMOReL', 'OracleMOReL-HALT')]
         pairs = [(a, b) for a, b in pairs if a in methods and b in methods]
@@ -1126,8 +1182,12 @@ def print_summary(summary) -> None:
 
 def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                    quick_test: bool = False, device: str = 'cpu',
-                   lagged_flow: bool = False, oracle_ablation: bool = False) -> Dict:
-    if oracle_ablation:
+                   lagged_flow: bool = False, oracle_ablation: bool = False,
+                   halt_study: bool = False) -> Dict:
+    if halt_study:
+        runs = [run_halt_study(seed=s, device=device, lagged_flow=lagged_flow,
+                               quick_test=quick_test) for s in seeds]
+    elif oracle_ablation:
         runs = [run_oracle_ablation(seed=s, device=device, quick_test=quick_test) for s in seeds]
     else:
         runs = [run_industrial_benchmark(seed=s, device=device, quick_test=quick_test,
@@ -1158,13 +1218,17 @@ if __name__ == '__main__':
                    help='append the two feed commands in transit to the state (Markov state)')
     p.add_argument('--oracle-ablation', action='store_true',
                    help='HybridMOReL vs MOReL with the true dynamics, on the lagged state')
+    p.add_argument('--halt-study', action='store_true',
+                   help='same MOReL with HALT at p80, p99 or off (combine with --lagged-flow)')
     p.add_argument('--out', default=None,
                    help='default: results/ch10_benchmark{,_lagged,_oracle}.json')
     p.add_argument('--device', default='cpu')
     args = p.parse_args()
-    name = ('ch10_benchmark_oracle.json' if args.oracle_ablation else
+    name = (('ch10_halt_lagged.json' if args.lagged_flow else 'ch10_halt_logged.json')
+            if args.halt_study else
+            'ch10_benchmark_oracle.json' if args.oracle_ablation else
             'ch10_benchmark_lagged.json' if args.lagged_flow else 'ch10_benchmark.json')
     out = args.out or os.path.join(_HERE, 'results', name)
     run_multi_seed(tuple(args.seeds), out_path=None if args.quick else out,
                    quick_test=args.quick, device=args.device, lagged_flow=args.lagged_flow,
-                   oracle_ablation=args.oracle_ablation)
+                   oracle_ablation=args.oracle_ablation, halt_study=args.halt_study)

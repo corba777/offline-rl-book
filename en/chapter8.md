@@ -272,7 +272,8 @@ epsilon = ensemble.calibrate_epsilon(dataset, percentile=80.0)
 **Step 2 — P-MDP rollouts with hard HALT:**
 
 ```python
-# Inside MOReLAgent.generate_synthetic_data():
+# Inside MOReLAgent.generate_synthetic_data(), under torch.no_grad():
+# rollouts only produce data, nothing is differentiated through them
 for step in range(self.rollout_horizon):
     if not active.any():
         break
@@ -286,7 +287,7 @@ for step in range(self.rollout_horizon):
 
     reward = torch.where(
         ood,
-        -self.kappa * torch.ones(ood.shape[0], device=device),
+        -self.kappa * torch.ones(ood.shape[0], device=self.device),
         self._model_reward(s_active, action, next_state)
     )
     done = ood.float()
@@ -315,7 +316,7 @@ return {
 
 The `ood` mask is the key difference from MOPO. Instead of subtracting a continuous penalty, OOD transitions are terminated immediately with `done=True` and reward $-\kappa$. The Q-learning target then sees zero future value after OOD transitions, which strongly discourages entering the unknown region.
 
-**HALT must actually deter.** When rewards are non-positive, as in the thermal and coating tasks, stopping early can look attractive: HALT cuts off a stream of negative rewards. In the paper's pessimistic MDP the HALT state pays $-R_{max}$ at every step; in the termination form used here, the one-time penalty $\kappa$ must exceed $|r_{min}|/(1-\gamma)$ — the value of staying in the worst-rewarded state forever — or the agent may learn to seek the boundary. With normalized rewards and $\gamma = 0.99$ that is about $100\,|r_{min}|$, which is why the default $\kappa = 100$ in `morel.py` is a lower limit rather than a comfortable margin. The opposite failure is as real. A threshold set at a percentile of the uncertainty on the data halts that share of in-distribution transitions by construction, and a $\kappa$ thousands of times larger than ordinary rewards then dominates the critic's targets. In Chapter 10 this combination, not the learned model, caused MOReL's failures: with HALT switched off the same agent did as well on the learned model as on the true dynamics. Check the HALT rate on in-distribution rollouts, and the share of the critic's loss that halts account for, before trusting the pessimism.
+**HALT must actually deter.** When rewards are non-positive, as in the thermal and coating tasks, stopping early can look attractive: HALT cuts off a stream of negative rewards. In the paper's pessimistic MDP the HALT state pays $-R_{max}$ at every step; in the termination form used here, the one-time penalty $\kappa$ must exceed $|r_{min}|/(1-\gamma)$ — the value of staying in the worst-rewarded state forever — or the agent may learn to seek the boundary. With normalized rewards and $\gamma = 0.99$ that is about $100\,|r_{min}|$, which is why the default $\kappa = 100$ in `morel.py` is a lower limit rather than a comfortable margin. The opposite failure is as real. A threshold set at a percentile of the uncertainty on the data halts that share of in-distribution transitions by construction, and a $\kappa$ thousands of times larger than ordinary rewards then dominates the critic's targets. In Chapter 10 this combination, not the learned model, caused MOReL's failures: with HALT switched off the same agent did as well on the learned model as on the true dynamics, on both versions of the state, while a stricter 99th-percentile threshold only turned the failures into a uniformly worse policy. Check the HALT rate on in-distribution rollouts, and the share of the critic's loss that halts account for, before trusting the pessimism.
 
 ### Choosing $\epsilon$
 
@@ -327,13 +328,14 @@ The threshold $\epsilon$ controls the known/unknown boundary and is the critical
 | Moderate (default) | Includes well-modeled extrapolations — good balance |
 | Very large | Entire space is "known" — reverts to unconstrained MBRL |
 
-**Practical guidance**: set $\epsilon$ to the 70th–80th percentile of in-distribution uncertainty (i.e., uncertainty on actual dataset transitions). This ensures the known region covers the dataset comfortably and extends into nearby well-modeled areas.
+**Practical guidance**: a percentile of the in-distribution uncertainty is the usual starting point, but remember what it does — a threshold at the 80th percentile halts 20% of in-distribution transitions by construction, and together with a large $\kappa$ that can dominate training (Chapter 10). Raising the percentile is not enough on its own: in Chapter 10 a threshold at the 99th percentile removed the catastrophic runs but still left the agent worse than plain behavioral cloning, because $\kappa$ was large enough for 5% of halted rollouts to dominate the critic. Treat the threshold and $\kappa$ as one design choice, compute the threshold on a random sample of the data, monitor the HALT rate on in-distribution rollouts, and compare against the same agent with HALT switched off.
 
 ```python
 # Calibrate epsilon from in-distribution data
 with torch.no_grad():
-    s_cal = torch.FloatTensor(dataset['states'][:2000]).to(device)
-    a_cal = torch.FloatTensor(dataset['actions'][:2000]).to(device)
+    idx   = np.random.default_rng(0).choice(len(dataset['states']), 2000, replace=False)
+    s_cal = torch.FloatTensor(dataset['states'][idx]).to(device)   # a random sample,
+    a_cal = torch.FloatTensor(dataset['actions'][idx]).to(device)  # never a prefix of sorted logs
     _, u_cal = ensemble.predict_with_uncertainty(s_cal, a_cal)
 epsilon = torch.quantile(u_cal, 0.80).item()
 print(f"Calibrated epsilon = {epsilon:.4f}")
