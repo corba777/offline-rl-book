@@ -15,6 +15,7 @@
 </p>
 
 <p align="center">
+  <a href="https://doi.org/10.5281/zenodo.24045871"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.24045871.svg" alt="DOI 10.5281/zenodo.24045871" /></a>
   <a href="https://github.com/corba777/offline-rl-book/actions/workflows/ci.yml"><img src="https://github.com/corba777/offline-rl-book/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/code-MIT-3fb950?labelColor=24292f" alt="code: MIT" /></a>
   <a href="LICENSE-text"><img src="https://img.shields.io/badge/text-CC%20BY%204.0-3fb950?labelColor=24292f" alt="text: CC BY 4.0" /></a>
@@ -168,7 +169,7 @@ python scripts/build_pdf.py            # -> build/pdf/offline-rl-book.pdf
 
 ## How to cite
 
-GitHub's "Cite this repository" button uses [`CITATION.cff`](CITATION.cff). In BibTeX:
+Every release is archived on Zenodo; the DOI [10.5281/zenodo.24045871](https://doi.org/10.5281/zenodo.24045871) always resolves to the latest version. GitHub's "Cite this repository" button uses [`CITATION.cff`](CITATION.cff). In BibTeX:
 
 ```bibtex
 @book{zvyagintsev2026offlinerl,
@@ -176,6 +177,7 @@ GitHub's "Cite this repository" button uses [`CITATION.cff`](CITATION.cff). In B
   author = {Zvyagintsev, Artem},
   year   = {2026},
   note   = {Version 1.0},
+  doi    = {10.5281/zenodo.24045871},
   url    = {https://corba777.github.io/offline-rl-book/}
 }
 ```

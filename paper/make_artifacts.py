@@ -165,7 +165,7 @@ def rollout_figure():
         ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
     OUT_F.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUT_F / "rollout_error.pdf")
+    fig.savefig(OUT_F / "rollout_error.pdf", metadata={"CreationDate": None})   # reproducible bytes
     print("wrote", OUT_F / "rollout_error.pdf")
 
 
