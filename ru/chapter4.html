@@ -63,8 +63,8 @@
 <p><em>«Не доверяй значениям, которых не видел. А если не видел — занижай их.»</em></p>
 </blockquote>
 <hr />
-<h2>Проблема, переформулированная</h2>
-<p>В главе 2 мы увидели, что стандартное Q-обучение на офлайн данных порождает катастрофически оптимистичные Q-значения для действий вне распределения (OOD). Жадная политика эксплуатирует эти завышенные значения, выбирая действия, которых в датасете никогда не было — и терпит неудачу при развёртывании.</p>
+<h2>Ещё раз о проблеме</h2>
+<p>В главе 2 мы увидели, что стандартное Q-обучение на офлайн-данных порождает катастрофически оптимистичные Q-значения для действий вне распределения (OOD). Жадная политика эксплуатирует эти завышенные значения, выбирая действия, которых в датасете никогда не было — и терпит неудачу при развёртывании.</p>
 <p>Корень проблемы: обновление Беллмана использует $\max_{a'} Q(s', a')$, перебирая все действия, включая ненаблюдавшиеся. Для таких действий Q-функция обобщается оптимистично.</p>
 <p><strong>Conservative Q-Learning (CQL)</strong> — Kumar et al., NeurIPS 2020 — исправляет это одной элегантной идеей: <strong>добавить регуляризационный член, явно штрафующий Q-значения для действий вне датасета</strong>.</p>
 <p>Результат: Q-функция, которая по построению пессимистична для OOD-действий. Жадная политика, видя более низкие значения вне датасета, естественным образом остаётся близко к поведенческой политике — без явного ограничения.</p>
@@ -98,7 +98,7 @@
 <p>При температуре → 0 это сходится к $\max_a Q(s,a)$. При конечной температуре выражение дифференцируемо и штрафует всё распределение Q-значений, а не только максимум.</p>
 <p>Для непрерывных пространств действий перебрать все $a$ невозможно. CQL аппроксимирует logsumexp через importance sampling:</p>
 <p><div class="math-display">$$\log \sum_a \exp Q(s, a) \approx \log \mathbb{E}_{a \sim \mu(a|s)} \left[ \frac{\exp Q(s,a)}{\mu(a|s)} \right]$$</div></p>
-<p>где $\mu$ — предложенное распределение. На практике $\mu$ — либо равномерное над пространством действий, либо текущая политика $\pi_\theta$.</p>
+<p>где $\mu$ — распределение-предложение (proposal). На практике $\mu$ — либо равномерное над пространством действий, либо текущая политика $\pi_\theta$.</p>
 <p><strong>Зачем вычитать $\log \mu(a|s)$ в коде?</strong> При $\mu = \pi_\theta$ importance-sampling оценка принимает вид:</p>
 <p><div class="math-display">$$\log \mathbb{E}_{a \sim \pi_\theta} \left[ \frac{\exp Q(s,a)}{\pi_\theta(a|s)} \right] \approx \log \frac{1}{N} \sum_{i=1}^N \frac{\exp Q(s, a_i)}{\pi_\theta(a_i|s)} = \text{logsumexp}_i \left[ Q(s, a_i) - \log \pi_\theta(a_i|s) \right] + \text{const}$$</div></p>
 <p>Именно поэтому в коде вычисляется <code>q_policy - policy_log_probs</code> перед logsumexp: вычитание $\log \pi_\theta(a|s)$ реализует коррекцию importance weights. Без неё мы бы аппроксимировали $\mathbb{E}_{\pi_\theta}[Q]$ (простое среднее Монте-Карло), а не $\log \sum_a \exp Q$ (мягкий максимум, который требует CQL). Для случайных равномерных действий эта коррекция не нужна: их лог-плотность константна и сокращается внутри logsumexp.</p>
@@ -160,7 +160,7 @@
         <span class="k">return</span> <span class="n">action</span><span class="p">,</span> <span class="n">log_prob</span>
 </code></pre></div>
 
-<h3>Потеря CQL</h3>
+<h3>Функция потерь CQL</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">cql_loss</span><span class="p">(</span><span class="n">Q1</span><span class="p">,</span> <span class="n">Q2</span><span class="p">,</span> <span class="n">Q1_target</span><span class="p">,</span> <span class="n">Q2_target</span><span class="p">,</span> <span class="n">policy</span><span class="p">,</span>
              <span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">rewards</span><span class="p">,</span> <span class="n">next_states</span><span class="p">,</span> <span class="n">dones</span><span class="p">,</span>
              <span class="n">alpha_cql</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span> <span class="n">n_action_samples</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
@@ -230,7 +230,7 @@
 <span class="n">alpha_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
 </code></pre></div>
 
-<p><strong>Замечание об энтропийном коэффициенте.</strong> В коде используется фиксированное <code>0.1</code> для SAC-члена энтропии. В полноценном CQL этот коэффициент тоже настраивается автоматически — с целью поддерживать энтропию политики на уровне $\mathcal{H}^* = -\dim(\mathcal{A})$ (одна нат на измерение действия):</p>
+<p><strong>Замечание об энтропийном коэффициенте.</strong> В коде используется фиксированное <code>0.1</code> для SAC-члена энтропии. В полноценном CQL этот коэффициент тоже настраивается автоматически — с целью поддерживать энтропию политики на уровне $\mathcal{H}^* = -\dim(\mathcal{A})$ (один нат на измерение действия):</p>
 <div class="codehilite"><pre><span></span><code><span class="c1"># Автонастройка коэффициента энтропии (SAC-стиль)</span>
 <span class="n">log_alpha_ent</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
 <span class="n">ent_opt</span>       <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">([</span><span class="n">log_alpha_ent</span><span class="p">],</span> <span class="n">lr</span><span class="o">=</span><span class="mf">3e-4</span><span class="p">)</span>
@@ -277,7 +277,7 @@
 <hr />
 <h2>Интуиция: ландшафт Q-функции</h2>
 <p>Представьте Q-функцию как ландшафт над пространством состояние-действие. Стандартное Q-обучение формирует этот ландшафт только через точки данных — между ними ландшафт не ограничен и стремится расти из-за оптимистичного обобщения.</p>
-<p>CQL добавляет гравитацию: тянет весь ландшафт вниз, пока TD-потеря удерживает его в точках данных. Результат — ландшафт, высокий в точках датасета и низкий везде остальном.</p>
+<p>CQL добавляет гравитацию: тянет весь ландшафт вниз, пока TD-потеря удерживает его в точках данных. Результат — ландшафт, высокий в точках датасета и низкий во всех остальных местах.</p>
 <p>Политика, действующая жадно по этому ландшафту, предпочитает действия из датасета — не потому что её явно ограничили, а потому что ландшафт естественно направляет её туда.</p>
 <div class="codehilite"><pre><span></span><code>Стандартное Q-обучение:      CQL:
 
@@ -355,7 +355,7 @@
 <tr>
 <td>Смешанное качество (эксперт + случайный)</td>
 <td>1.0 – 2.0</td>
-<td>Безопасный дефолт</td>
+<td>Безопасное значение по умолчанию</td>
 </tr>
 <tr>
 <td>Случайные / шумные операторские данные</td>
@@ -425,7 +425,7 @@
 <p><strong>Требует разметки наград.</strong> В отличие от BC, CQL нужны кортежи $(s, a, r, s')$. Если датасет содержит только $(s, a, s')$ — необходимо определить функцию вознаграждения.</p>
 <p><strong>Чувствителен к масштабу наград.</strong> Баланс между TD-потерей и CQL-штрафом зависит от величины наград. Если награды большие (например, в тысячах), TD-потеря доминирует и CQL теряет эффект. Нормализуйте награды в $[-1, 1]$ или $[0, 1]$.</p>
 <p><strong>Консервативен по построению.</strong> CQL не превзойдёт поведенческую политику значительно в регионах с редкими данными. Он создан для безопасности, а не для агрессивной экстраполяции. Для задач, требующих существенного выхода за пределы датасета, более уместны модельные методы (Глава 8).</p>
-<p><strong>Непрерывные пространства действий требуют сэмплирования.</strong> Аппроксимация logsumexp требует сэмплирования — как правило, 10 случайных + 10 политиковых действий на состояние. В коде два предложения усредняются <em>отдельно</em> (log E_rand[exp Q] и log E_π[exp Q] с importance weights для π), затем объединяются как log((1/2)(E_rand + E_π)), а не один logsumexp по всем 20 сэмплам, чтобы не искажать веса важности. Это увеличивает вычислительные затраты по сравнению с BC или TD3+BC.</p>
+<p><strong>Непрерывные пространства действий требуют сэмплирования.</strong> Аппроксимация logsumexp требует сэмплирования — как правило, 10 случайных действий и 10 действий политики на состояние. В коде два предложения усредняются <em>отдельно</em> (log E_rand[exp Q] и log E_π[exp Q] с importance weights для π), затем объединяются как log((1/2)(E_rand + E_π)), а не один logsumexp по всем 20 сэмплам, чтобы не искажать веса важности. Это увеличивает вычислительные затраты по сравнению с BC или TD3+BC.</p>
 <hr />
 <h2>Итоги</h2>
 <table>
@@ -458,13 +458,13 @@
 </tr>
 </tbody>
 </table>
-<p>CQL закрывает разрыв между поведенческим клонированием и полным офлайн RL. Он использует информацию о награде для улучшения над поведенческой политикой, а пессимизм относительно OOD-действий предотвращает катастрофические отказы стандартного Q-обучения.</p>
+<p>CQL закрывает разрыв между поведенческим клонированием и полным offline RL. Он использует информацию о награде для улучшения над поведенческой политикой, а пессимизм относительно OOD-действий предотвращает катастрофические отказы стандартного Q-обучения.</p>
 <p>Остающееся ограничение: CQL является <strong>безмодельным</strong>. Глава 5 (IQL) уточняет идею пессимизма по значениям. Глава 8 (MOPO) показывает, как обучение модели мира позволяет генерировать синтетические данные — расширяя эффективный датасет за пределы собранного.</p>
 <hr />
 <h2>Литература</h2>
 <ul>
 <li>Kumar, A., Zhou, A., Tucker, G., &amp; Levine, S. (2020). <em>Conservative Q-Learning for Offline Reinforcement Learning.</em> NeurIPS. <a href="https://arxiv.org/abs/2006.04779">arXiv:2006.04779</a>.</li>
-<li>Fujimoto, S., &amp; Gu, S. (2021). <em>A Minimalist Approach to Offline RL (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
+<li>Fujimoto, S., &amp; Gu, S. (2021). <em>A Minimalist Approach to offline RL (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
 <li>Haarnoja, T. et al. (2018). <em>Soft Actor-Critic.</em> ICML. <a href="https://arxiv.org/abs/1801.01290">arXiv:1801.01290</a>.</li>
 <li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
 </ul></main>

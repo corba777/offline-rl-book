@@ -175,5 +175,5 @@ Decision Transformers — чистая альтернатива value-based offl
 ## Литература
 
 - Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., & Laskin, M. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
-- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993).
+- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993).
 - Zheng, Q., Zhang, A., & Grover, A. (2022). *Online Decision Transformer.* ICML. [arXiv:2202.05607](https://arxiv.org/abs/2202.05607).

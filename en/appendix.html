@@ -208,6 +208,37 @@
 <li>Run smoke tests after dependency upgrades (Gymnasium / API drift).</li>
 </ul>
 <hr />
+<h2>Glossary</h2>
+<p>Short definitions of the book's core terms; the chapter in parentheses introduces or discusses the term in depth.</p>
+<ul>
+<li><strong>Advantage</strong> $A(s,a) = Q(s,a) - V(s)$ — how much better action $a$ is than a typical action at state $s$ (Ch. 5–6).</li>
+<li><strong>AWR (advantage-weighted regression)</strong> — policy extraction as imitation of dataset actions weighted by $\exp(\beta A)$ (Ch. 5–6).</li>
+<li><strong>Behavior policy</strong> $\pi_\beta$ — the policy that collected the data: an operator, a controller or a previous agent (Ch. 1).</li>
+<li><strong>Bellman backup</strong> — updating a value estimate from the reward plus the value of the next state; the channel through which errors propagate in offline RL (Ch. 2).</li>
+<li><strong>CMDP</strong> — an MDP with constraints on expected cost, solved via a Lagrangian (Ch. 9).</li>
+<li><strong>Credit assignment</strong> — attributing a final reward to the steps or agents that produced it (Ch. 12).</li>
+<li><strong>Distribution shift</strong> — a mismatch between the state or action distribution seen in training and at deployment (Ch. 1–2).</li>
+<li><strong>Ensemble uncertainty</strong> — disagreement among an ensemble of models, used as an estimate of epistemic uncertainty (Ch. 8).</li>
+<li><strong>Expectile</strong> — the squared-loss counterpart of a quantile; at $\tau = 0.5$ it equals the mean (Ch. 5).</li>
+<li><strong>Extrapolation error</strong> — value-function error on actions absent from the data, amplified by the Bellman backup (Ch. 2).</li>
+<li><strong>FQE (Fitted Q Evaluation)</strong> — learning $Q^\pi$ of a fixed policy from offline data to estimate its value (Ch. 3).</li>
+<li><strong>Hybrid model</strong> — a known physics model plus a neural network trained on the residual (Ch. 9).</li>
+<li><strong>Joint action</strong> — the tuple of all agents' actions at one step; multi-agent support is defined over such tuples (Ch. 12).</li>
+<li><strong>Model-based vs model-free</strong> — methods with a learned dynamics model (MOPO, MOReL) and without one (CQL, IQL, TD3+BC) (Ch. 8).</li>
+<li><strong>OOD action</strong> — an action outside the data distribution, i.e. outside the dataset's support (Ch. 2).</li>
+<li><strong>OPE (off-policy evaluation)</strong> — estimating a policy's value from data collected by another policy: IS, DM/FQE, DR (Ch. 3).</li>
+<li><strong>P-MDP and HALT</strong> — MOReL's pessimistic MDP: entering the unknown region ends the episode with a large penalty (Ch. 8).</li>
+<li><strong>Pessimism (conservatism)</strong> — deliberately lowering value estimates where data are scarce (Ch. 4).</li>
+<li><strong>Policy constraint</strong> — constraining or regularizing the policy to stay near the behavior policy (Ch. 6).</li>
+<li><strong>Replay vs re-execution</strong> — feeding recorded actions back through the pipeline versus executing the candidate's own actions in an environment; only the latter evaluates a new policy (Ch. 12).</li>
+<li><strong>Return and return-to-go</strong> — the discounted sum of rewards over an episode, and the same sum from step $t$ onward (Ch. 3, 7).</li>
+<li><strong>Reward shaping</strong> — adding penalties or bonuses to the reward, e.g. for violating physical constraints (Ch. 9).</li>
+<li><strong>Rollout</strong> — running a policy for several steps in an environment or a model (Ch. 8).</li>
+<li><strong>Shadow mode and gates</strong> — running a policy in parallel with production control without actuating; staged transfer of authority (Ch. 13).</li>
+<li><strong>Support</strong> — the set of states and actions actually represented in the data (Ch. 2, 4, 12).</li>
+<li><strong>Verifier</strong> — a programmatic check of an outcome: tests, answer matching, SQL result checks (Ch. 12).</li>
+</ul>
+<hr />
 <h2>Suggested reading order for practitioners</h2>
 <ol>
 <li>Chapters 1–2 (BC + extrapolation error)</li>

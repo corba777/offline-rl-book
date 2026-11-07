@@ -106,6 +106,39 @@ Before trusting results in production:
 
 ---
 
+## Glossary
+
+Short definitions of the book's core terms; the chapter in parentheses introduces or discusses the term in depth.
+
+- **Advantage** $A(s,a) = Q(s,a) - V(s)$ — how much better action $a$ is than a typical action at state $s$ (Ch. 5–6).
+- **AWR (advantage-weighted regression)** — policy extraction as imitation of dataset actions weighted by $\exp(\beta A)$ (Ch. 5–6).
+- **Behavior policy** $\pi_\beta$ — the policy that collected the data: an operator, a controller or a previous agent (Ch. 1).
+- **Bellman backup** — updating a value estimate from the reward plus the value of the next state; the channel through which errors propagate in offline RL (Ch. 2).
+- **CMDP** — an MDP with constraints on expected cost, solved via a Lagrangian (Ch. 9).
+- **Credit assignment** — attributing a final reward to the steps or agents that produced it (Ch. 12).
+- **Distribution shift** — a mismatch between the state or action distribution seen in training and at deployment (Ch. 1–2).
+- **Ensemble uncertainty** — disagreement among an ensemble of models, used as an estimate of epistemic uncertainty (Ch. 8).
+- **Expectile** — the squared-loss counterpart of a quantile; at $\tau = 0.5$ it equals the mean (Ch. 5).
+- **Extrapolation error** — value-function error on actions absent from the data, amplified by the Bellman backup (Ch. 2).
+- **FQE (Fitted Q Evaluation)** — learning $Q^\pi$ of a fixed policy from offline data to estimate its value (Ch. 3).
+- **Hybrid model** — a known physics model plus a neural network trained on the residual (Ch. 9).
+- **Joint action** — the tuple of all agents' actions at one step; multi-agent support is defined over such tuples (Ch. 12).
+- **Model-based vs model-free** — methods with a learned dynamics model (MOPO, MOReL) and without one (CQL, IQL, TD3+BC) (Ch. 8).
+- **OOD action** — an action outside the data distribution, i.e. outside the dataset's support (Ch. 2).
+- **OPE (off-policy evaluation)** — estimating a policy's value from data collected by another policy: IS, DM/FQE, DR (Ch. 3).
+- **P-MDP and HALT** — MOReL's pessimistic MDP: entering the unknown region ends the episode with a large penalty (Ch. 8).
+- **Pessimism (conservatism)** — deliberately lowering value estimates where data are scarce (Ch. 4).
+- **Policy constraint** — constraining or regularizing the policy to stay near the behavior policy (Ch. 6).
+- **Replay vs re-execution** — feeding recorded actions back through the pipeline versus executing the candidate's own actions in an environment; only the latter evaluates a new policy (Ch. 12).
+- **Return and return-to-go** — the discounted sum of rewards over an episode, and the same sum from step $t$ onward (Ch. 3, 7).
+- **Reward shaping** — adding penalties or bonuses to the reward, e.g. for violating physical constraints (Ch. 9).
+- **Rollout** — running a policy for several steps in an environment or a model (Ch. 8).
+- **Shadow mode and gates** — running a policy in parallel with production control without actuating; staged transfer of authority (Ch. 13).
+- **Support** — the set of states and actions actually represented in the data (Ch. 2, 4, 12).
+- **Verifier** — a programmatic check of an outcome: tests, answer matching, SQL result checks (Ch. 12).
+
+---
+
 ## Suggested reading order for practitioners
 
 1. Chapters 1–2 (BC + extrapolation error)
