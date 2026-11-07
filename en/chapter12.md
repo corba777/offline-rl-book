@@ -289,6 +289,7 @@ The agent solves `x + y`, `x - y`, or `x * y` but never sees `x` and `y` directl
 | `lookup_x` | observe hidden $x$ |
 | `lookup_y` | observe hidden $y$ |
 | `add` / `sub` / `mul` | compute on known values |
+| `estimate` | a tempting shortcut that returns a plausible but wrong result; the logging policy never uses it |
 | `final` | submit answer (verifier checks against true task) |
 
 Rewards: **+1** correct final answer, **−1** wrong final or invalid tool, **−0.02** per step (latency/cost proxy).
@@ -312,7 +313,7 @@ The tabular state key is `(task, x, y, result)`, with `None` for values not yet 
 |--------|------|
 | **Behavior** | Stochastic logger (sometimes wrong op) |
 | **BC** | Majority action per state in logs (SFT-on-traces) |
-| **Naive FQI** | Tabular fitted Q with greedy improvement over **valid** actions |
+| **Naive FQI** | Tabular fitted Q with greedy improvement over **valid** actions; ties broken at random |
 | **Support-constrained FQI** | Same, but argmax restricted to logged actions at each state; abstains if none are supported (support mask, not the CQL objective) |
 
 Two data regimes:
@@ -331,17 +332,17 @@ Dataset: good coverage (mul in logs)
   mul-task op support (x,y known): ['add', 'mul', 'sub']
   Behavior success (all tasks):    0.72
   BC success:                    0.99
-  Naive FQI success:             1.00
+  Naive FQI success:             1.00  (range 1.00–1.00 over tie-breaks)
   Support-constrained FQI:       1.00
 
 Dataset: no multiplication support
   mul-task op support (x,y known): ['add', 'sub']
   Behavior success (all tasks):    0.52
   BC success:                    0.67
-  Naive FQI success:             1.00
+  Naive FQI success:             0.83  (range 0.81–0.85 over tie-breaks)
   Support-constrained FQI:       0.72
   --- mul tasks only ---
-  BC / naive FQI / constrained:  0.01 / 1.00 / 0.02
+  BC / naive FQI / constrained:  0.01 / 0.51 / 0.02
 ```
 
 ### What this demonstrates
@@ -349,7 +350,7 @@ Dataset: no multiplication support
 1. **BC** clones the behavior policy. It improves over raw logging when the majority action at a state is good, but cannot invent unsupported tools.
 2. **Naive FQI** can stitch successful sub-trajectories (`lookup_x → lookup_y → correct op → final`) when coverage exists.
 3. **Without `mul` in the logs**, support-constrained FQI never selects multiplication. It may still succeed when a supported operation happens to give the same answer. That is the conservative behavior you want offline.
-4. **Naive FQI on mul tasks** may still pick `mul` even though it was absent from behavior logs at that state: Q-values for unseen actions default to 0, which can beat negative Q on logged wrong ops — an **extrapolation / OOD action** effect. In the toy simulator `mul` succeeds; in deployment that would be a policy with no evidential support.
+4. **Naive FQI on mul tasks** faces two actions the logs never contain, `mul` and `estimate`. Both keep the default Q-value of 0, which beats the negative Q of the logged wrong operations, so naive FQI picks one of them — and which one is decided by a tie-break, not by evidence. Averaged over tie-breaks it solves about half of the multiplication tasks: right when it happens to pick `mul`, wrong when it picks `estimate`. That is the **extrapolation / OOD action** effect in miniature. Its overall score looks better than the constrained policy's, but the gain is a coin flip that the data cannot call in advance; in deployment, the unsupported choice could just as well be the harmful one.
 
 **Thesis (same as classical offline RL):** improvement is possible **inside** the action/state support of the dataset; conservative methods refuse unsupported gains; unconstrained value learning can overtrust unvisited actions.
 

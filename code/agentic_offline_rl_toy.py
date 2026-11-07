@@ -19,7 +19,10 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-ACTIONS = ["lookup_x", "lookup_y", "add", "sub", "mul", "final"]
+# `estimate` is a tempting shortcut the logging policy never uses: it returns a
+# plausible but wrong result, like a stale cache. It exists to show what an
+# unsupported action can cost.
+ACTIONS = ["lookup_x", "lookup_y", "add", "sub", "mul", "estimate", "final"]
 ACTION_TO_IDX = {a: i for i, a in enumerate(ACTIONS)}
 TASKS = ["add", "sub", "mul"]
 STEP_COST = 0.02
@@ -69,7 +72,7 @@ def valid_actions(state: AgentState) -> List[str]:
     if state.x is not None and state.y is None:
         acts.append("lookup_y")
     if state.x is not None and state.y is not None and state.result is None:
-        acts.extend(["add", "sub", "mul"])
+        acts.extend(["add", "sub", "mul", "estimate"])
     if state.result is not None:
         acts.append("final")
     return acts
@@ -92,6 +95,9 @@ def step(
         next_state.x = x_true
     elif action == "lookup_y":
         next_state.y = y_true
+    elif action == "estimate":
+        assert next_state.x is not None and next_state.y is not None
+        next_state.result = next_state.x * next_state.y + 1   # plausible, never right
     elif action in ("add", "sub", "mul"):
         assert next_state.x is not None and next_state.y is not None
         if action == "add":
@@ -194,8 +200,14 @@ def q_greedy_action(
     q: Dict[Tuple[StateKey, str], float],
     state: AgentState,
     allowed: Optional[Set[str]] = None,
+    tie_rng: Optional[random.Random] = None,
 ) -> Optional[str]:
-    """Return None to abstain when no supported valid action exists."""
+    """Return None to abstain when no supported valid action exists.
+
+    With `tie_rng`, ties in Q are broken at random instead of by the order of
+    ACTIONS — unseen actions all share the default Q = 0, so which one wins is
+    decided by the tie-break, not by evidence.
+    """
     valid = valid_actions(state)
     if allowed is not None:
         cands = [a for a in valid if a in allowed]
@@ -203,7 +215,9 @@ def q_greedy_action(
             return None
     else:
         cands = valid
-    return max(cands, key=lambda a: q[(state.key(), a)])
+    best = max(q[(state.key(), a)] for a in cands)
+    ties = [a for a in cands if q[(state.key(), a)] == best]
+    return tie_rng.choice(ties) if tie_rng is not None else ties[0]
 
 
 def train_fqi(
@@ -256,10 +270,13 @@ def train_fqi(
 def make_q_policy_fn(
     q: Dict[Tuple[StateKey, str], float],
     support: Optional[Dict[StateKey, Set[str]]] = None,
+    tie_seed: Optional[int] = None,
 ) -> Callable[[AgentState], Optional[str]]:
+    tie_rng = random.Random(tie_seed) if tie_seed is not None else None
+
     def act(state: AgentState) -> Optional[str]:
         allowed = support.get(state.key(), set()) if support is not None else None
-        return q_greedy_action(q, state, allowed=allowed)
+        return q_greedy_action(q, state, allowed=allowed, tie_rng=tie_rng)
 
     return act
 
@@ -338,12 +355,14 @@ def run_experiment(label: str, mul_in_support: bool, seed: int = 42) -> None:
     _, constrained_q = train_fqi(dataset, support=support)
 
     bc_fn = make_policy_fn(bc, fallback_valid)
-    naive_fn = make_q_policy_fn(naive_q, support=None)
+    tie_seeds = range(10)   # naive FQI: ties among unseen actions broken at random
     constrained_fn = make_q_policy_fn(constrained_q, support=support)
 
     beh = behavior_success_rate(mul_in_support=mul_in_support, seed=seed)
     bc_s = evaluate_policy(bc_fn, seed=seed + 2)
-    naive_s = evaluate_policy(naive_fn, seed=seed + 3)
+    naive_runs = [evaluate_policy(make_q_policy_fn(naive_q, tie_seed=k), seed=seed + 3)
+                  for k in tie_seeds]
+    naive_s = sum(naive_runs) / len(naive_runs)
     constr_s = evaluate_policy(constrained_fn, seed=seed + 4)
 
     mul_states = [
@@ -356,11 +375,13 @@ def run_experiment(label: str, mul_in_support: bool, seed: int = 42) -> None:
 
     print(f"  Behavior success (all tasks):    {beh:.2f}")
     print(f"  BC success:                    {bc_s:.2f}")
-    print(f"  Naive FQI success:             {naive_s:.2f}")
+    print(f"  Naive FQI success:             {naive_s:.2f}  "
+          f"(range {min(naive_runs):.2f}–{max(naive_runs):.2f} over tie-breaks)")
     print(f"  Support-constrained FQI:       {constr_s:.2f}")
     if not mul_in_support:
         mul_bc = evaluate_policy(bc_fn, seed=seed + 5, tasks=["mul"])
-        mul_naive = evaluate_policy(naive_fn, seed=seed + 6, tasks=["mul"])
+        mul_naive = sum(evaluate_policy(make_q_policy_fn(naive_q, tie_seed=k), seed=seed + 6,
+                                        tasks=["mul"]) for k in tie_seeds) / len(tie_seeds)
         mul_constr = evaluate_policy(constrained_fn, seed=seed + 7, tasks=["mul"])
         print(f"  --- mul tasks only ---")
         print(f"  BC / naive FQI / constrained:  {mul_bc:.2f} / {mul_naive:.2f} / {mul_constr:.2f}")
@@ -373,9 +394,9 @@ def main() -> None:
     run_experiment("no multiplication support", mul_in_support=False)
     print("\nQualitative takeaway:")
     print("  Good coverage: FQI can match or beat BC by stitching successful traces.")
-    print("  No mul support: constrained FQI never selects mul;")
-    print("  naive FQI may pick unseen mul anyway — extrapolation that works in sim")
-    print("  but would lack evidential support in a real offline deploy.")
+    print("  No mul support: constrained FQI never selects an unlogged tool;")
+    print("  naive FQI rates every unlogged tool at Q = 0 and picks among them by")
+    print("  tie-break — sometimes mul (right), sometimes estimate (wrong).")
 
 
 if __name__ == "__main__":

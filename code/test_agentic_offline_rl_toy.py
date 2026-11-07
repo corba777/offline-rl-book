@@ -34,6 +34,15 @@ class CalculatorPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             toy.train_fqi([transition], {state.key(): {"lookup_x"}})
 
+    def test_unseen_tools_tie_and_one_of_them_is_harmful(self):
+        import random
+        state = toy.AgentState("mul", 2, 3)
+        q = defaultdict(float, {(state.key(), "add"): -0.5, (state.key(), "sub"): -0.5})
+        picks = {toy.q_greedy_action(q, state, tie_rng=random.Random(k)) for k in range(30)}
+        self.assertEqual(picks, {"mul", "estimate"})
+        after, _, _ = toy.step(state, "estimate", 2, 3)
+        self.assertLess(toy.step(after, "final", 2, 3)[1], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
