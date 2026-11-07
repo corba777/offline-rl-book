@@ -23,3 +23,12 @@ env/
 
 # Generated PDF and its LaTeX source
 build/
+
+# Paper build outputs
+paper/main.pdf
+paper/*.log
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.out
+paper/arxiv.tar.gz

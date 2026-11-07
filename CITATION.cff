@@ -1,0 +1,38 @@
+cff-version: 1.2.0
+message: "If you use this book or its code, please cite it as below."
+title: "Offline RL: From Theory to Industrial Practice"
+abstract: >-
+  Applied notes on offline reinforcement learning, in English and Russian:
+  behavioral cloning, off-policy evaluation, conservative and implicit value
+  learning, policy constraints, Decision Transformers, model-based methods,
+  physics-informed control, an industrial case study with multi-seed
+  ablations, explainability, and tool-using LLM agents, with runnable PyTorch
+  code for every chapter.
+type: software
+authors:
+  - family-names: Zvyagintsev
+    given-names: Artem
+version: 1.0.0
+date-released: 2026-11-07
+url: "https://corba777.github.io/offline-rl-book/"
+repository-code: "https://github.com/corba777/offline-rl-book"
+license:
+  - CC-BY-4.0
+  - MIT
+keywords:
+  - offline reinforcement learning
+  - conservative Q-learning
+  - model-based reinforcement learning
+  - off-policy evaluation
+  - process control
+  - physics-informed machine learning
+  - LLM agents
+preferred-citation:
+  type: book
+  title: "Offline RL: From Theory to Industrial Practice"
+  authors:
+    - family-names: Zvyagintsev
+      given-names: Artem
+  year: 2026
+  version: 1.0.0
+  url: "https://corba777.github.io/offline-rl-book/"

@@ -1,0 +1,26 @@
+{
+  "title": "Offline RL: From Theory to Industrial Practice",
+  "upload_type": "publication",
+  "publication_type": "book",
+  "creators": [
+    {"name": "Zvyagintsev, Artem"}
+  ],
+  "description": "<p>Applied notes on offline reinforcement learning, in English and Russian: behavioral cloning, off-policy evaluation, conservative and implicit value learning, policy constraints, Decision Transformers, model-based methods, physics-informed control, an industrial case study with multi-seed ablations, explainability, and tool-using LLM agents, with runnable PyTorch code for every chapter.</p><p>This archive contains the book's Markdown and HTML sources in both languages, the code, the saved experiment results and, attached to the release, the PDF of the English edition. Text and figures are licensed under CC BY 4.0; the code under MIT.</p><p>Read online: <a href=\"https://corba777.github.io/offline-rl-book/\">corba777.github.io/offline-rl-book</a></p>",
+  "license": "cc-by-4.0",
+  "language": "eng",
+  "version": "1.0.0",
+  "keywords": [
+    "offline reinforcement learning",
+    "conservative Q-learning",
+    "model-based reinforcement learning",
+    "off-policy evaluation",
+    "process control",
+    "physics-informed machine learning",
+    "LLM agents"
+  ],
+  "related_identifiers": [
+    {"identifier": "https://corba777.github.io/offline-rl-book/", "relation": "isIdenticalTo", "resource_type": "publication-book"},
+    {"identifier": "https://github.com/corba777/offline-rl-book", "relation": "isSupplementedBy", "resource_type": "software"}
+  ],
+  "notes": "Code in code/ and scripts/ is licensed under the MIT License (see LICENSE); text and figures under CC BY 4.0 (see LICENSE-text)."
+}

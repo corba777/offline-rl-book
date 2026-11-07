@@ -33,6 +33,7 @@
   <a href="#repository-layout">Layout</a> ·
   <a href="#writing-and-building">Writing and building</a> ·
   <a href="#pdf">PDF</a> ·
+  <a href="#how-to-cite">Cite</a> ·
   <a href="#license">License</a>
 </p>
 
@@ -164,6 +165,22 @@ python scripts/build_pdf.py            # -> build/pdf/offline-rl-book.pdf
 ```
 
 `build/pdf/` also holds the LaTeX source and its figures, which is what arXiv expects for a TeX-built paper. The styling lives in `scripts/pdf/`. CI rebuilds the PDF on every push to `main` and publishes it at a permanent link: [offline-rl-book.pdf](https://github.com/corba777/offline-rl-book/releases/download/pdf/offline-rl-book.pdf). Each CI run also keeps the PDF with its LaTeX source as an artifact (*offline-rl-book-pdf*).
+
+## How to cite
+
+GitHub's "Cite this repository" button uses [`CITATION.cff`](CITATION.cff). In BibTeX:
+
+```bibtex
+@book{zvyagintsev2026offlinerl,
+  title  = {Offline {RL}: From Theory to Industrial Practice},
+  author = {Zvyagintsev, Artem},
+  year   = {2026},
+  note   = {Version 1.0},
+  url    = {https://corba777.github.io/offline-rl-book/}
+}
+```
+
+The case study of Chapter 10 is also written up as a short paper in [`paper/`](paper/): *When the Safeguard Is the Failure: Uncertainty-Based Termination in Model-Based Offline RL on a Simulated Process-Control Task*.
 
 ## License
 
