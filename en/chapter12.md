@@ -111,7 +111,7 @@ Fine-tuning the shared LLM on role-conditioned traces (DPO, SFT or single-agent 
 
 Classical offline MARL already offers tools for this. MACCA ([Wang et al., 2025](https://arxiv.org/abs/2312.03644)) represents the offline data as a dynamic Bayesian network and identifies each agent's causal contribution to the reward. For LLM agents the nearest work is still online. LangMARL ([Yao et al., 2026](https://aclanthology.org/2026.emnlp-main.1837/)) uses a centralized language critic to assign credit to each agent and rewrites the agents' natural-language policies, their instructions and exemplars, rather than model weights, collecting fresh rollouts at every iteration. Carrying such agent-level credit over to fixed logs remains an open problem.
 
-The chapter stays single-agent deliberately. For a multi-agent product, reuse its logging and evaluation practices, but do not apply single-agent conservative RL to joint actions and team rewards without adapting support constraints and credit assignment.
+The rest of the chapter deliberately stays with a single agent. If your product is multi-agent, the logging and evaluation practices below still apply. Single-agent conservative RL does not carry over directly: its support constraints and credit assignment must first be redefined for joint actions and team rewards.
 
 ---
 

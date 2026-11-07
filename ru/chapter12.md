@@ -111,7 +111,7 @@ Single-agent offline RL не решает три задачи, которые з
 
 В классическом offline MARL для этого уже есть инструменты. MACCA ([Wang et al., 2025](https://arxiv.org/abs/2312.03644)) представляет offline-данные как динамическую байесовскую сеть и выделяет причинный вклад каждого агента в награду. Для LLM-агентов ближайшие работы пока online. LangMARL ([Yao et al., 2026](https://aclanthology.org/2026.emnlp-main.1837/)) с помощью централизованного языкового critic назначает credit каждому агенту и переписывает его политику на естественном языке — инструкции и примеры, а не веса модели, — собирая новые rollouts на каждой итерации. Перенести такой agent-level credit assignment на фиксированные логи — пока открытая задача.
 
-Глава намеренно остаётся single-agent. Для multi-agent продукта используйте отсюда логирование и практики оценки, но не применяйте single-agent conservative RL к joint actions и team rewards, не адаптировав support constraints и credit assignment.
+Дальше глава сознательно рассматривает только одного агента. Если ваш продукт multi-agent, описанные ниже логирование и практики оценки подойдут и ему. А вот single-agent conservative RL напрямую не переносится: support constraints и credit assignment сначала нужно переопределить для joint actions и team rewards.
 
 ---
 
