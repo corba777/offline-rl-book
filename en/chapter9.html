@@ -132,6 +132,8 @@
         <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_reward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span><span class="p">):</span>
             <span class="n">violation</span> <span class="o">=</span> <span class="n">g</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>        <span class="c1"># (batch,) &gt;= 0</span>
+            <span class="c1"># (batch, 1) - (batch,) would silently broadcast to (batch, batch)</span>
+            <span class="k">assert</span> <span class="n">violation</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="n">r</span><span class="o">.</span><span class="n">shape</span>
             <span class="n">r</span> <span class="o">=</span> <span class="n">r</span> <span class="o">-</span> <span class="n">lam</span> <span class="o">*</span> <span class="n">violation</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>       <span class="c1"># a violation is never a bonus</span>
         <span class="k">return</span> <span class="n">r</span>
 </code></pre></div>
@@ -182,7 +184,7 @@
 <p>Outside the data support, a pure black-box model will extrapolate in whatever direction its weights happen to point — which often violates physics. The epistemic uncertainty from ensemble disagreement partially guards against this, but it cannot distinguish "uncertain because data is sparse" from "uncertain because the model is physically wrong."</p>
 <p>A <strong>hybrid model</strong> splits the prediction into two parts:</p>
 <p><div class="math-display">$$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{known physics}} + \underbrace{f_{NN}(s, a; \theta)}_{\text{learned residual}}$$</div></p>
-<p>The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong.</p>
+<p>The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong. One practical trap: $f_{phys}$ is written in physical units, while the networks usually train on normalized states. Apply the physics to de-normalized states and re-normalize its output before adding the residual; Chapter 10's <code>Units</code> helper does exactly this, and skipping it makes the physics prior silently wrong.</p>
 <h3>Why This Helps Offline RL</h3>
 <p><strong>Better extrapolation — if the residual is kept small.</strong> The physics component provides a principled prediction even where data is sparse. A plain MLP residual, however, does not shrink to zero away from the data: like any neural network with SiLU or ReLU units, it extrapolates in whatever direction its weights happen to point. To get the intended fallback to physics, make the residual distance-aware — penalize its magnitude, or scale it down as inputs move away from the training data.</p>
 <p><strong>Smaller residuals = easier learning.</strong> If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model tends to converge faster and generalize better — provided the physics is structurally right.</p>
@@ -271,7 +273,8 @@
 <span class="sd">    =&gt;  x_{t+1} = x_t + dt/tau * (K*u_t - x_t)</span>
 
 <span class="sd">    For a multi-variable state, apply element-wise with per-variable</span>
-<span class="sd">    tau and K (pass as vectors).</span>
+<span class="sd">    tau and K (pass as vectors). Assumes one actuator per state variable</span>
+<span class="sd">    (action_dim &gt;= state_dim); otherwise write the physics per variable.</span>
 <span class="sd">    """</span>
     <span class="k">return</span> <span class="n">state</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">action</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="n">state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">-</span> <span class="n">state</span><span class="p">)</span>
 </code></pre></div>
@@ -354,7 +357,7 @@
     <span class="k">return</span> <span class="n">coverage</span>
 </code></pre></div>
 
-<p>Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{inc}$, with $\sigma_{inc}$ the standard deviation of the increment, would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.</p>
+<p>Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{inc}$, with $\sigma_{inc}$ the standard deviation of the increment, would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. It uses centered variances, so a constant bias of the physics does not count against it: that answers "how much is left for the residual", which absorbs a constant offset easily. To judge the physics on its own against persistence, compare mean squared errors instead. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.</p>
 <hr />
 <h2>Part III: Constraint-Based Policy (Brief)</h2>
 <h3>Hard vs Soft Constraints</h3>
@@ -433,7 +436,7 @@ Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
 <li>Yu, T., Kumar, A., Rafailov, R., Rajeswaran, A., Levine, S., &amp; Finn, C. (2021). <em>COMBO: Conservative Offline Model-Based Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/2102.08363">arXiv:2102.08363</a>.</li>
 <li>Banerjee, C., Nguyen, T., Fookes, C., &amp; Raissi, M. (2023). <em>A Survey on Physics Informed Reinforcement Learning.</em> Expert Systems with Applications. <a href="https://arxiv.org/abs/2309.01909">arXiv:2309.01909</a>.</li>
 <li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1711.10561">arXiv:1711.10561</a>.</li>
-<li>Liu, Y., &amp; Wang, X. (2021). <em>Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2008.05598">arXiv:2008.05598</a>.</li>
+<li>Liu, X.-Y., &amp; Wang, J.-X. (2021). <em>Physics-informed Dyna-style model-based deep reinforcement learning for dynamic control.</em> Proceedings of the Royal Society A, 477, 20210618. <a href="https://arxiv.org/abs/2108.00128">arXiv:2108.00128</a>.</li>
 <li>Lusch, B., Kutz, J.N., &amp; Brunton, S.L. (2018). <em>Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.</em> Nature Communications. <em>(Koopman)</em></li>
 <li>García, J., &amp; Fernández, F. (2015). <em>A Comprehensive Survey on Safe Reinforcement Learning.</em> JMLR. <em>(constraint methods)</em></li>
 <li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>

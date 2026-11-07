@@ -474,7 +474,8 @@ Single-agent offline RL не решает три задачи, которые з
     "error": null
   },
   "reward": 0.0,
-  "done": false,
+  "terminated": false,
+  "truncated": false,
   "prompt_version": "agent_prompt_v12",
   "tool_schema_version": "tools_2026_06_20",
   "environment_version": "sandbox_v3",
@@ -505,6 +506,7 @@ Single-agent offline RL не решает три задачи, которые з
 
 - **`state`** должен восстанавливаться и при обучении, и при оценке, поэтому версионируйте prompts (`prompt_version`), схемы инструментов (`tool_schema_version`) и sandbox (`environment_version`).
 - **`action`** по возможности должен быть структурированным (со своей JSON-схемой): для такого действия support оценить проще, чем для свободного текста.
+- **`terminated`** и **`truncated`** — раздельные флаги: эпизод, достигший цели или окончательно проваленный, завершён (terminated), и цели для ценности на нём обрываются; эпизод, прерванный по лимиту шагов или времени, обрезан (truncated), и цели должны продолжать bootstrap. Один флаг `done` смешивает эти случаи — это та самая ошибка с лимитом времени, исправленная в коде главы 10.
 - **`reward`** можно перемаркировать офлайн — с помощью verifier, человека или LLM-critic, — поэтому храните `reward_components`, `reward_source` и `verifier_version` отдельно от скалярного `reward`.
 - **`action_logprobs`** (или log-probabilities токенов и tool calls) очень полезны для off-policy evaluation и фильтрации; логируйте их, если behavior policy их отдаёт.
 - **`metadata.behavior_policy`** необходим для **происхождения данных** (provenance). Для OPE с importance weights нужны ещё сопоставимые представления действий и вероятности действий под behavior и target policy, а для свободных действий LLM их часто **нет**, если log-probabilities не записали в момент сбора.

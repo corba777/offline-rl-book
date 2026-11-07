@@ -115,6 +115,8 @@ class PhysicsRewardWrapper:
         r = self.base_reward(state, action, next_state)
         for g, lam in zip(self.constraints, self.lambdas):
             violation = g(state, action, next_state)        # (batch,) >= 0
+            # (batch, 1) - (batch,) would silently broadcast to (batch, batch)
+            assert violation.shape == r.shape
             r = r - lam * violation.clamp(min=0.0)       # a violation is never a bonus
         return r
 ```
@@ -184,7 +186,7 @@ A **hybrid model** splits the prediction into two parts:
 
 $$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{known physics}} + \underbrace{f_{NN}(s, a; \theta)}_{\text{learned residual}}$$
 
-The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong.
+The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong. One practical trap: $f_{phys}$ is written in physical units, while the networks usually train on normalized states. Apply the physics to de-normalized states and re-normalize its output before adding the residual; Chapter 10's `Units` helper does exactly this, and skipping it makes the physics prior silently wrong.
 
 ### Why This Helps Offline RL
 
@@ -290,7 +292,8 @@ def first_order_physics(state: torch.Tensor,
     =>  x_{t+1} = x_t + dt/tau * (K*u_t - x_t)
 
     For a multi-variable state, apply element-wise with per-variable
-    tau and K (pass as vectors).
+    tau and K (pass as vectors). Assumes one actuator per state variable
+    (action_dim >= state_dim); otherwise write the physics per variable.
     """
     return state + (dt / tau) * (K * action[..., :state.shape[-1]] - state)
 ```
@@ -379,7 +382,7 @@ def diagnose_hybrid_model(hybrid_model, dataset, physics_fn, device='cpu'):
     return coverage
 ```
 
-Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{inc}$, with $\sigma_{inc}$ the standard deviation of the increment, would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.
+Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{inc}$, with $\sigma_{inc}$ the standard deviation of the increment, would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. It uses centered variances, so a constant bias of the physics does not count against it: that answers "how much is left for the residual", which absorbs a constant offset easily. To judge the physics on its own against persistence, compare mean squared errors instead. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.
 
 ---
 
@@ -466,7 +469,7 @@ Chapter 10 works through an industrial case study showing how these pieces fit t
 - Yu, T., Kumar, A., Rafailov, R., Rajeswaran, A., Levine, S., & Finn, C. (2021). *COMBO: Conservative Offline Model-Based Policy Optimization.* NeurIPS. [arXiv:2102.08363](https://arxiv.org/abs/2102.08363).
 - Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* Expert Systems with Applications. [arXiv:2309.01909](https://arxiv.org/abs/2309.01909).
 - Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1711.10561](https://arxiv.org/abs/1711.10561).
-- Liu, Y., & Wang, X. (2021). *Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.* [arXiv:2008.05598](https://arxiv.org/abs/2008.05598).
+- Liu, X.-Y., & Wang, J.-X. (2021). *Physics-informed Dyna-style model-based deep reinforcement learning for dynamic control.* Proceedings of the Royal Society A, 477, 20210618. [arXiv:2108.00128](https://arxiv.org/abs/2108.00128).
 - Lusch, B., Kutz, J.N., & Brunton, S.L. (2018). *Deep Learning for Universal Linear Embeddings of Nonlinear Dynamics.* Nature Communications. *(Koopman)*
 - García, J., & Fernández, F. (2015). *A Comprehensive Survey on Safe Reinforcement Learning.* JMLR. *(constraint methods)*
 - Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).

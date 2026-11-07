@@ -199,6 +199,8 @@ class PhysicsRewardWrapper:
         r = self.base_reward(state, action, next_state)
         for g, lam in zip(self.constraints, self.lambdas):
             violation = g(state, action, next_state)   # (batch,) ≥ 0
+            assert violation.shape == r.shape, (
+                f"constraint returned shape {tuple(violation.shape)}, reward has {tuple(r.shape)}")
             r = r - lam * violation.clamp(min=0.0)   # a violation is never a bonus
         return r
 

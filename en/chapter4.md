@@ -218,7 +218,8 @@ def compute_cql_loss(Q, Q_tgt, Q_other_tgt, policy,
 
     s_rep  = states.unsqueeze(1).expand(-1, n_samples, -1).reshape(B * n_samples, -1)
     a_rand = torch.FloatTensor(B * n_samples, actions.shape[-1]).uniform_(-1, 1).to(dev)
-    a_pi, lp_pi = policy.sample(s_rep)
+    with torch.no_grad():                          # samples only; Q gets the gradient
+        a_pi, lp_pi = policy.sample(s_rep)
     q_rand = Q(s_rep, a_rand).reshape(B, n_samples)
     q_pi   = Q(s_rep, a_pi).reshape(B, n_samples)
     lse = importance_sampled_logsumexp(q_rand, q_pi,

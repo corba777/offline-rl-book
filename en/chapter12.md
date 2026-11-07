@@ -474,7 +474,8 @@ For applied work, a consistent JSON (or parquet) schema matters as much as algor
     "error": null
   },
   "reward": 0.0,
-  "done": false,
+  "terminated": false,
+  "truncated": false,
   "prompt_version": "agent_prompt_v12",
   "tool_schema_version": "tools_2026_06_20",
   "environment_version": "sandbox_v3",
@@ -505,6 +506,7 @@ Design choices:
 
 - **`state`** should be reconstructible at train and eval time — version prompts (`prompt_version`), tool schemas (`tool_schema_version`), and sandboxes (`environment_version`).
 - **`action`** should be structured (JSON schema) when possible — easier for support estimation than free text.
+- **`terminated`** and **`truncated`** are separate flags: an episode that reached its goal or failed for good is terminated, and value targets stop there; one cut off by a step or time budget is truncated, and targets must keep bootstrapping. A single `done` flag mixes the two, which is the time-limit bug fixed in Chapter 10's code.
 - **`reward`** can be relabeled offline (verifier, human, LLM critic) — store `reward_components`, `reward_source`, and `verifier_version` separately from the scalar `reward`.
 - **`action_logprobs`** (or token/tool-call log-probabilities) are valuable for off-policy evaluation and filtering; log them when the behavior policy exposes them.
 - **`metadata.behavior_policy`** is necessary for **dataset provenance**. Importance-weighted OPE additionally requires comparable action representations and behavior/target action probabilities — often **unavailable** for free-form LLM actions unless log-probs were recorded at collection time.

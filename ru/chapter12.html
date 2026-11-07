@@ -699,7 +699,8 @@ Dataset: no multiplication support
 <span class="w">    </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"reward"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"done"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"terminated"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"truncated"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"prompt_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"agent_prompt_v12"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"tool_schema_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tools_2026_06_20"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"environment_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sandbox_v3"</span><span class="p">,</span>
@@ -730,6 +731,7 @@ Dataset: no multiplication support
 <ul>
 <li><strong><code>state</code></strong> должен восстанавливаться и при обучении, и при оценке, поэтому версионируйте prompts (<code>prompt_version</code>), схемы инструментов (<code>tool_schema_version</code>) и sandbox (<code>environment_version</code>).</li>
 <li><strong><code>action</code></strong> по возможности должен быть структурированным (со своей JSON-схемой): для такого действия support оценить проще, чем для свободного текста.</li>
+<li><strong><code>terminated</code></strong> и <strong><code>truncated</code></strong> — раздельные флаги: эпизод, достигший цели или окончательно проваленный, завершён (terminated), и цели для ценности на нём обрываются; эпизод, прерванный по лимиту шагов или времени, обрезан (truncated), и цели должны продолжать bootstrap. Один флаг <code>done</code> смешивает эти случаи — это та самая ошибка с лимитом времени, исправленная в коде главы 10.</li>
 <li><strong><code>reward</code></strong> можно перемаркировать офлайн — с помощью verifier, человека или LLM-critic, — поэтому храните <code>reward_components</code>, <code>reward_source</code> и <code>verifier_version</code> отдельно от скалярного <code>reward</code>.</li>
 <li><strong><code>action_logprobs</code></strong> (или log-probabilities токенов и tool calls) очень полезны для off-policy evaluation и фильтрации; логируйте их, если behavior policy их отдаёт.</li>
 <li><strong><code>metadata.behavior_policy</code></strong> необходим для <strong>происхождения данных</strong> (provenance). Для OPE с importance weights нужны ещё сопоставимые представления действий и вероятности действий под behavior и target policy, а для свободных действий LLM их часто <strong>нет</strong>, если log-probabilities не записали в момент сбора.</li>

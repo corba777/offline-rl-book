@@ -699,7 +699,8 @@ Dataset: no multiplication support
 <span class="w">    </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"reward"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"done"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"terminated"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"truncated"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"prompt_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"agent_prompt_v12"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"tool_schema_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tools_2026_06_20"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"environment_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sandbox_v3"</span><span class="p">,</span>
@@ -730,6 +731,7 @@ Dataset: no multiplication support
 <ul>
 <li><strong><code>state</code></strong> should be reconstructible at train and eval time — version prompts (<code>prompt_version</code>), tool schemas (<code>tool_schema_version</code>), and sandboxes (<code>environment_version</code>).</li>
 <li><strong><code>action</code></strong> should be structured (JSON schema) when possible — easier for support estimation than free text.</li>
+<li><strong><code>terminated</code></strong> and <strong><code>truncated</code></strong> are separate flags: an episode that reached its goal or failed for good is terminated, and value targets stop there; one cut off by a step or time budget is truncated, and targets must keep bootstrapping. A single <code>done</code> flag mixes the two, which is the time-limit bug fixed in Chapter 10's code.</li>
 <li><strong><code>reward</code></strong> can be relabeled offline (verifier, human, LLM critic) — store <code>reward_components</code>, <code>reward_source</code>, and <code>verifier_version</code> separately from the scalar <code>reward</code>.</li>
 <li><strong><code>action_logprobs</code></strong> (or token/tool-call log-probabilities) are valuable for off-policy evaluation and filtering; log them when the behavior policy exposes them.</li>
 <li><strong><code>metadata.behavior_policy</code></strong> is necessary for <strong>dataset provenance</strong>. Importance-weighted OPE additionally requires comparable action representations and behavior/target action probabilities — often <strong>unavailable</strong> for free-form LLM actions unless log-probs were recorded at collection time.</li>
