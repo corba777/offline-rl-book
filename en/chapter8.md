@@ -93,7 +93,7 @@ $$J(\hat\pi) \geq \sup_{\pi} \bigl\{ J(\pi) - 2\lambda\, \epsilon_u(\pi) \bigr\}
 
 where $\rho^{\pi}_{\hat T}$ is the discounted occupancy of $\pi$ in the learned model. Taking $\pi$ to be the behavior policy, whose model uncertainty should be small, MOPO is expected to do at least about as well as the data it learned from.
 
-The caveat is the assumption itself. Nothing guarantees that an ensemble's spread upper-bounds the true model error: ensemble members can agree and still be wrong, especially far from the data. The guarantee is only as good as the uncertainty estimate. *Note:* the original paper uses as $u$ the maximum over the ensemble of the norm of the learned (aleatoric) standard deviation; this book uses **ensemble disagreement** (the standard deviation of predicted means), a common reimplementation choice closer to MOReL's USAD. Neither is guaranteed to be admissible.
+The caveat is the assumption itself. Nothing guarantees that an ensemble's spread upper-bounds the true model error: ensemble members can agree and still be wrong, especially far from the data. The guarantee is only as good as the uncertainty estimate. *Note:* the original paper uses as $u$ the maximum over the ensemble of the norm of the learned (aleatoric) standard deviation; this book uses **ensemble disagreement** (the standard deviation of predicted means), a common reimplementation choice closer to MOReL's USAD. Neither is guaranteed to be admissible. For a probabilistic ensemble the two kinds of uncertainty separate cleanly: the total predictive variance is $\operatorname{Var}(s') = \mathbb{E}_m[\operatorname{Var}(s' \mid m)] + \operatorname{Var}_m(\mathbb{E}[s' \mid m])$, where the first term is the process noise each model has learned (aleatoric) and the second the disagreement between models (epistemic). Only the second shrinks with more data, and only the second says anything about being far from the data. Whichever is used, check it against reality: on held-out transitions, and on transitions from a shifted regime, the uncertainty should rise and fall with the actual prediction error.
 
 #### Branched Rollouts
 
@@ -257,7 +257,7 @@ MOReL shares the ensemble architecture with MOPO (`ProbabilisticDynamicsNet`, `D
 epsilon = ensemble.calibrate_epsilon(dataset, percentile=80.0)
 ```
 
-`calibrate_epsilon()` queries the ensemble on `n_samples` real transitions and returns a quantile of the resulting uncertainty values. Setting `percentile=80` means the KNOWN region comfortably covers the dataset and extends into nearby well-modeled areas.
+`calibrate_epsilon()` queries the ensemble on `n_samples` real transitions and returns a quantile of the resulting uncertainty values. Setting `percentile=80` labels 80% of the dataset transitions KNOWN, by construction. That is a statement about the uncertainty score, not about the model: a percentile threshold does not certify that the model is accurate inside the KNOWN region. An error-calibrated threshold would instead pick $\epsilon$ so that, on held-out transitions, the model's actual error stays below a tolerance whenever $u \le \epsilon$ — which is only as good as the held-out data are representative of where the policy will go.
 
 **Step 2 — P-MDP rollouts with hard HALT:**
 

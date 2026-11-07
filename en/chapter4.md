@@ -308,7 +308,7 @@ This is a constrained optimization: minimize the Bellman error subject to keepin
 # Automatic alpha tuning via dual gradient descent
 log_alpha_cql = torch.zeros(1, requires_grad=True, device=device)
 alpha_opt = optim.Adam([log_alpha_cql], lr=1e-4)
-target_cql = 0.13   # τ: the penalty observed with a fixed α (see below)
+target_cql = 0.14   # τ: the penalty observed with a fixed α (see below)
 
 # In the update step:
 alpha_cql = log_alpha_cql.exp().item()
@@ -323,7 +323,7 @@ with torch.no_grad():
 
 **What $\tau$ means, and why it is easy to get wrong.** The penalty is the log-integral of $\exp Q$ over the action box minus $Q$ on the logged actions. For a $Q$ that does not depend on the action it equals $d \log 2$ ($1.39$ for $d = 2$); values below that mean $Q$ already peaks at the logged actions. Two consequences follow. First, $\tau$ has no scale-free meaning: it depends on the action dimension, on the reward scale and on how sharply the true $Q$ varies with the action. Thresholds from papers do not transfer either: the reference implementation multiplies the penalty by `min_q_weight` $w$ and omits the $-\log N$ normalization over its $N = 30$ samples, so its $\tau_{\text{ref}}$ corresponds to $\tau_{\text{ref}}/w - \log 30$ here — its AntMaze setting $\tau_{\text{ref}} = 5$, $w = 5$ becomes about $-2.4$. Second, and more important, a target is reachable only if it lies in the range the penalty actually covers as $\alpha$ varies, and that range can be narrow.
 
-On the thermal task it is very narrow. Over 40 epochs, with $\alpha$ fixed at 1 the penalty settles at $0.13$; the same agent with auto-tuning reaches $0.126$ when $\alpha$ climbs to $3.4$ and $0.155$ when $\alpha$ falls to $0.3$, and after 120 epochs with $\alpha \approx 0.03$ it is still only $0.17$. The likely reason is that the true $Q$ here already varies with the action, so that variation, rather than conservatism, sets most of the penalty. Any target below about $0.13$ — including the formerly default $-2$ — makes $\alpha$ rise for the whole run; any target above about $0.16$ makes it fall towards plain SAC. Neither is an equilibrium. Because Adam takes steps of roughly constant size, $\alpha$ then moves at a fixed rate in $\log \alpha$, and its final value is set by the length of training, not by the data. Returns barely differed in this experiment ($-1.9$ to $-2.1$ on one seed), which is itself a warning: the tuning looked harmless while doing nothing.
+On the thermal task it is very narrow. Over 40 epochs, with $\alpha$ fixed at 1 the penalty settles at $0.14$; the same agent with auto-tuning reaches $0.13$ when $\alpha$ climbs to $3.4$ and $0.16$ when $\alpha$ falls to $0.3$, and after 120 epochs with $\alpha \approx 0.02$ it is still only $0.19$. The likely reason is that the true $Q$ here already varies with the action, so that variation, rather than conservatism, sets most of the penalty. Any target below about $0.13$ — including the formerly default $-2$ — makes $\alpha$ rise for the whole run; a target above about $0.16$ makes it fall towards plain SAC, at least within any training run of practical length. Neither is an equilibrium. Because Adam takes steps of roughly constant size, $\alpha$ then moves at a fixed rate in $\log \alpha$, and its final value is set by the length of training, not by the data. Returns barely differed in this experiment ($-1.9$ to $-2.1$ on one seed), which is itself a warning: the tuning looked harmless while doing nothing.
 
 The practical rule: run CQL with a fixed $\alpha$ first, take $\tau$ from the penalty it reaches, and plot $\alpha$ during the tuned run. If $\alpha$ settles, the constraint is active; if it drifts in one direction for the whole run, treat the result as a schedule and fall back to a fixed $\alpha$ chosen by OPE (Chapter 3). `cql.py` follows this rule in its demo and refuses `auto_alpha=True` without an explicit `target_cql`.
 
@@ -393,6 +393,8 @@ Five runs give a coarse map of the reward–conservatism tradeoff.
 | CQL penalty >> TD loss | $\alpha$ too large or reward scale issue | Normalize rewards; reduce $\alpha$ |
 
 ### Typical values by data type
+
+These are rules of thumb for where to start a search, not results: they come from common practice rather than from a derivation or a benchmark in this book, and the right $\alpha$ depends on the reward scale and the action dimension. Select the final value by OPE (Chapter 3).
 
 | Dataset type | Starting $\alpha$ | Rationale |
 |---|---|---|

@@ -800,6 +800,30 @@ def check_explanation_consistency(results: Dict) -> Dict[str, float]:
     return metrics
 
 
+def action_sensitivity(ensemble, states: np.ndarray, actions: np.ndarray,
+                       device: str = 'cpu', eps: float = 0.05) -> Dict[str, float]:
+    """
+    Intervention check that SHAP cannot replace: nudge one action input by
+    +/- eps with everything else held fixed and measure the change in the
+    ensemble's mean prediction (a central finite difference). A SHAP slope
+    mixes in interactions, correlated inputs and the background choice; this
+    is the model's own local response to the actuator.
+    """
+    s = torch.FloatTensor(states).to(device)
+    out = {}
+    for name, out_idx, act_idx in [('heat_to_temp', 0, 0), ('flow_to_level', 4, 1),
+                                   ('flow_to_filler', 1, 1)]:
+        up, dn = [torch.tensor(actions, dtype=torch.float32, device=device) for _ in range(2)]
+        up[:, act_idx] = (up[:, act_idx] + eps).clamp(-1, 1)
+        dn[:, act_idx] = (dn[:, act_idx] - eps).clamp(-1, 1)
+        with torch.no_grad():
+            y_up, _ = ensemble.predict_with_uncertainty(s, up)
+            y_dn, _ = ensemble.predict_with_uncertainty(s, dn)
+        width = (up[:, act_idx] - dn[:, act_idx]).clamp(min=1e-6)
+        out[f'{name}_fd'] = float(((y_up[:, out_idx] - y_dn[:, out_idx]) / width).mean())
+    return out
+
+
 def print_consistency_report(metrics: Dict[str, float]) -> None:
     print("\n" + "─" * 50)
     print("  Explanation Consistency Report")
@@ -821,6 +845,12 @@ def print_consistency_report(metrics: Dict[str, float]) -> None:
     if 'flow_to_filler_slope' in metrics:
         print(f"  flow_input → next_filler     : slope={metrics['flow_to_filler_slope']:+.4f}  "
               f"(true effect is delayed two steps; expect ≈ 0)")
+    if 'heat_to_temp_fd' in metrics:
+        print("  Finite-difference response of the model to each actuator:")
+        for name, label in [('heat_to_temp', 'heat_input → next_temperature'),
+                            ('flow_to_level', 'flow_input → next_level      '),
+                            ('flow_to_filler', 'flow_input → next_filler     ')]:
+            print(f"    {label}: d/du = {metrics[f'{name}_fd']:+.4f}")
     print("─" * 50)
 
 
@@ -974,6 +1004,7 @@ def run_shap_analysis(device:     str  = 'cpu',
     # Summary and consistency
     print_shap_summary(results)
     metrics = check_explanation_consistency(results)
+    metrics.update(action_sensitivity(ensemble, results['states'], results['actions'], device))
     print_consistency_report(metrics)
 
     return results

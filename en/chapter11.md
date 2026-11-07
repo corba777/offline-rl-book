@@ -142,7 +142,7 @@ class PolicySingleOutputWrapper:
         return action[:, self.action_idx].cpu().numpy()
 ```
 
-**Expected pattern:** `heat_input` driven primarily by `temperature`. For `flow_input` the naive guess is `filler_frac`, but in the run below `level` dominates by a wide margin (mean |SHAP| 0.16 against 0.02). That is physically sensible: the feed is the only lever on the integrating level, while the filler fraction relaxes back toward its setpoint largely on its own.
+**Expected pattern:** `heat_input` driven primarily by `temperature`. For `flow_input` the naive guess is `filler_frac`, but in the run below `level` dominates by a wide margin (mean |SHAP| 0.16 against 0.04). That is physically sensible: the feed is the only lever on the integrating level, while the filler fraction relaxes back toward its setpoint largely on its own.
 
 ### Level 3: Dynamics SHAP — Why Does the Model Predict This Next State?
 
@@ -270,17 +270,19 @@ print_consistency_report(metrics)
 
 Output of `python code/chapter11.py` (the ensemble is retrained on every run, so the digits vary slightly):
 ```
-  Q ↔ policy rank correlation  : +0.200  (n=5 features: not significant below ~0.9)
-    Low: Q and policy rank features differently. Not a failure in itself;
-    check whether the actor still responds to the state.
-  heat_input → next_temperature: slope=+1.0488  ✓ positive (correct)
-  flow_input → next_level      : slope=+1.8630  ✓ positive (correct)
-  flow_input → next_filler     : slope=-0.0147  (true effect is delayed two steps; expect ≈ 0)
+  Q ↔ policy rank correlation  : +0.700  (n=5 features: not significant below ~0.9)
+  heat_input → next_temperature: slope=+1.0359  ✓ positive (correct)
+  flow_input → next_level      : slope=+1.8275  ✓ positive (correct)
+  flow_input → next_filler     : slope=-0.0162  (true effect is delayed two steps; expect ≈ 0)
+  Finite-difference response of the model to each actuator:
+    heat_input → next_temperature: d/du = +1.0326
+    flow_input → next_level      : d/du = +1.8299
+    flow_input → next_filler     : d/du = -0.0114
 ```
 
-**Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in the Q-function and in the policy. With only five state features this is a blunt instrument: for $n = 5$, $\rho$ must reach about 0.9 to be significant at the 5% level (one-sided), so the 0.20 above is not evidence of anything on its own. Here it is low for an understandable reason: the Q-function ranks `level` and `temperature` highest, and the policy does too, but the remaining three features have near-zero policy SHAP whose order is noise. Nor is there a reason the two rankings must agree: the Q-function attributes *value* and the policy attributes *action*, and a variable can matter for one without mattering for the other. A very low or negative $\rho$ is a prompt to look closer — for instance at whether a strongly regularized actor (large CQL $\alpha$) has stopped responding to the state — not a pass/fail test.
+**Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in the Q-function and in the policy. With only five state features this is a blunt instrument: for $n = 5$, $\rho$ must reach about 0.9 to be significant at the 5% level (one-sided), so the 0.70 above is not evidence of anything on its own. How unstable it is shows directly: an earlier run of the same code, differing only in the random retraining, gave 0.20. Both the Q-function and the policy rank `level` and `temperature` highest; the remaining three features have near-zero policy SHAP, and their order — which decides $\rho$ — is noise. Nor is there a reason the two rankings must agree: the Q-function attributes *value* and the policy attributes *action*, and a variable can matter for one without mattering for the other. A very low or negative $\rho$ is a prompt to look closer — for instance at whether a strongly regularized actor (large CQL $\alpha$) has stopped responding to the state — not a pass/fail test.
 
-**Physics sign tests:** `heat_input` should show a positive dependence slope with `next_temperature`, and `flow_input` with `next_level`; the slope for `next_filler_frac` is printed for reference and should be near zero because of the transport delay. The code fits a line to SHAP against the feature value instead of averaging signed SHAP, which can sit near zero when instances straddle the background; the dependence plot shows the same thing visually. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse.
+**Physics sign tests:** `heat_input` should show a positive dependence slope with `next_temperature`, and `flow_input` with `next_level`; the slope for `next_filler_frac` is printed for reference and should be near zero because of the transport delay. The code fits a line to SHAP against the feature value instead of averaging signed SHAP, which can sit near zero when instances straddle the background; the dependence plot shows the same thing visually. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse. The slope is still a heuristic, not a derivative: the sign of $d\,\mathrm{SHAP}_i / d x_i$ need not match the sign of $\partial f / \partial x_i$ when features interact, are correlated, or sit on the other side of the background. The code therefore also runs an intervention check — nudge one actuator input by $\pm 0.05$ with every other input fixed and measure the change in the model's mean prediction — which tests the model's own local response directly. Neither check sees delayed effects: a one-step model and its one-step attribution say nothing about what an action does two steps later, which for the filler loop is exactly where its effect lies; that needs a multi-step rollout or an impulse-response test. Here the two checks agree closely — slope and finite difference are $+1.04$ and $+1.03$ for heat, $+1.83$ for both on the level — which is what one should see when the model is smooth and the inputs nearly independent; a large gap between them is a reason to distrust the SHAP slope.
 
 ---
 
