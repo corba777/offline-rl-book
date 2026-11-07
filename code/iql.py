@@ -478,7 +478,7 @@ def train_agent(agent, loader: DataLoader, n_epochs: int = 100,
 def show_expectile_intuition():
     """
     Demonstrates how different tau values shape the V-function target.
-    V(s) learns the tau-quantile of Q(s, a_data).
+    V(s) learns the tau-expectile of Q(s, a_data) (tau=0.5 is the mean).
     """
     print("\n--- Expectile regression intuition ---")
     print(f"{'tau':<8} {'V estimate':>12} {'interpretation'}")
@@ -494,13 +494,13 @@ def show_expectile_intuition():
         for _ in range(2000):
             loss = expectile_loss(v.expand(5), q_values, tau)
             opt.zero_grad(); loss.backward(); opt.step()
-        interp = {0.1: "near minimum", 0.3: "lower quartile",
-                  0.5: "median (MSE)", 0.7: "upper quartile (IQL default)",
-                  0.9: "near maximum"}
+        interp = {0.1: "well below the mean", 0.3: "below the mean",
+                  0.5: "mean (MSE)", 0.7: "above the mean (IQL default)",
+                  0.9: "toward the maximum"}
         print(f"  tau={tau:.1f}   V={v.item():>8.3f}    {interp[tau]}")
 
     print(f"\n  True Q values: {q_values.tolist()}")
-    print(f"  True min={q_values.min():.2f}, median={q_values.median():.2f},"
+    print(f"  True min={q_values.min():.2f}, mean={q_values.mean():.2f},"
           f" max={q_values.max():.2f}")
 
 

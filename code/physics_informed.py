@@ -17,7 +17,7 @@ without modification. See run_demo() at the bottom for a complete example.
 References:
   Altman (1999) — Constrained Markov Decision Processes
   Banerjee et al. (2023) — Survey on Physics Informed RL
-  Paternain et al. (2022) — Safe Policies for Factored MDPs
+  Paternain et al. (2019) — Constrained RL Has Zero Duality Gap
 """
 
 import numpy as np
@@ -226,10 +226,10 @@ def calibrate_lambda(
     device:         str   = 'cpu',
 ) -> float:
     """
-    Calibrate λ using the Chapter 9 heuristic so gap ≤ target_gap_fraction * mean_return.
-
-    From the theorem: gap ≤ 2 * C_max / ((1-γ) * λ)
-    Solving: λ = 2 * C_max / ((1-γ) * target_gap)
+    Calibrate λ with the Chapter 9 scaling heuristic (not a guarantee):
+        λ = 2 * C_max / (target_gap_fraction * mean_return),
+    where C_max is the largest observed violation and
+    mean_return = mean|r| / (1-γ) is a typical discounted return.
     """
     n  = min(2000, len(dataset['states']))
     s  = torch.FloatTensor(dataset['states'][:n]).to(device)
@@ -336,7 +336,7 @@ class HybridDynamicsNet(nn.Module):
 
     Training loss = NLL of next_state under predicted Gaussian.
 
-    Proposition 6.2: hybrid error ≤ residual_error + physics_error,
+    Proposition 9.2 (informal): hybrid error ≤ residual_error + physics_error,
     with residual_error < black_box_error on same data (smaller target amplitude).
     """
 
@@ -639,7 +639,7 @@ class LagrangianPolicyOptimizer:
     """
     Constrained offline RL via primal-dual saddle-point updates.
 
-    Theorem 6.3 (Altman, 1999): strong duality holds for CMDPs.
+    Theorem 9.3 (Altman, 1999): strong duality holds for CMDPs.
     The minimax over (policy, lambda) gives the exact constrained optimum.
 
     Primal step: maximize J_Q(θ) - Σ λᵢ (J_Cᵢ(θ) - dᵢ)
@@ -818,7 +818,7 @@ def visualize_hybrid_vs_blackbox(hybrid_ensemble: HybridEnsemble,
                                   device:           str = 'cpu') -> None:
     """
     Per-dimension prediction error: physics alone vs hybrid model.
-    Illustrates Proposition 6.2.
+    Illustrates Proposition 9.2.
     """
     n  = min(n_test, len(dataset['states']))
     s  = torch.FloatTensor(dataset['states'][:n]).to(device)
