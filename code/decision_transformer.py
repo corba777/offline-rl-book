@@ -265,10 +265,12 @@ def train_epoch(model, loader, optimizer, device):
 
 
 def evaluate_dt(env, model, target_return, s_mean, s_std, rtg_scale, context_len,
-                device, max_steps=200, n_episodes=10, seed=100):
+                device, max_steps=200, n_episodes=10, seed=100, gamma=0.99):
     """
     Evaluate: start with R_1 = target_return (normalized). At each step feed
-    (R_1..R_t, s_1..s_t, a_1..a_{t-1}) and get a_t. Step env; R_{t+1} = R_t - r_t (normalized).
+    (R_1..R_t, s_1..s_t, a_1..a_{t-1}) and get a_t. Step env; then
+    R_{t+1} = (R_t - r_t) / gamma, the inverse of R_t = r_t + gamma * R_{t+1}
+    used to build the training targets (gamma=1 for undiscounted return-to-go).
     """
     model.eval()
     returns_list = []
@@ -305,7 +307,7 @@ def evaluate_dt(env, model, target_return, s_mean, s_std, rtg_scale, context_len
                 obs, r, done, _ = env.step(action)
                 total_r += r
                 A_history.append(action)
-                R_current = (R_current * rtg_scale - r) / rtg_scale
+                R_current = (R_current * rtg_scale - r) / (gamma * rtg_scale)
                 if done:
                     break
             returns_list.append(total_r)
@@ -353,7 +355,7 @@ def main(quick=False):
         if (epoch + 1) % eval_every == 0:
             mean_ret, std_ret = evaluate_dt(
                 env, model, target_return, s_mean, s_std, rtg_scale, context_len,
-                device, n_episodes=n_eval, seed=100,
+                device, n_episodes=n_eval, seed=100, gamma=gamma,
             )
             print(f"Epoch {epoch+1} | loss={loss:.4f} | eval return={mean_ret:.2f} ± {std_ret:.2f}")
 

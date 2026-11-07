@@ -54,7 +54,7 @@ Each trajectory in the dataset is a sequence of length $T$:
 
 $$\tau = (s_1, a_1, r_1, R_1, s_2, a_2, r_2, R_2, \ldots, s_T, a_T, r_T, R_T)$$
 
-with $R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$. We can also use **reward-to-go** (undiscounted sum) or normalize $R_t$ (e.g. by the max return in the dataset) for stability.
+with $R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$. We can also use **reward-to-go** (undiscounted sum) or normalize $R_t$ for stability (e.g. by the largest $|R_t|$ in the dataset).
 
 The model receives **chunks** of length $K$ (context length): for each timestep $t$, the input is
 
@@ -83,7 +83,7 @@ For continuous actions, the model usually outputs a Gaussian mean (and optionall
 
 1. Initialize $R_1 = R^*$ (target return, e.g. high percentile of dataset returns).
 2. Observe $s_1$; feed $(R_1, s_1, \_)$ to the model; get $a_1$.
-3. Execute $a_1$, get $s_2, r_1$. Set $R_2 = R_1 - r_1$ (or $R_2 = (R_1 - r_1) / \gamma$ depending on convention).
+3. Execute $a_1$, get $s_2, r_1$. Set $R_2 = (R_1 - r_1) / \gamma$, which inverts $R_1 = r_1 + \gamma R_2$; with undiscounted return-to-go ($\gamma = 1$) this is $R_2 = R_1 - r_1$. Use the same convention as in training: decrementing a discounted target without dividing by $\gamma$ makes the remaining budget drift away from anything the model saw.
 4. Feed $(R_1, s_1, a_1, R_2, s_2, \_)$; get $a_2$. Repeat.
 
 So we **condition on the desired return** and let the model autoregressively generate actions. The return-to-go is updated each step to reflect how much "return budget" is left.
@@ -137,7 +137,7 @@ Training loop: sample a batch from `ChunkDataset`; forward pass; loss = MSE(pred
 
 ### Key Design Choices
 
-- **Return normalization:** Scale $R_t$ by the max return in the dataset so that inputs are in a bounded range (e.g. $[0, 1]$).
+- **Return normalization:** Divide $R_t$ by the largest $|R_t|$ in the dataset so that inputs lie in $[-1, 1]$; with non-positive rewards, as here, they lie in $[-1, 0]$. Dividing by the maximum return itself fails when all returns are negative. A fixed positive scale, or a shift and scale from the range of returns, works as well, as long as training and inference use the same one.
 - **Context length:** Longer context (e.g. 20–50) lets the model use more history; shorter is faster and may suffice for near-Markov tasks.
 - **Target return $R^*$:** At test time, use a high percentile (e.g. 90th) of returns in the dataset. If you set $R^*$ higher than any trajectory in the data, the model may extrapolate poorly.
 

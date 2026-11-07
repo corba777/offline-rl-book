@@ -44,9 +44,10 @@ class BCPolicy(nn.Module):
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         return self.net(state)
 
-    def act(self, state: torch.Tensor) -> torch.Tensor:
+    def act(self, state: torch.Tensor, low: float = -1.0, high: float = 1.0) -> torch.Tensor:
+        # The linear head is unbounded; actuators are not.
         with torch.no_grad():
-            return self.forward(state)
+            return self.forward(state).clamp(low, high)
 
 
 class StochasticBCPolicy(nn.Module):
@@ -94,12 +95,13 @@ class StochasticBCPolicy(nn.Module):
         # Sum log-probs over action dimensions (independent Gaussians)
         return dist.log_prob(action).sum(dim=-1)
 
-    def act(self, state: torch.Tensor, deterministic: bool = True) -> torch.Tensor:
+    def act(self, state: torch.Tensor, deterministic: bool = True,
+            low: float = -1.0, high: float = 1.0) -> torch.Tensor:
+        # An unsquashed Gaussian can sample outside the actuator range.
         with torch.no_grad():
             mean, log_std = self.forward(state)
-            if deterministic:
-                return mean
-            return torch.distributions.Normal(mean, log_std.exp()).sample()
+            a = mean if deterministic else torch.distributions.Normal(mean, log_std.exp()).sample()
+            return a.clamp(low, high)
 
 
 # ---------------------------------------------------------------------------

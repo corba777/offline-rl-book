@@ -1,10 +1,11 @@
-"""Numerical checks for the CQL soft-maximum estimator and the TD3+BC actor loss."""
+"""Numerical checks for CQL, IQL and TD3+BC, and for how the datasets mark episode ends."""
 import math
 import unittest
 
 import torch
 
 import cql
+import iql
 import td3bc
 
 
@@ -95,6 +96,57 @@ class TD3BCNormalizationTest(unittest.TestCase):
         ref_grads = torch.autograd.grad(ref, list(actor.parameters()))
         for g, r in zip(grads, ref_grads):
             self.assertTrue(torch.allclose(g, r, atol=1e-6))
+
+
+class IQLWeightTests(unittest.TestCase):
+    """Advantage weights: finite for extreme advantages, independent of the batch."""
+
+    def setUp(self):
+        torch.manual_seed(0)
+        self.policy = iql.DeterministicPolicy(3, 2, hidden_dim=16)
+        self.s = torch.randn(64, 3)
+        self.a = torch.rand(64, 2) * 2 - 1
+
+    def critics(self, adv):
+        q = lambda s, a: adv                       # Q(s, a) = advantage, V = 0
+        v = lambda s: torch.zeros(len(s))
+        return q, q, v
+
+    def loss(self, adv, weighting):
+        q1, q2, v = self.critics(adv)
+        return iql.iql_policy_loss(self.policy, q1, q2, v, self.s, self.a,
+                                   beta=3.0, weighting=weighting)
+
+    def test_extreme_advantages_stay_finite(self):
+        adv = torch.linspace(-1e4, 1e4, 64)
+        for w in ("reference", "batch_normalized"):
+            loss, info = self.loss(adv, w)
+            self.assertTrue(torch.isfinite(loss), w)
+            grads = torch.autograd.grad(loss, list(self.policy.parameters()))
+            self.assertTrue(all(torch.isfinite(g).all() for g in grads), w)
+
+    def test_reference_weights_are_clipped_at_100(self):
+        _, info = self.loss(torch.full((64,), 50.0), "reference")
+        self.assertAlmostEqual(info["weight_max"], 100.0, places=3)
+
+    def test_reference_weight_does_not_depend_on_the_batch(self):
+        alone = torch.zeros(4)
+        mixed = torch.tensor([0.0, 5.0, 5.0, 5.0])     # same first sample, other batch-mates
+        for w, same in (("reference", True), ("batch_normalized", False)):
+            w0 = iql.advantage_weights(alone, 3.0, weighting=w)[0].item()
+            w1 = iql.advantage_weights(mixed, 3.0, weighting=w)[0].item()
+            self.assertEqual(abs(w0 - w1) < 1e-6, same, w)
+
+    def test_ess_collapses_when_one_advantage_dominates(self):
+        adv = torch.zeros(64); adv[0] = 10.0
+        _, info = self.loss(adv, "batch_normalized")
+        self.assertLess(info["ess"], 0.05)
+
+
+class EpisodeEndTests(unittest.TestCase):
+    def test_time_limit_is_not_a_terminal_state(self):
+        ds = cql.collect_offline_dataset(n_episodes=2, noise_scale=0.3)
+        self.assertEqual(float(ds["dones"].sum()), 0.0)
 
 
 if __name__ == "__main__":

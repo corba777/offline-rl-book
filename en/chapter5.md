@@ -61,7 +61,7 @@ where the **expectile loss** (asymmetric L2 loss) is:
 $$L_\tau(u) = |\tau - \mathbf{1}[u < 0]| \cdot u^2 = \begin{cases} \tau \cdot u^2 & \text{if } u \geq 0 \\ (1-\tau) \cdot u^2 & \text{if } u < 0 \end{cases}$$
 
 At $\tau = 0.5$: standard MSE, estimate converges to the mean.
-At $\tau \to 1.0$: estimate converges to the maximum.
+At $\tau \to 1.0$: estimate converges to the maximum (for a bounded distribution, its essential supremum — the largest value that has positive probability).
 At $\tau = 0.7$ (IQL default): estimate lies between the mean and the maximum — biased toward higher values.
 
 This is the entire trick: by choosing $\tau > 0.5$, we make $V(s)$ approximate the value of a **better-than-average** action at state $s$, using only the actions present in the dataset.
@@ -84,7 +84,7 @@ Here $V_\psi$ is the current V-network: IQL needs no separate target copy of $V$
 
 $$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \exp\!\left(\beta \cdot \left(Q(s,a) - V(s)\right)\right) \cdot \| \pi_\phi(s) - a \|^2 \right]$$
 
-where $A(s,a) = Q(s,a) - V(s)$ is the **advantage** of dataset action $a$ over the average action at $s$. The exponential weights upweight high-advantage actions and downweight low-advantage ones — effectively extracting the best actions from the data.
+where $A(s,a) = Q(s,a) - V(s)$ is the **advantage** of dataset action $a$ over the baseline $V(s)$. With $\tau = 0.5$ that baseline is the mean value of the logged actions at $s$; with $\tau > 0.5$ it is an upper expectile of their values, so only actions better than most logged ones get a positive advantage. The exponential weights upweight high-advantage actions and downweight low-advantage ones — effectively extracting the best actions from the data.
 
 ### Why This Works: The Connection to Pessimism
 
@@ -290,10 +290,8 @@ def iql_policy_loss(policy: DeterministicPolicy,
         q_val = torch.min(Q1(states, actions), Q2(states, actions))
         v_val = V(states)
         adv   = q_val - v_val                                 # advantage
-        # Normalize advantage for numerical stability, then exponentiate
-        adv_norm   = adv - adv.max()                         # subtract max
-        weights    = torch.exp(beta * adv_norm).clamp(max=clip_exp)
-        weights    = weights / (weights.mean() + 1e-8)          # mean-normalized weights
+        # Reference IQL: min(exp(beta * A), clip_exp), written so it cannot overflow
+        weights = torch.exp((beta * adv).clamp(max=np.log(clip_exp)))
 
     # Weighted MSE: push policy toward high-advantage dataset actions
     pi_pred = policy(states)
@@ -312,7 +310,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
 # ============================================================================
 ```
 
-Subtracting `adv.max()` prevents overflow in `exp`. Two consequences are easy to miss, and both depart from the original IQL. After the shift every weight is at most 1, so `clamp(max=clip_exp)` never binds. And dividing by the batch mean makes the weights relative to the batch: they sum to the batch size, not to one, and the same transition receives a different weight in a different batch. The reference implementation instead uses $\exp(\beta A)$ clipped at 100, with no batch normalization.
+These are the weights of the reference implementation: $\exp(\beta A)$ clipped at 100, with no normalization over the batch, so a transition's weight does not depend on what else is in its batch. Clipping the exponent instead of the exponential gives the same value and cannot overflow. A popular "stabilized" variant subtracts `adv.max()` before exponentiating and divides by the batch mean; `iql.py` keeps it as `weighting='batch_normalized'`, but it is a different algorithm. After the shift every weight is at most 1, so the clip never binds; the weights become relative to the batch, so the same transition gets a different weight in a different batch; and when $\beta(\max A - \min A)$ is large, most weights underflow to zero and a handful of samples carry the whole update. The code reports the effective sample size $(\sum_i w_i)^2 / (n \sum_i w_i^2)$ as `ess`; if it falls to a few percent, the policy is being fitted to a few transitions.
 
 ### The Full Update Step
 

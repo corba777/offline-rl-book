@@ -203,6 +203,7 @@
     <span class="k">return</span> <span class="n">policy</span>
 </code></pre></div>
 
+<p>Neither network bounds its output: a linear head or an unsquashed Gaussian can return an action outside the actuator range. The code clips actions in <code>act()</code>; the alternative is a tanh-squashed Gaussian with the change-of-variables correction to its log-density, as used by the SAC-based agents in later chapters.</p>
 <hr />
 <h2>When Does BC Work?</h2>
 <p>BC works well under two conditions:</p>
@@ -223,7 +224,7 @@
 - $H$ is the task horizon (number of steps)
 - $C$ is the bound on the per-step cost (costs in $[0, C]$); no smoothness of the dynamics is assumed — a single mistake can lead anywhere, which is exactly why errors compound
 - The bound grows as $\mathcal{O}(H^2)$</p>
-<p><strong>The $H^2$ term is the problem.</strong> For a 30-minute prediction horizon at 10-second intervals, $H = 180$. Even tiny per-step error $\epsilon = 0.01$ produces a bound of $0.01 \times 180^2 = 324$. The bound is loose in practice, but the trend is real.</p>
+<p><strong>The $H^2$ term is the problem.</strong> For a 30-minute prediction horizon at 10-second intervals, $H = 180$. Even tiny per-step error $\epsilon = 0.01$ produces a bound of $0.01 \times 180^2 = 324$. The number shows the scale of a worst-case bound, not the degradation to expect: the theorem assumes a finite, undiscounted horizon, a 0–1 disagreement rate measured on the expert's own states, and nothing about the dynamics, so it must cover the case where every mistake is unrecoverable. The bound is loose in practice, but the trend is real.</p>
 <h3>Intuition: The Snowball</h3>
 <p>Imagine a car following a road. BC trains the steering policy on expert demonstrations. If the policy makes a small error and drifts slightly off-center, it now faces a state the expert never demonstrated — slightly off-road. Its predictions there are unreliable, causing a bigger correction error, drifting further, until the car leaves the road entirely.</p>
 <p>This is called <strong>covariate shift</strong>: the input distribution at test time doesn't match training time.</p>

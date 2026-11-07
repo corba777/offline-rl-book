@@ -135,7 +135,7 @@ def collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0):
                           -1, 1).astype(np.float32)
             obs2, r, done, _ = env.step(act)
             S.append(obs); A.append(act); R.append(r)
-            S2.append(obs2); D.append(float(done))
+            S2.append(obs2); D.append(0.0)  # time limit, not a terminal state: keep bootstrapping
             obs = obs2
 
     dataset = {k: np.array(v, dtype=np.float32)

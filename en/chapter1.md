@@ -182,6 +182,8 @@ def train_stochastic_bc(states, actions, state_dim, action_dim, n_epochs=100):
     return policy
 ```
 
+Neither network bounds its output: a linear head or an unsquashed Gaussian can return an action outside the actuator range. The code clips actions in `act()`; the alternative is a tanh-squashed Gaussian with the change-of-variables correction to its log-density, as used by the SAC-based agents in later chapters.
+
 ---
 
 ## When Does BC Work?
@@ -219,7 +221,7 @@ where:
 - $C$ is the bound on the per-step cost (costs in $[0, C]$); no smoothness of the dynamics is assumed — a single mistake can lead anywhere, which is exactly why errors compound
 - The bound grows as $\mathcal{O}(H^2)$
 
-**The $H^2$ term is the problem.** For a 30-minute prediction horizon at 10-second intervals, $H = 180$. Even tiny per-step error $\epsilon = 0.01$ produces a bound of $0.01 \times 180^2 = 324$. The bound is loose in practice, but the trend is real.
+**The $H^2$ term is the problem.** For a 30-minute prediction horizon at 10-second intervals, $H = 180$. Even tiny per-step error $\epsilon = 0.01$ produces a bound of $0.01 \times 180^2 = 324$. The number shows the scale of a worst-case bound, not the degradation to expect: the theorem assumes a finite, undiscounted horizon, a 0–1 disagreement rate measured on the expert's own states, and nothing about the dynamics, so it must cover the case where every mistake is unrecoverable. The bound is loose in practice, but the trend is real.
 
 ### Intuition: The Snowball
 

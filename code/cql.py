@@ -130,7 +130,7 @@ def collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0):
             act = pid_action(obs, env.T_target, env.f_target)
             act = np.clip(act + np.random.normal(0, noise_scale, 2), -1, 1).astype(np.float32)
             obs2, r, done, _ = env.step(act)
-            S.append(obs); A.append(act); R.append(r); S2.append(obs2); D.append(float(done))
+            S.append(obs); A.append(act); R.append(r); S2.append(obs2); D.append(0.0)  # time limit, not a terminal state: keep bootstrapping
             obs = obs2
 
     dataset = {k: np.array(v, dtype=np.float32)
@@ -501,7 +501,7 @@ def run_comparison(quick=False):
     cql_res = evaluate(cql, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # CQL auto alpha: target = the penalty CQL reached with alpha=1. On this
-    # task the penalty moves only between about 0.13 and 0.16 as alpha goes
+    # task the penalty moves only between about 0.13 and 0.19 as alpha goes
     # from 3 to 0, so a target outside that band would drive alpha steadily
     # up or down instead of settling.
     target = last['cql']

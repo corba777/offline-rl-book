@@ -116,7 +116,7 @@ def collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0):
             act = pid_action(obs, env.T_target, env.f_target)
             act = np.clip(act + np.random.normal(0, noise_scale, 2), -1, 1).astype(np.float32)
             obs2, r, done, _ = env.step(act)
-            S.append(obs); A.append(act); R.append(r); S2.append(obs2); D.append(float(done))
+            S.append(obs); A.append(act); R.append(r); S2.append(obs2); D.append(0.0)  # time limit, not a terminal state: keep bootstrapping
             obs = obs2
     dataset = {k: np.array(v, dtype=np.float32)
                for k, v in zip(['states','actions','rewards','next_states','dones'],
@@ -279,13 +279,26 @@ def iql_q_loss(Q: QNetwork,
     }
 
 
+def advantage_weights(adv: torch.Tensor, beta: float, clip_exp: float = 100.0,
+                      weighting: str = 'reference') -> torch.Tensor:
+    """AWR weights for a batch of advantages (see iql_policy_loss)."""
+    if weighting == 'reference':
+        # exp(min(x, log c)) = min(exp(x), c), computed without overflowing
+        return torch.exp((beta * adv).clamp(max=float(np.log(clip_exp))))
+    if weighting == 'batch_normalized':
+        w = torch.exp(beta * (adv - adv.max()))
+        return w / (w.mean() + 1e-8)
+    raise ValueError(f"unknown weighting {weighting!r}")
+
+
 def iql_policy_loss(policy: DeterministicPolicy,
                     Q1: QNetwork, Q2: QNetwork,
                     V: ValueNetwork,
                     states: torch.Tensor,
                     actions: torch.Tensor,
                     beta: float = 3.0,
-                    clip_exp: float = 100.0) -> Tuple[torch.Tensor, dict]:
+                    clip_exp: float = 100.0,
+                    weighting: str = 'reference') -> Tuple[torch.Tensor, dict]:
     """
     Policy extraction via Advantage-Weighted Regression (AWR).
 
@@ -298,17 +311,22 @@ def iql_policy_loss(policy: DeterministicPolicy,
     - actions with negative advantage get weights near zero
     - beta controls how selective we are (higher = more selective)
 
-    The exp weights are clipped to avoid numerical instability.
+    weighting='reference' (default) follows the IQL reference implementation:
+    w = min(exp(beta * A), clip_exp), no normalization, so a transition's weight
+    does not depend on the rest of its batch. weighting='batch_normalized' is a
+    stabilized variant, not IQL: w = exp(beta * (A - max A)) / mean(...). It
+    cannot overflow, but the weights are relative to the batch, and when
+    beta * (max A - min A) is large most of them underflow to zero. The returned
+    'ess' (effective sample size / batch size) shows how many samples carry
+    the update.
     No environment interaction, no OOD actions — pure in-sample regression.
     """
     with torch.no_grad():
         q_val = torch.min(Q1(states, actions), Q2(states, actions))
         v_val = V(states)
         adv   = q_val - v_val                                 # advantage
-        # Normalize advantage for numerical stability, then exponentiate
-        adv_norm   = adv - adv.max()                         # subtract max
-        weights    = torch.exp(beta * adv_norm).clamp(max=clip_exp)
-        weights    = weights / (weights.mean() + 1e-8)          # mean-normalized weights
+        weights = advantage_weights(adv, beta, clip_exp, weighting)
+        ess = (weights.sum() ** 2 / (weights.pow(2).sum() + 1e-12) / len(weights)).item()
 
     # Weighted MSE: push policy toward high-advantage dataset actions
     pi_pred = policy(states)
@@ -319,6 +337,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
         'adv_mean':   adv.mean().item(),
         'adv_max':    adv.max().item(),
         'weight_max': weights.max().item(),
+        'ess':        ess,
     }
 
 
@@ -345,8 +364,10 @@ class IQLAgent:
                  beta: float = 3.0,
                  gamma: float = 0.99,
                  tau_target: float = 0.005,
+                 weighting: str = 'reference',
                  device: str = 'cpu'):
         self.tau        = tau
+        self.weighting  = weighting
         self.beta       = beta
         self.gamma      = gamma
         self.tau_target = tau_target
@@ -399,7 +420,8 @@ class IQLAgent:
         # ── 3. Policy update (advantage-weighted regression) ──────────────
         # pi(s) ← argmin_a exp(beta * A(s,a)) * ||pi(s) - a||^2 over dataset
         pi_loss, pi_info = iql_policy_loss(
-            self.policy, self.Q1, self.Q2, self.V, s, a, self.beta)
+            self.policy, self.Q1, self.Q2, self.V, s, a, self.beta,
+            weighting=self.weighting)
         self.pi_opt.zero_grad()
         pi_loss.backward()
         self.pi_opt.step()
