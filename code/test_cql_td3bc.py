@@ -63,6 +63,20 @@ class CQLSmokeTest(unittest.TestCase):
         for key in ("td", "cql", "pi"):
             self.assertTrue(math.isfinite(info[key]), key)
 
+    def test_auto_alpha_needs_explicit_target(self):
+        with self.assertRaises(ValueError):
+            cql.CQLAgent(3, 2, hidden_dim=32, auto_alpha=True)
+
+    def test_auto_alpha_stays_within_bounds(self):
+        torch.manual_seed(0)
+        agent = cql.CQLAgent(3, 2, hidden_dim=32, auto_alpha=True, target_cql=-1e6)
+        agent.alpha_opt = torch.optim.SGD([agent.log_alpha], lr=100.0)   # force a huge step
+        B = 64
+        batch = (torch.randn(B, 3), torch.rand(B, 2) * 2 - 1, torch.randn(B),
+                 torch.randn(B, 3), torch.zeros(B))
+        agent.update(batch)
+        self.assertLessEqual(agent.log_alpha.item(), cql.LOG_ALPHA_MAX + 1e-6)
+
 
 class TD3BCNormalizationTest(unittest.TestCase):
     def test_q_scale_receives_no_gradient(self):

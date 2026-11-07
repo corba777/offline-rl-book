@@ -308,16 +308,24 @@ This is a constrained optimization: minimize the Bellman error subject to keepin
 # Automatic alpha tuning via dual gradient descent
 log_alpha_cql = torch.zeros(1, requires_grad=True, device=device)
 alpha_opt = optim.Adam([log_alpha_cql], lr=1e-4)
-target_gap = 5.0    # τ: allowed CQL gap, chosen on the scale of the observed penalty
+target_cql = 0.13   # τ: the penalty observed with a fixed α (see below)
 
 # In the update step:
 alpha_cql = log_alpha_cql.exp().item()
 # ... compute cql_penalty ...
-alpha_loss = -log_alpha_cql * (cql_penalty - target_gap)
+alpha_loss = -log_alpha_cql * (cql_penalty - target_cql)
 alpha_opt.zero_grad()
 alpha_loss.backward()
 alpha_opt.step()
+with torch.no_grad():
+    log_alpha_cql.clamp_(np.log(1e-3), np.log(1e3))   # keep α in a sane range
 ```
+
+**What $\tau$ means, and why it is easy to get wrong.** The penalty is the log-integral of $\exp Q$ over the action box minus $Q$ on the logged actions. For a $Q$ that does not depend on the action it equals $d \log 2$ ($1.39$ for $d = 2$); values below that mean $Q$ already peaks at the logged actions. Two consequences follow. First, $\tau$ has no scale-free meaning: it depends on the action dimension, on the reward scale and on how sharply the true $Q$ varies with the action. Thresholds from papers do not transfer either: the reference implementation multiplies the penalty by `min_q_weight` $w$ and omits the $-\log N$ normalization over its $N = 30$ samples, so its $\tau_{\text{ref}}$ corresponds to $\tau_{\text{ref}}/w - \log 30$ here — its AntMaze setting $\tau_{\text{ref}} = 5$, $w = 5$ becomes about $-2.4$. Second, and more important, a target is reachable only if it lies in the range the penalty actually covers as $\alpha$ varies, and that range can be narrow.
+
+On the thermal task it is very narrow. Over 40 epochs, with $\alpha$ fixed at 1 the penalty settles at $0.13$; the same agent with auto-tuning reaches $0.126$ when $\alpha$ climbs to $3.4$ and $0.155$ when $\alpha$ falls to $0.3$, and after 120 epochs with $\alpha \approx 0.03$ it is still only $0.17$. The likely reason is that the true $Q$ here already varies with the action, so that variation, rather than conservatism, sets most of the penalty. Any target below about $0.13$ — including the formerly default $-2$ — makes $\alpha$ rise for the whole run; any target above about $0.16$ makes it fall towards plain SAC. Neither is an equilibrium. Because Adam takes steps of roughly constant size, $\alpha$ then moves at a fixed rate in $\log \alpha$, and its final value is set by the length of training, not by the data. Returns barely differed in this experiment ($-1.9$ to $-2.1$ on one seed), which is itself a warning: the tuning looked harmless while doing nothing.
+
+The practical rule: run CQL with a fixed $\alpha$ first, take $\tau$ from the penalty it reaches, and plot $\alpha$ during the tuned run. If $\alpha$ settles, the constraint is active; if it drifts in one direction for the whole run, treat the result as a schedule and fall back to a fixed $\alpha$ chosen by OPE (Chapter 3). `cql.py` follows this rule in its demo and refuses `auto_alpha=True` without an explicit `target_cql`.
 
 **A note on the entropy coefficient.** The code uses a fixed `alpha_ent = 0.1` for the SAC entropy term. In production CQL this coefficient is also tuned automatically, targeting a desired policy entropy $\mathcal{H}^* = -\dim(\mathcal{A})$ (one nat of entropy per action dimension):
 
@@ -391,11 +399,11 @@ Five runs give a coarse map of the reward–conservatism tradeoff.
 | Expert-only (near-optimal) | 0.1 – 0.5 | Behavior policy is good; heavy conservatism hurts |
 | Mixed quality (expert + random) | 1.0 – 2.0 | Safe default |
 | Random / noisy operator data | 2.0 – 5.0 | High noise → more OOD risk → more conservatism |
-| Multi-regime industrial logs | 1.0 + auto-$\alpha$ | Lagrangian tuning adapts across regime boundaries |
+| Multi-regime industrial logs | 1.0; auto-$\alpha$ only if it settles | One fixed $\alpha$ may not suit every regime, but check that tuning actually converges |
 
 ### When to use automatic tuning
 
-Use `auto_alpha=True` when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Choose `target_gap` ($\tau$) on the scale of the penalty you observe: $\alpha$ grows while the penalty exceeds $\tau$ and shrinks once it falls below. A positive $\tau$ tolerates some optimism outside the data; a negative $\tau$, like the default `target_cql=-2.0` in `cql.py`, keeps raising $\alpha$ until out-of-data values sit below the data by that margin.
+Use `auto_alpha=True` when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Choose `target_cql` ($\tau$) from the penalty observed with a fixed $\alpha$, as described above: $\alpha$ grows while the penalty exceeds $\tau$ and shrinks once it falls below, and only a $\tau$ inside the range the penalty actually reaches lets it settle.
 
 Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible experiments, or you have already found a good value via grid search.
 

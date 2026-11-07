@@ -289,6 +289,9 @@ def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
 # 5. AGENTS
 # ============================================================================
 
+LOG_ALPHA_MIN, LOG_ALPHA_MAX = float(np.log(1e-3)), float(np.log(1e3))
+
+
 class CQLAgent:
     """
     Full CQL agent with double-Q critics and optional automatic alpha tuning.
@@ -297,6 +300,23 @@ class CQLAgent:
         alpha=0   -> standard SAC (no conservatism)
         alpha=1   -> default, good starting point
         alpha>>1  -> approaches behavioral cloning
+
+    Automatic alpha (auto_alpha=True) treats the CQL penalty as a constraint,
+    penalty <= target_cql, and adjusts alpha by dual gradient steps: alpha
+    rises while the penalty exceeds the target and falls once it is below.
+    The penalty is the importance-sampled log-integral of exp Q over the action
+    box minus Q on dataset actions, so a Q-function that is flat in the action
+    equals d*log 2 (1.39 for d=2), and values below that mean Q already peaks
+    at the logged actions. A target can only be met if it lies in the range
+    the penalty actually reaches as alpha varies, which is task-dependent and
+    can be narrow: choose target_cql from the penalty observed with a fixed
+    alpha, and check that alpha settles. If alpha drifts in one direction for
+    the whole run, the constraint is never active and the final alpha is set
+    by the run length and the dual learning rate, not by the data.
+    The reference implementation (Kumar et al.) compares the penalty, scaled
+    by min_q_weight w and computed without the -log(N) normalization over its
+    N=30 samples, against its threshold; its threshold tau_ref corresponds to
+    tau_ref / w - log(30) here.
 
     alpha_ent is the SAC entropy coefficient.  The value 0.1 works for the
     thermal control task (action_dim=2).  For other environments, automatic
@@ -307,7 +327,7 @@ class CQLAgent:
 
     def __init__(self, state_dim, action_dim, hidden_dim=256,
                  alpha_cql=1.0, alpha_ent=0.1, gamma=0.99, tau=0.005,
-                 auto_alpha=False, target_cql=-2.0, device='cpu'):
+                 auto_alpha=False, target_cql=None, device='cpu'):
         self.alpha_ent  = alpha_ent
         self.gamma      = gamma
         self.tau        = tau
@@ -327,6 +347,10 @@ class CQLAgent:
         self.pi_opt = optim.Adam(self.policy.parameters(), lr=3e-4)
 
         if auto_alpha:
+            if target_cql is None:
+                raise ValueError(
+                    "auto_alpha=True needs an explicit target_cql; take it from the "
+                    "CQL penalty observed with a fixed alpha (see the class docstring).")
             self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
             self.alpha_opt = optim.Adam([self.log_alpha], lr=1e-4)
             self.target_cql = target_cql
@@ -358,6 +382,8 @@ class CQLAgent:
             pen = (i1['cql_penalty'] + i2['cql_penalty']) / 2
             al  = -self.log_alpha * (pen - self.target_cql)
             self.alpha_opt.zero_grad(); al.backward(); self.alpha_opt.step()
+            with torch.no_grad():
+                self.log_alpha.clamp_(LOG_ALPHA_MIN, LOG_ALPHA_MAX)
 
         # Policy update
         a_pi, lp = self.policy.sample(s)
@@ -419,6 +445,7 @@ def evaluate(agent, env, s_mean, s_std, n_episodes=20, device='cpu'):
 
 
 def train_agent(agent, loader, n_epochs=80, log_every=20):
+    """Train for n_epochs; returns the per-batch averages of the last epoch."""
     for epoch in range(1, n_epochs + 1):
         info = {}
         for batch in loader:
@@ -429,6 +456,7 @@ def train_agent(agent, loader, n_epochs=80, log_every=20):
             n = len(loader)
             parts = [f"Epoch {epoch:3d}"] + [f"{k}={v/n:.4f}" for k, v in info.items()]
             print("  " + " | ".join(parts))
+    return {k: v / len(loader) for k, v in info.items()}
 
 
 # ============================================================================
@@ -469,14 +497,19 @@ def run_comparison(quick=False):
     # CQL fixed alpha
     print("\n--- CQL (alpha=1.0) ---")
     cql = CQLAgent(3, 2, alpha_cql=1.0, alpha_ent=0.1, device=device)
-    train_agent(cql, loader, n_epochs=n_epochs, log_every=20)
+    last = train_agent(cql, loader, n_epochs=n_epochs, log_every=20)
     cql_res = evaluate(cql, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
-    # CQL auto alpha
-    print("\n--- CQL (auto alpha) ---")
-    cql_auto = CQLAgent(3, 2, auto_alpha=True, target_cql=-1.0,
+    # CQL auto alpha: target = the penalty CQL reached with alpha=1. On this
+    # task the penalty moves only between about 0.13 and 0.16 as alpha goes
+    # from 3 to 0, so a target outside that band would drive alpha steadily
+    # up or down instead of settling.
+    target = last['cql']
+    print(f"\n--- CQL (auto alpha, target_cql={target:.3f}) ---")
+    cql_auto = CQLAgent(3, 2, auto_alpha=True, target_cql=target,
                         alpha_ent=0.1, device=device)
     train_agent(cql_auto, loader, n_epochs=n_epochs, log_every=20)
+    print(f"  final alpha = {cql_auto.alpha_cql:.3f}")
     auto_res = evaluate(cql_auto, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # Summary
