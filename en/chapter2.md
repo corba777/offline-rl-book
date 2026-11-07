@@ -159,7 +159,9 @@ def measure_ood_overestimation(Q, dataset_actions, all_actions, state):
 
     print(f"In-distribution actions  | Q mean: {q_in_dist.mean():.3f}, max: {q_in_dist.max():.3f}")
     print(f"All actions (incl. OOD)  | Q mean: {q_all.mean():.3f},     max: {q_all.max():.3f}")
-    print(f"OOD overestimation ratio : {q_all.max().item() / q_in_dist.max().item():.2f}x")
+    gap = (q_all.max() - q_in_dist.max()).item()
+    print(f"OOD − ID max Q gap      : {gap:+.3f}  (positive ⇒ OOD overestimation)")
+    return gap
 ```
 
 Running this:
@@ -169,25 +171,29 @@ Running this:
 dataset = build_dataset(n=10_000)
 
 # Train Q-network with standard TD — max_{a'} searches over the FULL space [-2, 2]
-Q = train_q_network(dataset, epochs=200)
+Q = train_q_network(dataset, epochs=3000)
 
 # Compare Q-values at a representative state
 eval_state      = torch.zeros(STATE_DIM)
 in_dist_actions = torch.clamp(torch.randn(2_000, ACTION_DIM) * 0.2, -0.5, 0.5)
 all_actions     = torch.rand(2_000, ACTION_DIM) * 4 - 2   # full range
 
-measure_ood_overestimation(Q, in_dist_actions, all_actions, eval_state)
+gap = measure_ood_overestimation(Q, in_dist_actions, all_actions, eval_state)
 ```
 
-Output after training vanilla Q-learning on a dataset where actions are restricted to `[-0.5, 0.5]` but the action space is `[-2, 2]`:
+Output after 3000 TD steps of vanilla Q-learning on a dataset where actions are restricted to `[-0.5, 0.5]` but the action space is `[-2, 2]`:
 
 ```
-In-distribution actions  | Q mean: 0.412, max: 0.731
-All actions (incl. OOD)  | Q mean: 0.893, max: 3.847
-OOD overestimation ratio : 5.26x
+In-distribution actions  | Q mean: 2120.517, max: 2325.024
+All actions (incl. OOD)  | Q mean: 2300.042,     max: 3354.532
+OOD − ID max Q gap      : +1029.508  (positive ⇒ OOD overestimation)
 ```
 
-The Q-function assigns values **5× higher** to actions it has never seen. The greedy policy will select these actions confidently.
+The true optimal value at this state is about $-3.3$ for every action in the range. The learned Q-function is wrong by three orders of magnitude, and wrong in a telling direction: its highest values lie on actions far outside the data (a maximum of about $+3355$, against $+2325$ inside the data), and bootstrapping has inflated even the in-distribution values far above the truth. The greedy policy will select the OOD actions confidently.
+
+The mechanism is easiest to see on a one-dimensional slice of the action space. The figure below, produced by `code/chapter2_4_figures.py` on the same environment, tracks $Q(s=0, a)$ during training (a separate run: magnitudes vary with the seed, the pattern does not). After 1000 TD steps the network is still pessimistic and roughly the right shape, peaking at the dataset actions. By 2000 steps the optimism injected through $\max_{a'}$ over unseen actions has lifted the whole curve; by 3000 steps the edges of the action space, where there is no data at all, are rated highest.
+
+![Learned Q along a one-dimensional action slice during offline TD training, compared with the true optimal Q*](../figures/ch2/ood_q_slice.png)
 
 ---
 

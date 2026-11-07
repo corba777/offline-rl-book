@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 410" width="780" height="410" font-family="Inter, system-ui, -apple-system, Segoe UI, sans-serif" font-size="13">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1a1a2e"/>
+    </marker>
+    <marker id="arrc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b4441b"/>
+    </marker>
+  </defs>
+  <rect width="780" height="410" fill="#ffffff"/>
+
+  <!-- control inputs -->
+  <g fill="#2563eb">
+    <text x="40" y="38" font-weight="600">a₁  flow_input</text>
+    <text x="40" y="54" fill="#555570" font-size="12">filler feed rate</text>
+    <text x="40" y="300" font-weight="600">a₀  heat_input</text>
+    <text x="40" y="316" fill="#555570" font-size="12">heater setpoint</text>
+  </g>
+  <line x1="95" y1="62" x2="95" y2="92" stroke="#2563eb" stroke-width="2" marker-end="url(#arrc)"/>
+  <line x1="95" y1="284" x2="95" y2="256" stroke="#2563eb" stroke-width="2" marker-end="url(#arrc)"/>
+
+  <!-- filler feed -->
+  <rect x="40" y="96" width="110" height="54" rx="8" fill="#f4f4f0" stroke="#1a1a2e" stroke-width="1.5"/>
+  <text x="95" y="120" text-anchor="middle" font-weight="600">Filler feed</text>
+  <text x="95" y="138" text-anchor="middle" fill="#555570" font-size="12">(conveyor)</text>
+
+  <!-- heater -->
+  <rect x="40" y="198" width="110" height="54" rx="8" fill="#f4f4f0" stroke="#1a1a2e" stroke-width="1.5"/>
+  <text x="95" y="222" text-anchor="middle" font-weight="600">Heater</text>
+  <text x="95" y="240" text-anchor="middle" fill="#555570" font-size="12">(burner)</text>
+
+  <!-- delay arrow (hidden) -->
+  <line x1="150" y1="123" x2="262" y2="150" stroke="#b4441b" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrh)"/>
+  <text x="160" y="108" fill="#b4441b" font-size="12">transport delay: 2 steps ①</text>
+  <line x1="150" y1="225" x2="262" y2="200" stroke="#1a1a2e" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- mixing zone -->
+  <rect x="266" y="110" width="200" height="130" rx="10" fill="#f4f4f0" stroke="#1a1a2e" stroke-width="1.5"/>
+  <text x="366" y="134" text-anchor="middle" font-weight="600">Mixing &amp; coating zone</text>
+  <text x="286" y="162">T  temperature</text>
+  <text x="286" y="184">f  filler fraction</text>
+  <text x="286" y="206">v  viscosity = g(T, f)</text>
+  <text x="286" y="228">d  density = h(T, f)</text>
+  <text x="352" y="268" text-anchor="middle" fill="#b4441b" font-size="12">heater effect grows with f ②</text>
+  <text x="352" y="284" text-anchor="middle" fill="#b4441b" font-size="12">v is nonlinear in T and f ③</text>
+  <rect x="270" y="252" width="166" height="40" rx="6" fill="none" stroke="#b4441b" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <!-- to tank -->
+  <line x1="466" y1="175" x2="556" y2="175" stroke="#1a1a2e" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="511" y="166" text-anchor="middle" fill="#555570" font-size="12">inflow ∝ feed</text>
+
+  <!-- surge tank -->
+  <path d="M560,100 L560,250 Q560,262 572,262 L668,262 Q680,262 680,250 L680,100" fill="none" stroke="#1a1a2e" stroke-width="1.5"/>
+  <rect x="561.5" y="172" width="117" height="89" fill="#dbe6fb"/>
+  <line x1="561.5" y1="172" x2="678.5" y2="172" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="620" y="92" text-anchor="middle" font-weight="600">Surge tank</text>
+  <text x="620" y="220" text-anchor="middle">L  level</text>
+  <text x="620" y="238" text-anchor="middle" fill="#555570" font-size="12">integrating</text>
+
+  <!-- outflow -->
+  <line x1="680" y1="240" x2="752" y2="240" stroke="#1a1a2e" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="716" y="230" text-anchor="middle" fill="#555570" font-size="12">outflow</text>
+  <text x="716" y="262" text-anchor="middle" fill="#555570" font-size="12">∝ L, less</text>
+  <text x="716" y="277" text-anchor="middle" fill="#555570" font-size="12">with more heat</text>
+
+  <!-- legend -->
+  <g font-size="12">
+    <line x1="40" y1="360" x2="70" y2="360" stroke="#2563eb" stroke-width="2"/>
+    <text x="78" y="364">control input (the agent's action)</text>
+    <text x="330" y="364">T, f, v, d, L — measured state (normalized to [0, 1])</text>
+    <line x1="40" y1="386" x2="70" y2="386" stroke="#b4441b" stroke-width="2" stroke-dasharray="6 4"/>
+    <text x="78" y="390" fill="#b4441b">①–③ present in the true dynamics, missing from the agent's physics model</text>
+  </g>
+</svg>

@@ -23,6 +23,7 @@
     .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
     .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
     main{max-width:var(--max-width);margin:0 auto 6rem}
+    main img{display:block;max-width:100%;height:auto;margin:1.5rem auto}
     h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
     h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
     h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
@@ -146,16 +147,20 @@
 
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Действия из датасета     | Q mean: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, max: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Все действия (+ OOD)     | Q mean: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">,     max: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Коэф. переоценки OOD     : </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x"</span><span class="p">)</span>
+    <span class="n">gap</span> <span class="o">=</span> <span class="p">(</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">-</span> <span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">())</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Разрыв max Q (OOD − ID)  : </span><span class="si">{</span><span class="n">gap</span><span class="si">:</span><span class="s2">+.3f</span><span class="si">}</span><span class="s2">  (положительный ⇒ переоценка OOD)"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">gap</span>
 </code></pre></div>
 
-<p>Результат после обучения vanilla Q-learning на датасете с действиями в <code>[-0.5, 0.5]</code> при пространстве действий <code>[-2, 2]</code>:</p>
-<div class="codehilite"><pre><span></span><code>Действия из датасета     | Q mean: 0.412, max: 0.731
-Все действия (+ OOD)     | Q mean: 0.893, max: 3.847
-Коэф. переоценки OOD     : 5.26x
+<p>Результат после 3000 TD-шагов vanilla Q-learning на датасете с действиями в <code>[-0.5, 0.5]</code> при пространстве действий <code>[-2, 2]</code>:</p>
+<div class="codehilite"><pre><span></span><code>Действия из датасета     | Q mean: 2120.517, max: 2325.024
+Все действия (+ OOD)     | Q mean: 2300.042,     max: 3354.532
+Разрыв max Q (OOD − ID)  : +1029.508  (положительный ⇒ переоценка OOD)
 </code></pre></div>
 
-<p>Q-функция присваивает значения, в <strong>5 раз превышающие</strong> максимальное в датасете, действиям, которых никогда не видела. Жадная политика уверенно выберет именно их.</p>
+<p>Истинная оптимальная ценность в этом состоянии — около $-3.3$ для любого действия из диапазона. Обученная Q-функция ошибается на три порядка, и ошибается характерным образом: самые высокие значения она даёт действиям далеко за пределами данных (максимум около $+3355$ против $+2325$ внутри данных), а через бутстрэппинг раздула выше истины даже значения на действиях из датасета. Жадная политика уверенно выберет именно OOD-действия.</p>
+<p>Механизм проще всего увидеть на одномерном срезе пространства действий. Рисунок ниже построен скриптом <code>code/chapter2_4_figures.py</code> на той же среде и показывает $Q(s=0, a)$ по ходу обучения (это отдельный запуск: величины зависят от seed, картина — нет). После 1000 TD-шагов сеть ещё пессимистична и примерно правильной формы, с максимумом на действиях из датасета. К 2000 шагам оптимизм, приходящий через $\max_{a'}$ по невиданным действиям, поднимает всю кривую, а к 3000 шагам выше всего оцениваются края пространства действий, где данных нет совсем.</p>
+<p><img alt="Обученная Q на одномерном срезе действий по ходу офлайн TD-обучения в сравнении с истинной Q*" src="../figures/ch2/ood_q_slice.png" /></p>
 <hr />
 <h2>Ключевое противоречие</h2>
 <p>Всё в offline RL сводится к одному противоречию:</p>

@@ -23,6 +23,7 @@
     .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
     .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
     main{max-width:var(--max-width);margin:0 auto 6rem}
+    main img{display:block;max-width:100%;height:auto;margin:1.5rem auto}
     h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
     h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
     h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
@@ -147,7 +148,9 @@
 
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"In-distribution actions  | Q mean: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, max: </span><span class="si">{</span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"All actions (incl. OOD)  | Q mean: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">,     max: </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"OOD overestimation ratio : </span><span class="si">{</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x"</span><span class="p">)</span>
+    <span class="n">gap</span> <span class="o">=</span> <span class="p">(</span><span class="n">q_all</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">-</span> <span class="n">q_in_dist</span><span class="o">.</span><span class="n">max</span><span class="p">())</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"OOD − ID max Q gap      : </span><span class="si">{</span><span class="n">gap</span><span class="si">:</span><span class="s2">+.3f</span><span class="si">}</span><span class="s2">  (positive ⇒ OOD overestimation)"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">gap</span>
 </code></pre></div>
 
 <p>Running this:</p>
@@ -155,23 +158,25 @@
 <span class="n">dataset</span> <span class="o">=</span> <span class="n">build_dataset</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mi">10_000</span><span class="p">)</span>
 
 <span class="c1"># Train Q-network with standard TD — max_{a'} searches over the FULL space [-2, 2]</span>
-<span class="n">Q</span> <span class="o">=</span> <span class="n">train_q_network</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">200</span><span class="p">)</span>
+<span class="n">Q</span> <span class="o">=</span> <span class="n">train_q_network</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">3000</span><span class="p">)</span>
 
 <span class="c1"># Compare Q-values at a representative state</span>
 <span class="n">eval_state</span>      <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">STATE_DIM</span><span class="p">)</span>
 <span class="n">in_dist_actions</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2_000</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.2</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
 <span class="n">all_actions</span>     <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2_000</span><span class="p">,</span> <span class="n">ACTION_DIM</span><span class="p">)</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">-</span> <span class="mi">2</span>   <span class="c1"># full range</span>
 
-<span class="n">measure_ood_overestimation</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">in_dist_actions</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">,</span> <span class="n">eval_state</span><span class="p">)</span>
+<span class="n">gap</span> <span class="o">=</span> <span class="n">measure_ood_overestimation</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">in_dist_actions</span><span class="p">,</span> <span class="n">all_actions</span><span class="p">,</span> <span class="n">eval_state</span><span class="p">)</span>
 </code></pre></div>
 
-<p>Output after training vanilla Q-learning on a dataset where actions are restricted to <code>[-0.5, 0.5]</code> but the action space is <code>[-2, 2]</code>:</p>
-<div class="codehilite"><pre><span></span><code>In-distribution actions  | Q mean: 0.412, max: 0.731
-All actions (incl. OOD)  | Q mean: 0.893, max: 3.847
-OOD overestimation ratio : 5.26x
+<p>Output after 3000 TD steps of vanilla Q-learning on a dataset where actions are restricted to <code>[-0.5, 0.5]</code> but the action space is <code>[-2, 2]</code>:</p>
+<div class="codehilite"><pre><span></span><code>In-distribution actions  | Q mean: 2120.517, max: 2325.024
+All actions (incl. OOD)  | Q mean: 2300.042,     max: 3354.532
+OOD − ID max Q gap      : +1029.508  (positive ⇒ OOD overestimation)
 </code></pre></div>
 
-<p>The Q-function assigns values <strong>5× higher</strong> to actions it has never seen. The greedy policy will select these actions confidently.</p>
+<p>The true optimal value at this state is about $-3.3$ for every action in the range. The learned Q-function is wrong by three orders of magnitude, and wrong in a telling direction: its highest values lie on actions far outside the data (a maximum of about $+3355$, against $+2325$ inside the data), and bootstrapping has inflated even the in-distribution values far above the truth. The greedy policy will select the OOD actions confidently.</p>
+<p>The mechanism is easiest to see on a one-dimensional slice of the action space. The figure below, produced by <code>code/chapter2_4_figures.py</code> on the same environment, tracks $Q(s=0, a)$ during training (a separate run: magnitudes vary with the seed, the pattern does not). After 1000 TD steps the network is still pessimistic and roughly the right shape, peaking at the dataset actions. By 2000 steps the optimism injected through $\max_{a'}$ over unseen actions has lifted the whole curve; by 3000 steps the edges of the action space, where there is no data at all, are rated highest.</p>
+<p><img alt="Learned Q along a one-dimensional action slice during offline TD training, compared with the true optimal Q*" src="../figures/ch2/ood_q_slice.png" /></p>
 <hr />
 <h2>The Core Challenge</h2>
 <p>Everything in offline RL comes down to this tension:</p>

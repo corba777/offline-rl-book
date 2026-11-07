@@ -23,6 +23,7 @@
     .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
     .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
     main{max-width:var(--max-width);margin:0 auto 6rem}
+    main img{display:block;max-width:100%;height:auto;margin:1.5rem auto}
     h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
     h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
     h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
@@ -279,18 +280,8 @@
 <p>Представьте Q-функцию как ландшафт над пространством состояние-действие. Стандартное Q-обучение формирует этот ландшафт только через точки данных — между ними ландшафт не ограничен и стремится расти из-за оптимистичного обобщения.</p>
 <p>CQL добавляет гравитацию: тянет весь ландшафт вниз, пока TD-потеря удерживает его в точках данных. Результат — ландшафт, высокий в точках датасета и низкий во всех остальных местах.</p>
 <p>Политика, действующая жадно по этому ландшафту, предпочитает действия из датасета — не потому что её явно ограничили, а потому что ландшафт естественно направляет её туда.</p>
-<div class="codehilite"><pre><span></span><code>Стандартное Q-обучение:      CQL:
-
-  Q  ↑   <span class="gs">*     *</span>            Q  ↑   <span class="gs">*     *</span>
-     |  / \   / \              |  <span class="gs">* \   / *</span>
-     | /   \ /   \             | /   \ /   \
-     |/     <span class="gs">*     \            |/     *</span>     \
-     +----------→ a            +----------→ a
-     ↑ точки датасета           ↑ точки датасета (закреплены высоко)
-     ↑↑ OOD оптимизм            OOD занижены
-</code></pre></div>
-
-<p><em>(В HTML-версии эта диаграмма отображается как SVG-рисунок.)</em></p>
+<p>Рисунок ниже показывает это на игрушечной задаче из главы 2 (скрипт <code>code/chapter2_4_figures.py</code>). На тех же данных и с той же TD-целью штраф CQL с $\alpha = 1$ удерживает Q близко к истинной ценности внутри данных (примерно от $-5$ до $-1$ при истинных $-3.3$) и сильно опускает её снаружи — ровно там, где наивная сеть давала самые высокие оценки. CQL намеренно ошибается в пессимистичную сторону: истинная $Q^*$ к краям почти не падает, а оценка CQL опускается там примерно до $-50$.</p>
+<p><img alt="Наивное офлайн Q-обучение и CQL на одном срезе действий в сравнении с истинной Q*" src="../figures/ch4/cql_vs_naive.png" /></p>
 <hr />
 <h2>Как выбрать α</h2>
 <p>Правильное значение $\alpha$ зависит от качества датасета, масштаба наград и доверия к поведенческой политике.</p>

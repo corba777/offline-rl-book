@@ -23,6 +23,7 @@
     .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
     .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
     main{max-width:var(--max-width);margin:0 auto 6rem}
+    main img{display:block;max-width:100%;height:auto;margin:1.5rem auto}
     h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
     h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
     h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
@@ -78,6 +79,8 @@
 <h2>Процесс нанесения покрытия</h2>
 <h3>Среда</h3>
 <p><code>CoatingProcessEnv</code> моделирует непрерывную термическую линию нанесения покрытия с пятью переменными состояния и двумя управляющими входами.</p>
+<p><img alt="Процесс нанесения покрытия: два управляющих входа, пять измеряемых переменных состояния и буферный бак; эффекты ①–③ есть в истинной динамике, но отсутствуют в физической модели агента" src="../figures/ch10/coating_process.svg" /></p>
+<p>Агент действует через два входа (синие): скорость подачи наполнителя и уставку нагревателя. Наполнитель приходит в зону нанесения с задержкой, температура и доля наполнителя в зоне определяют вязкость и плотность, а смесь поступает в буферный бак, уровень которого накапливает разницу между притоком и оттоком. Три эффекта, отмеченные ①–③, есть в истинной динамике ниже, но отсутствуют в физической модели агента. Подписи на схеме — на английском, как и названия переменных в коде.</p>
 <p><strong>Состояние</strong> $s \in \mathbb{R}^5$ (все нормированы к $[0,1]$):</p>
 <table>
 <thead>

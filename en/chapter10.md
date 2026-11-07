@@ -44,6 +44,10 @@ This chapter works through a complete case study on an anonymized five-variable 
 
 The `CoatingProcessEnv` models a continuous thermal coating line with five state variables and two control inputs.
 
+![Coating process: two control inputs, five measured state variables and a surge tank; effects ①–③ are present in the true dynamics but missing from the agent's physics model](../figures/ch10/coating_process.svg)
+
+The agent acts through two inputs (blue): the filler feed rate and the heater setpoint. Filler reaches the coating zone with a delay, the zone's temperature and filler fraction determine viscosity and density, and the blend flows into a surge tank whose level integrates the imbalance between inflow and outflow. The three effects marked ①–③ appear in the true dynamics below but not in the agent's physics model.
+
 **State** $s \in \mathbb{R}^5$ (all normalized to $[0,1]$):
 
 | Index | Variable | Physical meaning |

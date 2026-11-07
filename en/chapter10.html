@@ -23,6 +23,7 @@
     .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
     .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
     main{max-width:var(--max-width);margin:0 auto 6rem}
+    main img{display:block;max-width:100%;height:auto;margin:1.5rem auto}
     h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
     h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
     h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
@@ -78,6 +79,8 @@
 <h2>The Coating Process</h2>
 <h3>Environment</h3>
 <p>The <code>CoatingProcessEnv</code> models a continuous thermal coating line with five state variables and two control inputs.</p>
+<p><img alt="Coating process: two control inputs, five measured state variables and a surge tank; effects ①–③ are present in the true dynamics but missing from the agent's physics model" src="../figures/ch10/coating_process.svg" /></p>
+<p>The agent acts through two inputs (blue): the filler feed rate and the heater setpoint. Filler reaches the coating zone with a delay, the zone's temperature and filler fraction determine viscosity and density, and the blend flows into a surge tank whose level integrates the imbalance between inflow and outflow. The three effects marked ①–③ appear in the true dynamics below but not in the agent's physics model.</p>
 <p><strong>State</strong> $s \in \mathbb{R}^5$ (all normalized to $[0,1]$):</p>
 <table>
 <thead>

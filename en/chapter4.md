@@ -330,19 +330,9 @@ CQL adds gravity: it pulls the entire landscape down, while the TD loss anchors 
 
 The policy, acting greedily on this landscape, prefers dataset actions — not because it was explicitly constrained, but because the landscape naturally guides it there.
 
-```
-Standard Q-landscape:        CQL Q-landscape:
-                             
-  Q  ↑   *     *            Q  ↑   *     *
-     |  / \   / \              |  * \   / *
-     | /   \ /   \             | /   \ /   \
-     |/     *     \            |/     *     \
-     +----------→ a            +----------→ a
-     ↑ data points                ↑ data points (anchored high)
-     ↑↑ OOD interpolation         OOD values pushed down
-```
+The figure below shows this on the toy problem of Chapter 2, produced by `code/chapter2_4_figures.py`. With the same data and the same TD target, adding the CQL penalty with $\alpha = 1$ keeps Q close to the true value inside the data (about $-5$ to $-1$, against $-3.3$) and pushes it far down outside, exactly where the naive network rated actions highest. CQL errs on the pessimistic side by design: the true $Q^*$ barely drops toward the edges, while the CQL estimate falls to about $-50$ there.
 
-*(In the HTML version this diagram is rendered as an SVG figure.)*
+![Naive offline Q-learning versus CQL on the same action slice, compared with the true optimal Q*](../figures/ch4/cql_vs_naive.png)
 
 ---
 
