@@ -105,14 +105,14 @@
 <h2>Три уровня объяснения</h2>
 <h3>Уровень 1: SHAP Q-функции — почему агент ценит это действие?</h3>
 <p>Q-функция $Q(s, a)$ принимает конкатенацию $(s, a)$ и выдаёт скалярную оценку ценности. SHAP по этому входу отвечает, какие признаки — переменные состояния или выбранное действие — вносят наибольший вклад в Q-значение.</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">QFunctionWrapper</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">QFunctionWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Оборачивает QNetwork в numpy-in/numpy-out для SHAP KernelExplainer.</span>
 
 <span class="sd">    Вход:  X ∈ R^{n × (state_dim + action_dim)}  — [состояние | действие]</span>
 <span class="sd">    Выход: q ∈ R^n                                — Q-значение на сэмпл</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="sd">    """</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
             <span class="n">x_t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">X</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
             <span class="n">s</span>   <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">]</span>
@@ -127,15 +127,15 @@ SHAP признаков действия отвечает: «было ли эт�
 <p><strong>Ожидаемый паттерн для хорошо обученного CQL:</strong> переменные состояния вблизи уставных значений → положительный SHAP (благоприятная ситуация → высокое Q). Если SHAP признаков действия близок к нулю независимо от величины действия — Q-функция игнорирует действие, признак коллапса Q-функции.</p>
 <h3>Уровень 2: SHAP политики — почему агент выбирает это действие?</h3>
 <p>Объясняем каждое измерение действия отдельно (SHAP требует скалярного выхода):</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">PolicySingleOutputWrapper</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">PolicySingleOutputWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    action_idx = 0 → heat_input</span>
 <span class="sd">    action_idx = 1 → flow_input</span>
 
 <span class="sd">    Объясняет детерминированное среднее tanh(μ_θ(s)) — не сэмпл,</span>
 <span class="sd">    поэтому оценки SHAP стабильны между вызовами.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">S</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="sd">    """</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">S</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
             <span class="n">s_t</span>     <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">S</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
             <span class="n">mean</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">_dist</span><span class="p">(</span><span class="n">s_t</span><span class="p">)</span>
@@ -146,11 +146,11 @@ SHAP признаков действия отвечает: «было ли эт�
 <p><strong>Ожидаемый паттерн:</strong> <code>heat_input</code> управляется главным образом отклонением <code>temperature</code> от уставного значения; <code>flow_input</code> — отклонением <code>filler_frac</code>. Если <code>level</code> имеет высокий SHAP для <code>flow_input</code>, политика научилась, что расход влияет на уровень — физически корректно и признак того, что агент усвоил интегрирующую динамику.</p>
 <h3>Уровень 3: SHAP динамики — почему модель предсказывает это следующее состояние?</h3>
 <p>Объясняем три выходных измерения: <code>next_temperature</code> (0), <code>next_filler_frac</code> (1), <code>next_level</code> (4):</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">DynamicsSingleOutputWrapper</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">DynamicsSingleOutputWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Объясняет предсказание среднего по ансамблю для одного измерения состояния.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="sd">    """</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
             <span class="n">s</span>     <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">]</span>
             <span class="n">a</span>     <span class="o">=</span> <span class="n">x_t</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">s_dim</span><span class="p">:]</span>
@@ -162,14 +162,14 @@ SHAP признаков действия отвечает: «было ли эт�
 <hr />
 <h2>Класс Explainer</h2>
 <p><code>OfflineRLExplainer</code> управляет построением фонового датасета и вычислением SHAP для всех трёх уровней:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">OfflineRLExplainer</span><span class="p">:</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">,</span> <span class="n">ensemble</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span>
-                 <span class="n">s_mean</span><span class="p">,</span> <span class="n">s_std</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">n_background</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">OfflineRLExplainer</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">,</span> <span class="n">ensemble</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span>
+                 <span class="n">s_mean</span><span class="p">,</span> <span class="n">s_std</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cpu'</span><span class="p">,</span> <span class="n">n_background</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
         <span class="c1"># Фон = репрезентативная выборка из офлайн-датасета</span>
         <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span>
-            <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">]),</span> <span class="n">size</span><span class="o">=</span><span class="n">n_background</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span>  <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;actions&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">]),</span> <span class="n">size</span><span class="o">=</span><span class="n">n_background</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span>  <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="s1">'actions'</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">bg_sa</span>      <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
             <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 </code></pre></div>
@@ -181,8 +181,8 @@ SHAP признаков действия отвечает: «было ли эт�
     <span class="n">n_background</span> <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>    <span class="c1"># размер фонового датасета</span>
     <span class="n">n_samples</span>    <span class="o">=</span> <span class="mi">80</span><span class="p">,</span>    <span class="c1"># коалиций SHAP на экземпляр</span>
 <span class="p">)</span>
-<span class="c1"># ключи results: &#39;states&#39;, &#39;actions&#39;, &#39;q_shap&#39;,</span>
-<span class="c1">#                &#39;policy_shap&#39;, &#39;dynamics_shap&#39;, &#39;q_base&#39;</span>
+<span class="c1"># ключи results: 'states', 'actions', 'q_shap',</span>
+<span class="c1">#                'policy_shap', 'dynamics_shap', 'q_base'</span>
 </code></pre></div>
 
 <p><code>n_samples</code> управляет качеством аппроксимации. При 80 стандартная ошибка ~0.005 на нормированных выходах — достаточно для ранжирования признаков. При 500 — качество для публикаций, но в 6 раз медленнее.</p>
@@ -190,8 +190,8 @@ SHAP признаков действия отвечает: «было ли эт�
 <h2>Визуализация</h2>
 <h3>Сводный график (Q-функция)</h3>
 <p>График «рой пчёл» (beeswarm): каждая точка — один экземпляр, цвет — значение признака (синий=низкое, красный=высокое), ось X — SHAP-значение.</p>
-<div class="codehilite"><pre><span></span><code><span class="n">plot_q_summary</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
-               <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch11_q_summary.png&#39;</span><span class="p">)</span>
+<div class="codehilite"><pre><span></span><code><span class="n">plot_q_summary</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">'q_shap'</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
+               <span class="n">save_path</span><span class="o">=</span><span class="s1">'ch11_q_summary.png'</span><span class="p">)</span>
 </code></pre></div>
 
 <p>Паттерны для чтения:
@@ -200,33 +200,33 @@ SHAP признаков действия отвечает: «было ли эт�
 - <strong>Смешанные цвета</strong> → нелинейная или зависимая от взаимодействий связь</p>
 <h3>Столбчатые диаграммы (политика и динамика)</h3>
 <p>Среднее |SHAP| по признакам — отвечает на «какие признаки важнее всего?»</p>
-<div class="codehilite"><pre><span></span><code><span class="n">plot_policy_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;policy_shap&#39;</span><span class="p">],</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
-                <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch11_policy_bar.png&#39;</span><span class="p">)</span>
+<div class="codehilite"><pre><span></span><code><span class="n">plot_policy_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">'policy_shap'</span><span class="p">],</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
+                <span class="n">save_path</span><span class="o">=</span><span class="s1">'ch11_policy_bar.png'</span><span class="p">)</span>
 
-<span class="n">plot_dynamics_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;dynamics_shap&#39;</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
-                  <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch11_dynamics_bar.png&#39;</span><span class="p">)</span>
+<span class="n">plot_dynamics_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">'dynamics_shap'</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
+                  <span class="n">save_path</span><span class="o">=</span><span class="s1">'ch11_dynamics_bar.png'</span><span class="p">)</span>
 </code></pre></div>
 
 <h3>Force plot: один экземпляр</h3>
 <p>Наиболее операционно полезная визуализация. Для одного временного шага показывает вклад каждого признака как водопад от базового уровня до итогового Q-значения:</p>
 <div class="codehilite"><pre><span></span><code><span class="n">best</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">q_vals</span><span class="p">))</span>   <span class="c1"># экземпляр с наибольшим Q</span>
 <span class="n">plot_force_single</span><span class="p">(</span>
-    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][</span><span class="n">best</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
-    <span class="n">q_value</span><span class="o">=</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">],</span> <span class="n">q_base</span><span class="o">=</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_base&#39;</span><span class="p">],</span>
-    <span class="n">instance_label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;Highest-Q instance (Q=</span><span class="si">{</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">]</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">)&#39;</span><span class="p">,</span>
-    <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;ch11_force_best.png&#39;</span><span class="p">)</span>
+    <span class="n">results</span><span class="p">[</span><span class="s1">'q_shap'</span><span class="p">][</span><span class="n">best</span><span class="p">],</span> <span class="n">SA_NAMES</span><span class="p">,</span>
+    <span class="n">q_value</span><span class="o">=</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">],</span> <span class="n">q_base</span><span class="o">=</span><span class="n">results</span><span class="p">[</span><span class="s1">'q_base'</span><span class="p">],</span>
+    <span class="n">instance_label</span><span class="o">=</span><span class="sa">f</span><span class="s1">'Highest-Q instance (Q=</span><span class="si">{</span><span class="n">q_vals</span><span class="p">[</span><span class="n">best</span><span class="p">]</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">)'</span><span class="p">,</span>
+    <span class="n">save_path</span><span class="o">=</span><span class="s1">'ch11_force_best.png'</span><span class="p">)</span>
 </code></pre></div>
 
 <p>Оператор использует этот график для ответа: «почему агент оценил этот момент как высокоценный?» Если ответ — «температура у уставного значения, уровень стабилен» — разумно. Если «вязкость необычно низкая», когда уставная точка по температуре — подозрительная корреляция для расследования.</p>
 <h3>График зависимости: взаимодействия</h3>
 <p>SHAP признака A против его сырого значения, окрашенный по признаку B — выявляет эффекты взаимодействия:</p>
 <div class="codehilite"><pre><span></span><code><span class="n">plot_shap_dependence</span><span class="p">(</span>
-    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q_shap&#39;</span><span class="p">][:,</span> <span class="p">:</span><span class="nb">len</span><span class="p">(</span><span class="n">STATE_NAMES</span><span class="p">)],</span>
-    <span class="n">results</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">],</span>
+    <span class="n">results</span><span class="p">[</span><span class="s1">'q_shap'</span><span class="p">][:,</span> <span class="p">:</span><span class="nb">len</span><span class="p">(</span><span class="n">STATE_NAMES</span><span class="p">)],</span>
+    <span class="n">results</span><span class="p">[</span><span class="s1">'states'</span><span class="p">],</span>
     <span class="n">feature_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>       <span class="c1"># temperature</span>
     <span class="n">interaction_idx</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>   <span class="c1"># окрашен по filler_frac</span>
     <span class="n">feature_names</span><span class="o">=</span><span class="n">STATE_NAMES</span><span class="p">,</span>
-    <span class="n">title</span><span class="o">=</span><span class="s1">&#39;Q-SHAP: влияние температуры (окрашено по filler_frac)&#39;</span><span class="p">)</span>
+    <span class="n">title</span><span class="o">=</span><span class="s1">'Q-SHAP: влияние температуры (окрашено по filler_frac)'</span><span class="p">)</span>
 </code></pre></div>
 
 <p>Если SHAP температуры систематически разделяется по цвету наполнителя — есть взаимодействие: реакция Q-функции на температуру зависит от доли наполнителя. Для физически-информированного агента это ожидаемо — вязкость нелинейно зависит от обеих переменных.</p>
@@ -250,7 +250,7 @@ SHAP признаков действия отвечает: «было ли эт�
 <p><strong>Выбор фонового датасета</strong> — важнейший гиперпараметр. Полный датасет в качестве фона отвечает «отличие от типичной работы». Фон из зоны ограничений отвечает «что отличает приближение к нарушению от типичного приближения» — полезно для диагностики, почему агент приближается к границам.</p>
 <p><strong>Физические единицы.</strong> Состояния нормированы для обучения. Для коммуникации с операторами переводите <strong>состояния</strong> обратно в физические единицы — не SHAP-значения:</p>
 <div class="codehilite"><pre><span></span><code><span class="c1"># Перевод значений признаков обратно в физические единицы (для отображения)</span>
-<span class="n">states_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;states&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span> <span class="o">+</span> <span class="n">s_mean</span>
+<span class="n">states_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">'states'</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span> <span class="o">+</span> <span class="n">s_mean</span>
 <span class="c1"># НЕ умножайте SHAP-значения на s_std.</span>
 <span class="c1"># SHAP остаётся в единицах выхода модели:</span>
 <span class="c1"># - Q-SHAP: единицы Q / return</span>

@@ -2,7 +2,7 @@
 """
 Convert chapter .md files to .html in the same style as existing en/chapter1.html.
 Reads YAML front matter from each .md, converts body with markdown, wraps in template.
-Requires: pip install markdown pyyaml
+Requires: pip install markdown pyyaml Pygments (Pygments is needed for highlighted code blocks)
 Usage: python scripts/md2html.py
 """
 import re

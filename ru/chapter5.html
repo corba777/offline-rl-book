@@ -111,13 +111,13 @@
 </blockquote>
 <h3>Сети</h3>
 <p>IQL использует три сети: <code>ValueNetwork</code> (только состояние), <code>QNetwork</code> (состояние + действие) и <code>DeterministicPolicy</code>. Обратите внимание — IQL использует <strong>детерминированную</strong> политику. Стохастический актор из CQL не нужен, потому что извлечение политики делается через взвешенную регрессию, а не максимизацию энтропии:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">ValueNetwork</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ValueNetwork</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    V(s) — state value function.</span>
 <span class="sd">    IQL learns this via expectile regression, not Bellman backup.</span>
 <span class="sd">    No action input — this is the key architectural difference from Q(s,a).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+<span class="sd">    """</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
@@ -125,13 +125,13 @@
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
         <span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">state</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 
 
-<span class="k">class</span> <span class="nc">QNetwork</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Q(s,a) — action-value function (double-Q as in CQL).&quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">QNetwork</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Q(s,a) — action-value function (double-Q as in CQL)."""</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span> <span class="o">+</span> <span class="n">action_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
@@ -139,19 +139,19 @@
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
         <span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">],</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 
 
-<span class="k">class</span> <span class="nc">DeterministicPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">DeterministicPolicy</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Simple deterministic MLP policy: s -&gt; a in [-1, 1].</span>
 
 <span class="sd">    IQL extracts the policy via advantage-weighted regression (AWR):</span>
 <span class="sd">    minimize E[exp(beta * A(s,a)) * ||pi(s) - a||^2] over dataset actions.</span>
 <span class="sd">    No need for a stochastic policy — we weight dataset actions by their advantage.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+<span class="sd">    """</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">state_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span>
@@ -159,10 +159,10 @@
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">action_dim</span><span class="p">),</span> <span class="n">nn</span><span class="o">.</span><span class="n">Tanh</span><span class="p">(),</span>
         <span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
 
@@ -173,9 +173,9 @@
 
 <h3>Expectile Loss</h3>
 <p>Ключевой примитив — 7-строчная функция, заменяющая <code>max_a Q(s', a')</code>:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">expectile_loss</span><span class="p">(</span><span class="n">pred</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">expectile_loss</span><span class="p">(</span><span class="n">pred</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                    <span class="n">tau</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Asymmetric L2 loss (expectile regression).</span>
 
 <span class="sd">    For a scalar residual u = target - pred:</span>
@@ -190,9 +190,9 @@
 <span class="sd">    At tau-&gt;1.0 this approximates the maximum (V -&gt; max Q).</span>
 <span class="sd">    IQL uses tau in [0.5, 0.9] — asymmetric toward upper quantile.</span>
 
-<span class="sd">    This is the entire magic of IQL: instead of max_a Q(s&#39;,a&#39;),</span>
+<span class="sd">    This is the entire magic of IQL: instead of max_a Q(s',a'),</span>
 <span class="sd">    we fit V(s) to the upper expectile of Q(s, a_data).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">u</span> <span class="o">=</span> <span class="n">target</span> <span class="o">-</span> <span class="n">pred</span>
     <span class="n">weight</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">u</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span>
                          <span class="n">torch</span><span class="o">.</span><span class="n">full_like</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">tau</span><span class="p">),</span>
@@ -202,19 +202,19 @@
 
 <p>При <code>tau=0.7</code>: недооценка штрафуется в 2.3× сильнее переоценки, смещая оценку вверх — к лучшим действиям в датасете.</p>
 <h3>V-обновление</h3>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">iql_value_loss</span><span class="p">(</span><span class="n">V</span><span class="p">:</span> <span class="n">ValueNetwork</span><span class="p">,</span>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">iql_value_loss</span><span class="p">(</span><span class="n">V</span><span class="p">:</span> <span class="n">ValueNetwork</span><span class="p">,</span>
                    <span class="n">Q1_tgt</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span> <span class="n">Q2_tgt</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span>
                    <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                    <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                    <span class="n">tau</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.7</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    V-network update via expectile regression.</span>
 
 <span class="sd">    Target: min(Q1_tgt(s,a), Q2_tgt(s,a)) for dataset (s,a) pairs.</span>
 <span class="sd">    V(s) is pushed toward the tau-expectile of this target.</span>
 
 <span class="sd">    No next states, no policy sampling — fully in-sample.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
         <span class="n">q_target</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">Q1_tgt</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">),</span> <span class="n">Q2_tgt</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">))</span>
 
@@ -222,26 +222,26 @@
     <span class="n">loss</span>   <span class="o">=</span> <span class="n">expectile_loss</span><span class="p">(</span><span class="n">v_pred</span><span class="p">,</span> <span class="n">q_target</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">loss</span><span class="p">,</span> <span class="p">{</span>
-        <span class="s1">&#39;v_loss&#39;</span><span class="p">:</span>    <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-        <span class="s1">&#39;v_mean&#39;</span><span class="p">:</span>    <span class="n">v_pred</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-        <span class="s1">&#39;q_mean&#39;</span><span class="p">:</span>    <span class="n">q_target</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-        <span class="s1">&#39;v_q_gap&#39;</span><span class="p">:</span>   <span class="p">(</span><span class="n">q_target</span> <span class="o">-</span> <span class="n">v_pred</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'v_loss'</span><span class="p">:</span>    <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'v_mean'</span><span class="p">:</span>    <span class="n">v_pred</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'q_mean'</span><span class="p">:</span>    <span class="n">q_target</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'v_q_gap'</span><span class="p">:</span>   <span class="p">(</span><span class="n">q_target</span> <span class="o">-</span> <span class="n">v_pred</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
     <span class="p">}</span>
 </code></pre></div>
 
 <p>Блок <code>torch.no_grad()</code> важен: градиенты текут только через <code>V</code>, не через таргетные Q-сети. Q-таргеты служат чисто как регрессионные цели.</p>
 <h3>Q-обновление</h3>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">iql_q_loss</span><span class="p">(</span><span class="n">Q</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">iql_q_loss</span><span class="p">(</span><span class="n">Q</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span>
                <span class="n">V</span><span class="p">:</span> <span class="n">ValueNetwork</span><span class="p">,</span>
                <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                <span class="n">rewards</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">next_states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                <span class="n">dones</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                <span class="n">gamma</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.99</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Q-network update via standard TD backup — using live V(s&#39;) instead of max_a Q(s&#39;,a&#39;).</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Q-network update via standard TD backup — using live V(s') instead of max_a Q(s',a').</span>
 
-<span class="sd">    TD target: r + gamma * V(s&#39;)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    TD target: r + gamma * V(s')</span>
+<span class="sd">    """</span>
     <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
         <span class="n">v_next</span>    <span class="o">=</span> <span class="n">V</span><span class="p">(</span><span class="n">next_states</span><span class="p">)</span>
         <span class="n">td_target</span> <span class="o">=</span> <span class="n">rewards</span> <span class="o">+</span> <span class="n">gamma</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">dones</span><span class="p">)</span> <span class="o">*</span> <span class="n">v_next</span>
@@ -250,22 +250,22 @@
     <span class="n">loss</span>   <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">q_pred</span><span class="p">,</span> <span class="n">td_target</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">loss</span><span class="p">,</span> <span class="p">{</span>
-        <span class="s1">&#39;q_loss&#39;</span><span class="p">:</span>   <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-        <span class="s1">&#39;q_pred&#39;</span><span class="p">:</span>   <span class="n">q_pred</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-        <span class="s1">&#39;td_target&#39;</span><span class="p">:</span> <span class="n">td_target</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'q_loss'</span><span class="p">:</span>   <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'q_pred'</span><span class="p">:</span>   <span class="n">q_pred</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'td_target'</span><span class="p">:</span> <span class="n">td_target</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
     <span class="p">}</span>
 </code></pre></div>
 
 <p>Сравните с Q-обновлением CQL: там <code>v_next</code> требовал <code>policy.sample(next_states)</code> и затем <code>Q_target(next_states, next_actions)</code>. Здесь — один прямой проход через живую <code>V</code>, без сэмплирования действий.</p>
 <h3>Извлечение политики через AWR</h3>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">iql_policy_loss</span><span class="p">(</span><span class="n">policy</span><span class="p">:</span> <span class="n">DeterministicPolicy</span><span class="p">,</span>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">iql_policy_loss</span><span class="p">(</span><span class="n">policy</span><span class="p">:</span> <span class="n">DeterministicPolicy</span><span class="p">,</span>
                     <span class="n">Q1</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span> <span class="n">Q2</span><span class="p">:</span> <span class="n">QNetwork</span><span class="p">,</span>
                     <span class="n">V</span><span class="p">:</span> <span class="n">ValueNetwork</span><span class="p">,</span>
                     <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                     <span class="n">actions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                     <span class="n">beta</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">3.0</span><span class="p">,</span>
                     <span class="n">clip_exp</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">100.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Policy extraction via Advantage-Weighted Regression (AWR).</span>
 
 <span class="sd">    Objective: minimize E_{(s,a)~D} [ exp(beta * A(s,a)) * ||pi(s) - a||^2 ]</span>
@@ -279,7 +279,7 @@
 
 <span class="sd">    The exp weights are clipped to avoid numerical instability.</span>
 <span class="sd">    No environment interaction, no OOD actions — pure in-sample regression.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
         <span class="n">q_val</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">Q1</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">),</span> <span class="n">Q2</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">))</span>
         <span class="n">v_val</span> <span class="o">=</span> <span class="n">V</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
@@ -291,13 +291,13 @@
 
     <span class="c1"># Weighted MSE: push policy toward high-advantage dataset actions</span>
     <span class="n">pi_pred</span> <span class="o">=</span> <span class="n">policy</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
-    <span class="n">loss</span>    <span class="o">=</span> <span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="n">F</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">pi_pred</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">reduction</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+    <span class="n">loss</span>    <span class="o">=</span> <span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="n">F</span><span class="o">.</span><span class="n">mse_loss</span><span class="p">(</span><span class="n">pi_pred</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">reduction</span><span class="o">=</span><span class="s1">'none'</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
 
     <span class="k">return</span> <span class="n">loss</span><span class="p">,</span> <span class="p">{</span>
-        <span class="s1">&#39;pi_loss&#39;</span><span class="p">:</span>    <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-        <span class="s1">&#39;adv_mean&#39;</span><span class="p">:</span>   <span class="n">adv</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-        <span class="s1">&#39;adv_max&#39;</span><span class="p">:</span>    <span class="n">adv</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
-        <span class="s1">&#39;weight_max&#39;</span><span class="p">:</span> <span class="n">weights</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'pi_loss'</span><span class="p">:</span>    <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'adv_mean'</span><span class="p">:</span>   <span class="n">adv</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'adv_max'</span><span class="p">:</span>    <span class="n">adv</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+        <span class="s1">'weight_max'</span><span class="p">:</span> <span class="n">weights</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
     <span class="p">}</span>
 
 
@@ -315,7 +315,7 @@
         <span class="n">info</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">v_info</span><span class="p">)</span>
 
         <span class="c1"># ── 2. Q update (TD with live V as next-state value) ──────────────</span>
-        <span class="c1"># Q(s,a) ← r + gamma * V(s&#39;)</span>
+        <span class="c1"># Q(s,a) ← r + gamma * V(s')</span>
         <span class="n">q_loss1</span><span class="p">,</span> <span class="n">q_info1</span> <span class="o">=</span> <span class="n">iql_q_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">,</span>
                                        <span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">s2</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma</span><span class="p">)</span>
         <span class="n">q_loss2</span><span class="p">,</span> <span class="n">q_info2</span> <span class="o">=</span> <span class="n">iql_q_loss</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">,</span>
@@ -325,7 +325,7 @@
         <span class="n">nn</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">clip_grad_norm_</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q1</span><span class="o">.</span><span class="n">parameters</span><span class="p">())</span> <span class="o">+</span>
                                  <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Q2</span><span class="o">.</span><span class="n">parameters</span><span class="p">()),</span> <span class="mf">1.0</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">q_opt</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
-        <span class="n">info</span><span class="p">[</span><span class="s1">&#39;q_loss&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">q_info1</span><span class="p">[</span><span class="s1">&#39;q_loss&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">q_info2</span><span class="p">[</span><span class="s1">&#39;q_loss&#39;</span><span class="p">])</span> <span class="o">/</span> <span class="mi">2</span>
+        <span class="n">info</span><span class="p">[</span><span class="s1">'q_loss'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">q_info1</span><span class="p">[</span><span class="s1">'q_loss'</span><span class="p">]</span> <span class="o">+</span> <span class="n">q_info2</span><span class="p">[</span><span class="s1">'q_loss'</span><span class="p">])</span> <span class="o">/</span> <span class="mi">2</span>
 
         <span class="c1"># ── 3. Policy update (advantage-weighted regression) ──────────────</span>
         <span class="n">pi_loss</span><span class="p">,</span> <span class="n">pi_info</span> <span class="o">=</span> <span class="n">iql_policy_loss</span><span class="p">(</span>
@@ -431,7 +431,7 @@ tau=0.9   V =  0.74    около максимума
 <p><strong>Практическое правило</strong>: если датасет высокого качества и плотный — используйте большие $\tau$ и $\beta$. Если шумный или разреженный — меньшие значения.</p>
 <hr />
 <h2>Запуск сравнения</h2>
-<div class="codehilite"><pre><span></span><code><span class="kn">from</span> <span class="nn">iql</span> <span class="kn">import</span> <span class="n">run_comparison</span>
+<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">iql</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_comparison</span>
 <span class="n">run_comparison</span><span class="p">()</span>
 </code></pre></div>
 

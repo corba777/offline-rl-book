@@ -20,3 +20,11 @@ torch>=1.12
 matplotlib>=3.5
 shap>=0.42
 scipy>=1.9
+
+# HTML build (python scripts/md2html.py). Without Pygments, codehilite emits
+# unhighlighted <pre> blocks and every chapter's HTML changes.
+# All chapter HTML was last built with markdown 3.11.3, Pygments 2.21.0, PyYAML 6.0.3;
+# older versions differ in markup (quote escaping, whitespace spans), not content.
+markdown>=3.11
+Pygments>=2.21
+pyyaml>=6.0
