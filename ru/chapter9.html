@@ -97,13 +97,14 @@
                      <span class="n">cost_ratio</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cpu'</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Эвристика масштаба (не гарантия):</span>
-<span class="sd">        λ = cost_ratio * mean|r| / C_ref,  C_ref = max(наибольшее нарушение, tol),</span>
+<span class="sd">        λ = cost_ratio * mean|r| / C_ref,  C_ref = max(наибольшее нарушение во всём датасете, tol),</span>
 <span class="sd">    так что нарушение величины C_ref стоит cost_ratio средних шагов награды.</span>
 <span class="sd">    """</span>
-    <span class="n">n</span>  <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">2000</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">]))</span>
-    <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'actions'</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'next_states'</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="c1"># Весь датасет: логи часто упорядочены по режимам, и префикс может</span>
+    <span class="c1"># пропустить редкие эпизоды, в которых и случаются нарушения.</span>
+    <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'actions'</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'next_states'</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
 
     <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
         <span class="n">c_ref</span>  <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">constraint_fn</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="n">tol</span><span class="p">)</span>
@@ -114,7 +115,7 @@
 
 <h3>Типы физических ограничений</h3>
 <p><strong>Законы сохранения.</strong> Для смесительного бака с притоком $q_{in}$, оттоком $q_{out}$, объёмом $V$:</p>
-<p><div class="math-display">$$g_{mass}(s_t, s_{t+1}) = \bigl|V_{t+1} - V_t - \Delta t\,(q_{in,t} - q_{out,t})\bigr| - \delta$$</div></p>
+<p><div class="math-display">$$g_{mass}(s_t, s_{t+1}) = \max\Bigl(0,\; \bigl|V_{t+1} - V_t - \Delta t\,(q_{in,t} - q_{out,t})\bigr| - \delta\Bigr)$$</div></p>
 <p>где $\delta$ поглощает шум измерений и неизмеренные возмущения.</p>
 <p><strong>Монотонные зависимости.</strong> Если физическая переменная $x$ заведомо убывает со временем при нормальной работе:</p>
 <p><div class="math-display">$$g_{mono}(s_t, s_{t+1}) = \max(0,\; x_{t+1} - x_t - \delta_{noise})$$</div></p>
@@ -232,7 +233,7 @@
 <span class="sd">    tau, K могут быть скалярами или 1D-тензорами длины state_dim.</span>
 <span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
-        <span class="n">u</span> <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="p">:</span><span class="n">state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="n">action</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="n">state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
         <span class="k">return</span> <span class="n">state</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">u</span> <span class="o">-</span> <span class="n">state</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">physics_fn</span>
 </code></pre></div>
@@ -389,7 +390,7 @@
                └──────────────────┴─────────────────┴──────────────────┘
 </code></pre></div>
 
-<p>D4RL-эталоны (стандартный набор офлайн-датасетов для симулированного управления в духе MuJoCo) находятся внизу слева: плотные данные, нет физики. Промышленный offline RL обычно находится в верхней строке, с редкими данными, и в одной из двух правых ячеек: частичная или хорошая физика.</p>
+<p>«Гибрид + CQL» — это модельный метод, у которого пессимизм заложен в функцию ценности, а не в штраф за неопределённость, например COMBO (<a href="https://arxiv.org/abs/2102.08363">Yu et al., 2021</a>): CQL, обученный на реальных переходах и rollouts гибридной модели, с занижением Q-значений на синтетических. Это естественный выбор, когда неопределённости гибридного ансамбля нельзя доверять, потому что физика у его членов общая. D4RL-эталоны (стандартный набор офлайн-датасетов для симулированного управления в духе MuJoCo) находятся внизу слева: плотные данные, нет физики. Промышленный offline RL обычно находится в верхней строке, с редкими данными, и в одной из двух правых ячеек: частичная или хорошая физика.</p>
 <hr />
 <h2>Объединение трёх подходов</h2>
 <p>Три части этой главы хорошо сочетаются. Реалистичный pipeline physics-informed offline RL может использовать:</p>
@@ -436,6 +437,7 @@
 <hr />
 <h2>Литература</h2>
 <ul>
+<li>Yu, T., Kumar, A., Rafailov, R., Rajeswaran, A., Levine, S., &amp; Finn, C. (2021). <em>COMBO: Conservative Offline Model-Based Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/2102.08363">arXiv:2102.08363</a>.</li>
 <li>Altman, E. (1999). <em>Constrained Markov Decision Processes.</em> CRC Press.</li>
 <li>Banerjee, C., Nguyen, T., Fookes, C., &amp; Raissi, M. (2023). <em>A Survey on Physics Informed Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2309.01909">arXiv:2309.01909</a>.</li>
 <li>Paternain, S., Chamon, L. F. O., Calvo-Fullana, M., &amp; Ribeiro, A. (2019). <em>Constrained Reinforcement Learning Has Zero Duality Gap.</em> NeurIPS. <a href="https://arxiv.org/abs/1910.13393">arXiv:1910.13393</a>.</li>

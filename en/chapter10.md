@@ -32,7 +32,7 @@ Real industrial processes differ from that environment in every dimension that m
 
 **Hard physical constraints.** Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.
 
-This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–9. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.
+This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–9. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way. The process is a teaching example; for comparisons with the literature there are open testbeds for the same regime: the Industrial Benchmark ([Hein et al., 2017](https://arxiv.org/abs/1709.09480)) for delayed, partially observed industrial control, NeoRL ([Qin et al., 2022](https://arxiv.org/abs/2102.00714)) for narrow logs from conservative controllers, and DSRL ([Liu et al., 2024](https://arxiv.org/abs/2306.09303)) for offline RL under explicit constraint costs.
 
 > 📄 Full code: [`chapter10.py`](https://github.com/corba777/offline-rl-book/blob/main/code/chapter10.py)
 
@@ -62,8 +62,8 @@ The agent acts through two inputs (blue): the filler feed rate and the heater se
 
 | Index | Action | Effect |
 |---|---|---|
-| $a_0$ | `heat_input` | Heater setpoint delta |
-| $a_1$ | `flow_input` | Filler feed rate delta |
+| $a_0$ | `heat_input` | Heater command in $[-1, 1]$ (absolute, not a change) |
+| $a_1$ | `flow_input` | Filler feed command in $[-1, 1]$ (absolute, not a change) |
 
 **True dynamics** (unknown to the agent):
 
@@ -215,11 +215,13 @@ The known physics for the coating process is encoded in `coating_physics_fn`. It
 def coating_physics_fn(state: torch.Tensor,
                         action: torch.Tensor) -> torch.Tensor:
     T, f, L = state[:, 0], state[:, 1], state[:, 4]
-    heat_in  = action[:, 0] * 0.5 + 0.5
+    heat_in  = action[:, 0] * 0.5 + 0.5    # actions stay in [-1, 1]; they are not normalized
     flow_in  = action[:, 1] * 0.5 + 0.5
+    lagged   = state.shape[1] > 5           # 7 columns: (..., u_f(t-2), u_f(t-1))
+    feed_f   = state[:, 5] if lagged else flow_in   # the feed that reaches the zone now
 
     T_new = (1 - DT/TAU_T) * T + (DT/TAU_T) * K_T * heat_in
-    f_new = (1 - DT/TAU_F) * f + (DT/TAU_F) * K_F * flow_in
+    f_new = (1 - DT/TAU_F) * f + (DT/TAU_F) * K_F * feed_f
 
     # Linearized viscosity (true is nonlinear)
     v_new = (0.75 - 0.45*T_new + 0.38*f_new).clamp(0.0, 1.0)
@@ -229,8 +231,13 @@ def coating_physics_fn(state: torch.Tensor,
     inflow  = flow_in * 0.4
     L_new   = (L + DT * (inflow - Q_OUT)).clamp(0.0, 1.0)
 
-    return torch.stack([T_new, f_new, v_new, d_new, L_new], dim=1)
+    out = [T_new, f_new, v_new, d_new, L_new]
+    if lagged:                               # shift the feed commands in transit
+        out += [state[:, 6], flow_in]
+    return torch.stack(out, dim=1)
 ```
+
+The level still responds to the current command — the tank fills as soon as the feed changes — while the filler fraction in the coating zone responds to the command issued two steps earlier. With the lagged columns the function also advances the two-step shift register, so multi-step rollouts of the hybrid model stay consistent.
 
 Before training the hybrid ensemble, run `diagnose_physics_coverage` to see where the physics model actually helps:
 
@@ -239,14 +246,14 @@ ensemble.diagnose_physics_coverage(norm_dataset)
 
 # Variance of s' - s explained by physics, mean over ten seeds [range]:
 #                         5 variables              with lagged feed commands
-#   temperature           36.7%  [32.8, 38.6]      36.7%  [32.8, 38.6]
-#   filler_fraction      -39.9%  [-45.4, -31.3]    53.6%  [51.6, 57.0]
-#   viscosity              2.2%  [-2.5, 7.6]       41.5%  [38.9, 43.0]
-#   density              -31.2%  [-36.3, -24.2]    51.4%  [48.2, 53.8]
-#   level                 98.0%  [97.8, 98.2]      98.0%  [97.8, 98.2]
+#   temperature           47.9%  [47.3, 48.4]      47.9%  [47.3, 48.4]
+#   filler_fraction      -50.4%  [-51.9, -49.1]    64.3%  [63.9, 64.6]
+#   viscosity              6.8%  [5.4, 8.2]        55.3%  [54.5, 56.1]
+#   density              -34.6%  [-36.0, -33.0]    64.2%  [63.7, 64.5]
+#   level                 98.7%  [98.7, 98.8]      98.7%  [98.7, 98.8]
 ```
 
-The diagnostic measures skill on increments (Chapter 9), and it tells a sharper story than a "fraction of variance of $s'$" would. The mass balance is essentially exact for the level. For temperature the physics explains about a third of the step-to-step change; most of the rest is measurement noise, which no model can explain. On the five logged variables the filler fraction scores negative: a first-order model that has no access to the feed command in transit predicts the increments *worse than predicting no change at all*, because it reacts to the current command two steps too early. Density, computed from the filler fraction, inherits the problem, and viscosity sits near zero. With the two lagged commands in the state, the same physics applies the delay exactly and the filler, density and viscosity scores turn clearly positive. In the five-variable case the residual network cannot repair this either: the command that drives the filler is not among its inputs. And, as Chapter 9 warns, the ensemble's uncertainty cannot see that the shared physics is wrong there.
+The diagnostic measures skill on increments (Chapter 9), and it tells a sharper story than a "fraction of variance of $s'$" would. The mass balance is essentially exact for the level. For temperature the physics explains about half of the step-to-step change; much of the rest is measurement noise, which no model can explain. On the five logged variables the filler fraction scores negative: a first-order model that has no access to the feed command in transit predicts the increments *worse than predicting no change at all*, because it reacts to the current command two steps too early. Density, computed from the filler fraction, inherits the problem, and viscosity sits near zero. With the two lagged commands in the state, the same physics applies the delay exactly and the filler, density and viscosity scores turn clearly positive. In the five-variable case the residual network cannot repair this either: the command that drives the filler is not among its inputs. And, as Chapter 9 warns, the ensemble's uncertainty cannot see that the shared physics is wrong there.
 
 ---
 
@@ -317,7 +324,7 @@ train_morel(agent=hm.morel_agent, dataset=norm_dataset, env=env,
             eval_every=16)    # no evaluation on the real process during training
 ```
 
-The budgets differ and should be stated with the results. With 40,000 transitions and batches of 256, BC takes about 9,400 gradient steps and each CQL variant about 12,500, while HybridMOReL trains its ensemble for 30 epochs and then takes 4,500 SAC steps on mixed real and model data. No hyperparameters were tuned per method; all use the values shown.
+The budgets differ and should be stated with the results. With 40,000 transitions and batches of 256, BC takes about 9,400 gradient steps and each CQL variant about 12,500, while HybridMOReL trains its ensemble for 30 epochs and then takes 4,500 SAC steps on mixed real and model data. No hyperparameters were tuned per method; all use the values shown. The obvious worry — that HybridMOReL simply gets too few policy updates — is answered by the oracle ablation below: with the same 4,500 SAC steps and the true dynamics, the same agent beats CQL, so the budget is not what holds the hybrid version back.
 
 ---
 
@@ -331,11 +338,11 @@ The budgets differ and should be stated with the results. With 40,000 transition
 |---|---|---|---|---|
 | Return (200 steps) | −2.7 [−2.9, −2.5] | −1.4 [−1.5, −1.4] | −1.4 [−1.5, −1.3] | −5.6 [−10.2, −1.1] |
 | Return, nominal / disturbed starts | −2.5 / −2.9 | −1.3 / −1.6 | −1.3 / −1.5 | −5.6 / −5.6 |
-| Temperature IAE | 0.042 [0.040, 0.044] | 0.027 [0.026, 0.029] | 0.027 [0.026, 0.029] | 0.052 [0.031, 0.073] |
+| Temperature IAE | 0.042 [0.040, 0.044] | 0.027 [0.026, 0.029] | 0.027 [0.026, 0.028] | 0.052 [0.031, 0.073] |
 | Filler IAE | 0.024 [0.023, 0.025] | 0.026 [0.025, 0.026] | 0.026 [0.025, 0.026] | 0.028 [0.026, 0.029] |
-| Level IAE | 0.093 [0.084, 0.102] | 0.036 [0.030, 0.042] | 0.028 [0.022, 0.034] | 0.150 [0.087, 0.212] |
-| DA temperature | 57.8% [57.0, 58.7] | 65.7% [64.4, 67.0] | 65.7% [63.9, 67.4] | 57.6% [54.0, 61.2] |
-| DA filler | 68.0% [67.2, 68.8] | 66.5% [65.8, 67.2] | 66.1% [65.3, 66.8] | 65.2% [64.2, 66.2] |
+| Level IAE | 0.093 [0.084, 0.102] | 0.036 [0.030, 0.042] | 0.031 [0.026, 0.036] | 0.150 [0.087, 0.212] |
+| DA temperature | 57.8% [57.0, 58.7] | 65.7% [64.4, 67.0] | 65.8% [64.4, 67.3] | 57.6% [54.0, 61.2] |
+| DA filler | 68.0% [67.2, 68.8] | 66.5% [65.8, 67.2] | 66.3% [65.5, 67.2] | 65.2% [64.2, 66.2] |
 | Violations, disturbed starts | 0.1% | 0.0% | 0.0% | 6.2% (one seed 62%, nine 0%) |
 | Largest bound excursion | 0.021 | 0 | 0 | 0.015 |
 
@@ -344,7 +351,7 @@ The budgets differ and should be stated with the results. With 40,000 transition
 | Metric | BC | CQL | CQL+Physics | HybridMOReL |
 |---|---|---|---|---|
 | Return (200 steps) | −2.8 [−2.9, −2.7] | −1.4 [−1.5, −1.4] | −1.4 [−1.4, −1.3] | −3.3 [−4.0, −2.6] |
-| Level IAE | 0.095 [0.092, 0.098] | 0.027 [0.023, 0.032] | 0.024 [0.020, 0.028] | 0.103 [0.072, 0.134] |
+| Level IAE | 0.095 [0.092, 0.098] | 0.027 [0.023, 0.032] | 0.025 [0.021, 0.029] | 0.103 [0.072, 0.134] |
 | Violations, disturbed starts | 0.1% | 0.0% | 0.0% | 0.0% |
 
 **Paired per-seed differences** (95% $t$-interval; positive return and negative IAE are improvements):
@@ -352,7 +359,7 @@ The budgets differ and should be stated with the results. With 40,000 transition
 | Comparison | Return, 5 variables | Return, with lags | Level IAE, 5 variables |
 |---|---|---|---|
 | CQL − BC | +1.25 [+1.06, +1.44] | +1.37 [+1.26, +1.48] | −0.057 [−0.069, −0.046] |
-| CQL+Physics − CQL | +0.06 [+0.01, +0.11] | +0.06 [+0.01, +0.11] | −0.008 [−0.015, −0.000] |
+| CQL+Physics − CQL | +0.05 [−0.02, +0.11] | +0.07 [+0.03, +0.10] | −0.005 [−0.013, +0.003] |
 | HybridMOReL − BC | −2.9 [−7.5, +1.7] | −0.5 [−1.2, +0.2] | +0.057 [−0.007, +0.121] |
 
 Overshoot was negligible for every method (at most 0.1% of steps): these first-order processes are slow enough that none of the policies drives a variable through its setpoint.
@@ -384,11 +391,11 @@ The uncertainty is informative but weak. The quintile with the highest $u$ has a
 
 **CQL improves clearly on the logging policy and on BC**, with or without the lagged commands. It removes the steady-state offsets that the proportional operators left behind: the temperature error falls by about a third and the level stays two to three times closer to its setpoint, which accounts for most of the difference in return. BC reproduces the operators, offsets included. The gain is not free on every axis: CQL tracks the filler fraction slightly worse than BC (IAE 0.026 against 0.024, a small but consistent paired difference). The reward trades filler against level, and with one actuator for both, CQL leans toward the level.
 
-**The constraint penalty helped a little, and only a paired comparison shows it.** Side by side, the CQL+Physics and CQL intervals overlap on every metric, and neither violated a bound even from disturbed starts. Paired by seed, the penalty raises the return by about 0.06 (4%) in both versions of the state, mostly through better level tracking. A plausible mechanism, not tested here: the penalty makes the logged low-level excursions more costly, which pushes the policy to keep the tank fuller, closer to its setpoint. With a dozen paired comparisons in the table, one should expect a borderline result or two by chance, so treat this one as suggestive. It is still a useful lesson about method: overlapping intervals of two means are not evidence of no difference.
+**The constraint penalty helped a little, and only a paired comparison shows it.** Side by side, the CQL+Physics and CQL intervals overlap on every metric, and neither violated a bound even from disturbed starts. Paired by seed, the penalty raises the return by about 0.05–0.07 (3–5%): clearly on the Markov state, within noise on the logged one, and with level tracking slightly better but not significantly so. A plausible mechanism, not tested here: the penalty makes the logged low-level excursions more costly, which pushes the policy to keep the tank fuller, closer to its setpoint. With a dozen paired comparisons in the table, one should expect a borderline result or two by chance, so treat this one as suggestive. It is still a useful lesson about method: overlapping intervals of two means are not evidence of no difference.
 
 **HybridMOReL was unstable on both versions of the state.** With five variables, nine seeds landed between −2.1 and −5.7, and one drove the level out of bounds in 62% of steps from disturbed starts. With the lagged commands, where the physics prior is no longer wrong on the filler loop, the first run had no failing seed, but the oracle ablation repeated it on the same datasets with a different initialization and two of ten seeds failed. Fixing the prior improved the model a great deal on the filler loop, and the stable runs got better, but it did not make the method reliable; one failure in ten runs against two in twenty is far too little data to say whether the failure rate changed. The oracle ablation locates the problem: with exact dynamics the same optimizer is the best method in the chapter, so what holds HybridMOReL back is the learned model and an uncertainty that only loosely tracks its error.
 
-**The calibrated $\lambda$ varied more than thirtyfold across seeds**, from about 2 to 73, because it depends on the single largest violation in each logged dataset. A rule keyed to the worst observation inherits that observation's randomness; in practice, use a robust reference such as a high quantile of the violations, or set the cost of a violation from engineering judgment.
+**The calibrated $\lambda$ is about 2.2 on every seed**, because the largest logged violation is always the same 0.15: the level hits zero, its physical floor, 0.15 below the lower bound. An earlier version of `calibrate_lambda` looked only at the first 2,000 transitions. The logs are ordered by regime, normal operation first, so that prefix held only the occasional small violation, and $\lambda$ swung from 2 to 73 across seeds depending on which one happened to fall into it. Two lessons follow. Compute calibration statistics on the whole dataset, or on a random sample of it, never on a prefix of logs that are sorted by anything. And a reference that comes out identical on every seed deserves a look: here it measures a saturation of the plant, not the typical size of a violation, which is why a high quantile of the violations (`quantile=0.95`) or an engineering cost is often the better reference.
 
 ### What This Case Study Shows
 
@@ -404,9 +411,9 @@ Working through this case study surfaces several decisions that do not appear in
 
 The filler equation has a two-step delay: the agent's flow input at time $t$ affects the filler fraction at time $t+2$, not $t+1$. The physics model ignores this delay — it predicts an immediate first-order response.
 
-It is tempting to leave the delay to the hybrid ensemble's residual network, but on the five logged variables the residual cannot learn it: the command that reaches the filler now was issued two steps ago, and it is not among the network's inputs. The tell-tale sign of a delay mismatch is a systematic residual that is positive when `flow_input` recently increased and negative when it recently decreased. In this case study the coverage diagnostic shows the problem plainly: the filler dimension scores about −40%, worse than the trivial no-change model. A negative score on a variable whose physics you trust is the signature of a timing error such as an unmodeled delay.
+It is tempting to leave the delay to the hybrid ensemble's residual network, but on the five logged variables the residual cannot learn it: the command that reaches the filler now was issued two steps ago, and it is not among the network's inputs. The tell-tale sign of a delay mismatch is a systematic residual that is positive when `flow_input` recently increased and negative when it recently decreased. In this case study the coverage diagnostic shows the problem plainly: the filler dimension scores about −50%, worse than the trivial no-change model. A negative score on a variable whose physics you trust is the signature of a timing error such as an unmodeled delay.
 
-The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model use them. Here $k = 2$ turned the filler score from −40% to +54%. It did not by itself make HybridMOReL reliable (see the oracle ablation), which is a reminder that a better one-step model is necessary but not sufficient. The engineering knowledge required is only the approximate delay length; if it is uncertain, include a few more lags than you think you need and let the residual learn which ones matter.
+The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model use them. Here $k = 2$ turned the filler score from −50% to +64%. It did not by itself make HybridMOReL reliable (see the oracle ablation), which is a reminder that a better one-step model is necessary but not sufficient. The engineering knowledge required is only the approximate delay length; if it is uncertain, include a few more lags than you think you need and let the residual learn which ones matter.
 
 ### Constraint Calibration
 
@@ -419,7 +426,7 @@ print(f"λ={lam:.2f} | penalized transitions: {active.float().mean():.1%} | "
       f"mean penalty when active: {pen[active].mean():.3f} | mean |r|: {r_norm.abs().mean():.3f}")
 ```
 
-If the penalty fires on a large share of transitions, the bounds or the units are wrong — evaluating physical bounds on normalized states produces exactly that. If it is active but tiny compared with the reward, the agent will ignore it. And as the results showed, a $\lambda$ keyed to the single worst logged violation can vary by more than an order of magnitude between datasets.
+If the penalty fires on a large share of transitions, the bounds or the units are wrong — evaluating physical bounds on normalized states produces exactly that. If it is active but tiny compared with the reward, the agent will ignore it. And compute it on the whole dataset: calibrating on a prefix of regime-ordered logs once made $\lambda$ vary thirtyfold across seeds in this chapter.
 
 ### Normalizing the 5D State
 
@@ -487,7 +494,7 @@ This chapter translated the tools from Chapters 1–9 into an industrial pipelin
 |---|---|---|
 | BC | Imitating the logs | Reproduces the operators, steady-state offsets included |
 | CQL | Conservative Q-values | Best return together with CQL+Physics; removes the offsets; no violations observed |
-| CQL+Physics | CQL + bounds penalty | A small paired gain over CQL (about 4% in return); no violations observed |
+| CQL+Physics | CQL + bounds penalty | A small paired gain over CQL (3–5% in return, clear on the Markov state); no violations observed |
 | HybridMOReL | Model-based, hybrid dynamics | Unreliable on both versions of the state (failing seeds in 1 of 10 and 2 of 20 runs); with the true dynamics the same optimizer is the best method |
 
 The practical recommendation: **start with a conservative model-free method such as CQL**, check what the state is missing, measure whether the policy approaches the operating limits from realistic disturbed starts, and add a constraint penalty if it does. Add a learned or hybrid dynamics model only after the physics prior beats persistence on the variables that matter, and check that its uncertainty actually tracks its error — and judge every step across several seeds, comparing methods pairwise.
@@ -498,6 +505,9 @@ Chapter 11 turns to explainability: how to interrogate a trained agent's Q-funct
 
 ## References
 
+- Hein, D., Depeweg, S., Tokic, M., Udluft, S., Hentschel, A., Runkler, T. A., et al. (2017). *A Benchmark Environment Motivated by Industrial Control Problems (Industrial Benchmark).* IEEE SSCI. [arXiv:1709.09480](https://arxiv.org/abs/1709.09480).
+- Qin, R., Gao, S., Zhang, X., Xu, Z., Huang, S., Li, Z., et al. (2022). *NeoRL: A Near Real-World Benchmark for Offline Reinforcement Learning.* NeurIPS Datasets and Benchmarks. [arXiv:2102.00714](https://arxiv.org/abs/2102.00714).
+- Liu, Z., Guo, Z., Lin, H., Yao, Y., Zhu, J., Cen, Z., et al. (2024). *Datasets and Benchmarks for Offline Safe Reinforcement Learning (DSRL).* Journal of Data-centric Machine Learning Research. [arXiv:2306.09303](https://arxiv.org/abs/2306.09303).
 - All references from Chapters 1–9 apply to the algorithms used here.
 - Åström, K.J., & Wittenmark, B. (2013). *Computer-Controlled Systems.* Dover. *(PID baseline, first-order process models)*
 - Seborg, D.E., Edgar, T.F., Mellichamp, D.A., & Doyle, F.J. (2016). *Process Dynamics and Control.* Wiley. *(industrial process control, transport delay)*

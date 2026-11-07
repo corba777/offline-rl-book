@@ -96,7 +96,7 @@ The field is moving fast. The directions below are not exhaustive, but they repr
 
 ### Decision Transformers and Sequence Models
 
-**Decision Transformer** (Chen et al., NeurIPS 2021) reframes offline RL as a sequence modeling problem. Rather than learning a Q-function or policy gradient, it trains a causal Transformer to predict the next action given the past trajectory and a desired return-to-go:
+Chapter 7 covers the Decision Transformer in detail; this section only places it among recent directions. **Decision Transformer** (Chen et al., NeurIPS 2021) reframes offline RL as a sequence modeling problem. Rather than learning a Q-function or policy gradient, it trains a causal Transformer to predict the next action given the past trajectory and a desired return-to-go:
 
 $$a_t = \pi_\theta\!\left(R_t,\, s_t,\, a_{t-1},\, \ldots,\, R_1,\, s_1,\, a_1\right)$$
 
@@ -130,7 +130,7 @@ Offline RL addresses this not by better behavior cloning, but by optimizing for 
 
 **When to use which:** if you have expert demonstrations and care about replicating the behavior exactly (surgical robots, precise manipulation, teaching from a single demonstrator), IL is simpler and often sufficient. If you have heterogeneous historical logs — multiple operators with different strategies, suboptimal episodes, partial demonstrations — offline RL can extract a policy better than any individual demonstrator.
 
-In practice, the two approaches converge: offline RL with a behavior cloning regularizer (as in IQL and CQL+BC) uses IL as a constraint to stay close to the data distribution while optimizing reward.
+In practice, the two approaches converge: offline RL with a behavior cloning regularizer (as in IQL and TD3+BC) uses IL as a constraint to stay close to the data distribution while optimizing reward.
 
 ### Diffusion Models for Offline RL
 
@@ -194,7 +194,7 @@ The architectural trend is clear even if a single dominant "DiT for offline RL" 
 
 A purely offline policy is static by definition. Real deployments need adaptation: the process changes, new operating modes are introduced, constraints are revised. **Offline-to-online RL** initializes from an offline-trained policy and continues training with limited online interaction.
 
-The challenge: naively fine-tuning an offline policy online causes catastrophic forgetting of the conservative behavior that made the offline policy safe. Methods like **IQL with online fine-tuning** (Kostrikov et al., 2021) and **Cal-QL** (Nakamoto et al., 2023) maintain the offline pessimism during early online training and gradually relax it as the online data accumulates. This is a plausible structure for industrial deployment: treat the offline policy as a **starting candidate**, then improve it only under explicit safety constraints and gated rollout — not because offline metrics alone certified it as safe.
+The challenge: naively fine-tuning an offline policy online causes catastrophic forgetting of the conservative behavior that made the offline policy safe. Methods like **IQL with online fine-tuning** (Kostrikov et al., 2022) and **Cal-QL** (Nakamoto et al., 2023) maintain the offline pessimism during early online training and gradually relax it as the online data accumulates. This is a plausible structure for industrial deployment: treat the offline policy as a **starting candidate**, then improve it only under explicit safety constraints and gated rollout — not because offline metrics alone certified it as safe.
 
 ### Safe Offline RL and Formal Verification
 
@@ -259,7 +259,7 @@ Industrial rollout should be treated as a **sequence of admission gates**, not a
 ---
 
 > **Example metrics from the Chapter 10 case study (illustrative only).**  
-> In that coating-process benchmark (ten seeds, 95% $t$-intervals), CQL reaches a return of **−1.4 [−1.5, −1.4]** against **−2.7** for BC and keeps the level two to three times closer to its setpoint, with **no constraint violations observed** even from disturbed starts (which is not proof of safety); the bounds penalty adds about **0.06** in a paired comparison. HybridMOReL averages **−5.6 [−10.2, −1.1]** on the logged five-variable state, where one seed drives the level out of bounds in **62%** of disturbed steps, and still fails on two of twenty runs once the delayed feed commands are part of the state; given the true dynamics, the same MOReL optimizer reaches **−1.2**, ahead of CQL. `diagnose_physics_coverage` scores the filler fraction at about **−40%** on the logged state — worse than predicting no change — and **+54%** with the delayed commands: the warning sign to act on before leaning on hybrid rollouts. These are numbers for one simulated process, not a universal ranking.  
+> In that coating-process benchmark (ten seeds, 95% $t$-intervals), CQL reaches a return of **−1.4 [−1.5, −1.4]** against **−2.7** for BC and keeps the level two to three times closer to its setpoint, with **no constraint violations observed** even from disturbed starts (which is not proof of safety); the bounds penalty adds about **0.05–0.07** in a paired comparison. HybridMOReL averages **−5.6 [−10.2, −1.1]** on the logged five-variable state, where one seed drives the level out of bounds in **62%** of disturbed steps, and still fails on two of twenty runs once the delayed feed commands are part of the state; given the true dynamics, the same MOReL optimizer reaches **−1.2**, ahead of CQL. `diagnose_physics_coverage` scores the filler fraction at about **−50%** on the logged state — worse than predicting no change — and **+64%** with the delayed commands: the warning sign to act on before leaning on hybrid rollouts. These are numbers for one simulated process, not a universal ranking.  
 > **Your** stop rules and numeric bars must be set from **process risk**: equipment damage, product quality, regulatory exposure, and reversibility of interventions. Do not import these numbers as industry-wide safety criteria.
 
 ---
@@ -282,17 +282,20 @@ The field will continue to develop — diffusion transformers will scale, offlin
 
 ## References
 
+- Hein, D., Depeweg, S., Tokic, M., Udluft, S., Hentschel, A., Runkler, T. A., et al. (2017). *A Benchmark Environment Motivated by Industrial Control Problems (Industrial Benchmark).* IEEE SSCI. [arXiv:1709.09480](https://arxiv.org/abs/1709.09480).
+- Qin, R., Gao, S., Zhang, X., Xu, Z., Huang, S., Li, Z., et al. (2022). *NeoRL: A Near Real-World Benchmark for Offline Reinforcement Learning.* NeurIPS Datasets and Benchmarks. [arXiv:2102.00714](https://arxiv.org/abs/2102.00714).
+- Liu, Z., Guo, Z., Lin, H., Yao, Y., Zhu, J., Cen, Z., et al. (2024). *Datasets and Benchmarks for Offline Safe Reinforcement Learning (DSRL).* Journal of Data-centric Machine Learning Research. [arXiv:2306.09303](https://arxiv.org/abs/2306.09303).
 **Decision Transformers and Sequence Models**
 
 - Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., & Mordatch, I. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
 - Janner, M., Li, Q., & Levine, S. (2021). *Offline Reinforcement Learning as One Big Sequence Modeling Problem.* NeurIPS. [arXiv:2106.02039](https://arxiv.org/abs/2106.02039). *(Trajectory Transformer)*
-- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993). *(QDT)*
+- Yamagata, T., Khalil, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993). *(QDT)*
 - Kumar, A., Agarwal, R., Geng, X., Tucker, G., & Levine, S. (2023). *Offline Q-Learning on Diverse Multi-Task Data Both Scales And Generalizes.* ICLR. [arXiv:2211.15144](https://arxiv.org/abs/2211.15144).
 - Chebotar, Y., Vuong, Q., Irpan, A., Hausman, K., Xia, F., Lu, Y., et al. (2023). *Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.* CoRL. [arXiv:2309.10150](https://arxiv.org/abs/2309.10150).
 
 **Diffusion Models for Offline RL**
 
-- Janner, M., Du, Y., Tenenbaum, J., & Levine, S. (2022). *Planning with Diffusion Models.* ICML. [arXiv:2205.09991](https://arxiv.org/abs/2205.09991). *(Diffuser)*
+- Janner, M., Du, Y., Tenenbaum, J. B., & Levine, S. (2022). *Planning with Diffusion for Flexible Behavior Synthesis.* ICML. [arXiv:2205.09991](https://arxiv.org/abs/2205.09991). *(Diffuser)*
 - Ajay, A., Du, Y., Gupta, A., Tenenbaum, J., Jaakkola, T., & Agrawal, P. (2023). *Is Conditional Generative Modeling all you need for Decision-Making?* ICLR. [arXiv:2211.15657](https://arxiv.org/abs/2211.15657). *(Decision Diffuser)*
 - Chi, C., Feng, S., Du, Y., Xu, Z., Cousineau, E., Burchfiel, B., & Song, S. (2023). *Diffusion Policy: Visuomotor Policy Learning via Action Diffusion.* RSS. [arXiv:2303.04137](https://arxiv.org/abs/2303.04137).
 
@@ -310,13 +313,13 @@ The field will continue to develop — diffusion transformers will scale, offlin
 
 **Offline-to-Online RL**
 
-- Kostrikov, I., Nair, A., & Levine, S. (2021). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR 2022. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169). *(IQL + online fine-tuning)*
+- Kostrikov, I., Nair, A., & Levine, S. (2022). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169). *(IQL + online fine-tuning)*
 - Nakamoto, M., Zhai, Y., Singh, A., Mark, M.S., Ma, Y., Finn, C., Kumar, A., & Levine, S. (2023). *Cal-QL: Calibrated Offline RL Pre-Training for Efficient Online Fine-Tuning.* NeurIPS. [arXiv:2303.05479](https://arxiv.org/abs/2303.05479).
 
 **Safe Offline RL**
 
 - Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., & Zhao, D. (2022). *Constrained Variational Policy Optimization for Safe Reinforcement Learning.* ICML. [arXiv:2201.11927](https://arxiv.org/abs/2201.11927). *(CVPO)*
-- Bharadhwaj, K., Choudhury, S., & Boots, B. (2021). *Conservative Safety Critics for Exploration.* ICLR. [arXiv:2010.14497](https://arxiv.org/abs/2010.14497). *(CSC)*
+- Bharadhwaj, H., Kumar, A., Rhinehart, N., Levine, S., Shkurti, F., & Garg, A. (2021). *Conservative Safety Critics for Exploration.* ICLR. [arXiv:2010.14497](https://arxiv.org/abs/2010.14497). *(CSC)*
 - Berkenkamp, F., Turchetta, M., Schoellig, A., & Krause, A. (2017). *Safe Model-based Reinforcement Learning with Stability Guarantees.* NeurIPS. [arXiv:1705.08551](https://arxiv.org/abs/1705.08551).
 - Chang, Y.-C., Roohi, N., & Gao, S. (2019). *Neural Lyapunov Control.* NeurIPS. [arXiv:1905.09490](https://arxiv.org/abs/1905.09490).
 

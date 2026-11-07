@@ -96,7 +96,7 @@ Python-файлы, на которые ссылаются главы, — **уч
 
 ### Decision Transformer и последовательные модели
 
-**Decision Transformer** (Chen et al., NeurIPS 2021) переформулирует offline RL как задачу моделирования последовательностей. Вместо обучения Q-функции или градиента политики он обучает причинный Transformer предсказывать следующее действие по прошлой траектории и желаемому return-to-go:
+Decision Transformer подробно разобран в главе 7; здесь он лишь помещён в ряд современных направлений. **Decision Transformer** (Chen et al., NeurIPS 2021) переформулирует offline RL как задачу моделирования последовательностей. Вместо обучения Q-функции или градиента политики он обучает причинный Transformer предсказывать следующее действие по прошлой траектории и желаемому return-to-go:
 
 $$a_t = \pi_\theta\!\left(R_t,\, s_t,\, a_{t-1},\, \ldots,\, R_1,\, s_1,\, a_1\right)$$
 
@@ -130,7 +130,7 @@ Offline RL решает это не улучшением поведенческ�
 
 **Когда что использовать:** если есть экспертные демонстрации и важно воспроизвести поведение точно — IL проще и часто достаточен. Если есть неоднородные исторические логи с разными стратегиями операторов и субоптимальными эпизодами — offline RL может извлечь политику, лучшую, чем любой отдельный демонстратор.
 
-На практике подходы сходятся: offline RL с регуляризацией поведенческого клонирования (как в IQL и CQL+BC) использует IL как ограничение для удержания вблизи распределения данных при оптимизации награды.
+На практике подходы сходятся: offline RL с регуляризацией поведенческого клонирования (как в IQL и TD3+BC) использует IL как ограничение для удержания вблизи распределения данных при оптимизации награды.
 
 ### Диффузионные модели для Offline RL
 
@@ -194,7 +194,7 @@ $$\text{траектория} \sim p_\theta(\tau) \cdot \exp(\beta \cdot J(\tau)
 
 Чисто офлайн-политика статична по определению. Реальные развёртывания требуют адаптации: процесс меняется, вводятся новые режимы работы, ограничения пересматриваются. **Offline-to-online RL** инициализируется из офлайн-обученной политики и продолжает обучение с ограниченным онлайн-взаимодействием.
 
-Сложность в том, что наивное дообучение офлайн-политики онлайн вызывает катастрофическое забывание консервативного поведения, обеспечивавшего её безопасность. Методы **IQL с онлайн-дообучением** (Kostrikov et al., 2021) и **Cal-QL** (Nakamoto et al., 2023) сохраняют офлайн-пессимизм в начале онлайн-обучения и постепенно ослабляют его по мере накопления онлайн-данных. Это правдоподобная схема для промышленного развёртывания: офлайн-политика служит **стартовым кандидатом** и улучшается только при явных ограничениях безопасности и поэтапном допуске, а не потому, что офлайн-метрики будто бы уже подтвердили её безопасность.
+Сложность в том, что наивное дообучение офлайн-политики онлайн вызывает катастрофическое забывание консервативного поведения, обеспечивавшего её безопасность. Методы **IQL с онлайн-дообучением** (Kostrikov et al., 2022) и **Cal-QL** (Nakamoto et al., 2023) сохраняют офлайн-пессимизм в начале онлайн-обучения и постепенно ослабляют его по мере накопления онлайн-данных. Это правдоподобная схема для промышленного развёртывания: офлайн-политика служит **стартовым кандидатом** и улучшается только при явных ограничениях безопасности и поэтапном допуске, а не потому, что офлайн-метрики будто бы уже подтвердили её безопасность.
 
 ### Безопасный Offline RL и формальная верификация
 
@@ -259,7 +259,7 @@ $$\text{траектория} \sim p_\theta(\tau) \cdot \exp(\beta \cdot J(\tau)
 ---
 
 > **Пример метрик из кейса главы 10 (только для иллюстрации).**
-> В бенчмарке процесса нанесения покрытия (десять seeds, 95%-ные $t$-интервалы) CQL получает награду **−1.4 [−1.5, −1.4]** против **−2.7** у BC и держит уровень к уставке в два-три раза ближе; **нарушений не наблюдалось** даже при старте с возмущения, хотя это и не доказательство безопасности; штраф за границы добавляет около **0.06** в парном сравнении. У HybridMOReL в среднем **−5.6 [−10.2, −1.1]** на залогированном состоянии из пяти переменных, где на одном seed он выводит уровень за границы на **62%** шагов после возмущения, и он по-прежнему разваливается в двух прогонах из двадцати, когда запаздывающие команды подачи включены в состояние; с истинной динамикой тот же оптимизатор MOReL получает **−1.2** и обгоняет CQL. `diagnose_physics_coverage` оценивает долю наполнителя примерно в **−40%** на залогированном состоянии — хуже прогноза «ничего не изменится» — и в **+54%** с запаздывающими командами; на такой сигнал нужно реагировать, прежде чем опираться на гибридные rollouts. Это числа для одного симулированного процесса, а не универсальный рейтинг.
+> В бенчмарке процесса нанесения покрытия (десять seeds, 95%-ные $t$-интервалы) CQL получает награду **−1.4 [−1.5, −1.4]** против **−2.7** у BC и держит уровень к уставке в два-три раза ближе; **нарушений не наблюдалось** даже при старте с возмущения, хотя это и не доказательство безопасности; штраф за границы добавляет около **0.05–0.07** в парном сравнении. У HybridMOReL в среднем **−5.6 [−10.2, −1.1]** на залогированном состоянии из пяти переменных, где на одном seed он выводит уровень за границы на **62%** шагов после возмущения, и он по-прежнему разваливается в двух прогонах из двадцати, когда запаздывающие команды подачи включены в состояние; с истинной динамикой тот же оптимизатор MOReL получает **−1.2** и обгоняет CQL. `diagnose_physics_coverage` оценивает долю наполнителя примерно в **−50%** на залогированном состоянии — хуже прогноза «ничего не изменится» — и в **+64%** с запаздывающими командами; на такой сигнал нужно реагировать, прежде чем опираться на гибридные rollouts. Это числа для одного симулированного процесса, а не универсальный рейтинг.
 > **Ваши** критерии остановки и числовые пороги должны вытекать из **риска процесса**: повреждения оборудования, качества продукции, регуляторных требований и обратимости вмешательств. Не переносите эти цифры как отраслевые критерии безопасности.
 
 ---
@@ -282,17 +282,20 @@ Offline RL — не решённая задача. Алгоритмы этой �
 
 ## Литература
 
+- Hein, D., Depeweg, S., Tokic, M., Udluft, S., Hentschel, A., Runkler, T. A., et al. (2017). *A Benchmark Environment Motivated by Industrial Control Problems (Industrial Benchmark).* IEEE SSCI. [arXiv:1709.09480](https://arxiv.org/abs/1709.09480).
+- Qin, R., Gao, S., Zhang, X., Xu, Z., Huang, S., Li, Z., et al. (2022). *NeoRL: A Near Real-World Benchmark for Offline Reinforcement Learning.* NeurIPS Datasets and Benchmarks. [arXiv:2102.00714](https://arxiv.org/abs/2102.00714).
+- Liu, Z., Guo, Z., Lin, H., Yao, Y., Zhu, J., Cen, Z., et al. (2024). *Datasets and Benchmarks for Offline Safe Reinforcement Learning (DSRL).* Journal of Data-centric Machine Learning Research. [arXiv:2306.09303](https://arxiv.org/abs/2306.09303).
 **Decision Transformer и последовательные модели**
 
 - Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., & Mordatch, I. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
 - Janner, M., Li, Q., & Levine, S. (2021). *Offline Reinforcement Learning as One Big Sequence Modeling Problem.* NeurIPS. [arXiv:2106.02039](https://arxiv.org/abs/2106.02039).
-- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993). *(QDT)*
+- Yamagata, T., Khalil, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993). *(QDT)*
 - Kumar, A., Agarwal, R., Geng, X., Tucker, G., & Levine, S. (2023). *Offline Q-Learning on Diverse Multi-Task Data Both Scales And Generalizes.* ICLR. [arXiv:2211.15144](https://arxiv.org/abs/2211.15144).
 - Chebotar, Y., Vuong, Q., Irpan, A., Hausman, K., Xia, F., Lu, Y., et al. (2023). *Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.* CoRL. [arXiv:2309.10150](https://arxiv.org/abs/2309.10150).
 
 **Диффузионные модели для Offline RL**
 
-- Janner, M., Du, Y., Tenenbaum, J., & Levine, S. (2022). *Planning with Diffusion Models.* ICML. [arXiv:2205.09991](https://arxiv.org/abs/2205.09991). *(Diffuser)*
+- Janner, M., Du, Y., Tenenbaum, J. B., & Levine, S. (2022). *Planning with Diffusion for Flexible Behavior Synthesis.* ICML. [arXiv:2205.09991](https://arxiv.org/abs/2205.09991). *(Diffuser)*
 - Ajay, A., Du, Y., Gupta, A., Tenenbaum, J., Jaakkola, T., & Agrawal, P. (2023). *Is Conditional Generative Modeling all you need for Decision-Making?* ICLR. [arXiv:2211.15657](https://arxiv.org/abs/2211.15657). *(Decision Diffuser)*
 - Chi, C., Feng, S., Du, Y., Xu, Z., Cousineau, E., Burchfiel, B., & Song, S. (2023). *Diffusion Policy: Visuomotor Policy Learning via Action Diffusion.* RSS. [arXiv:2303.04137](https://arxiv.org/abs/2303.04137).
 
@@ -310,13 +313,13 @@ Offline RL — не решённая задача. Алгоритмы этой �
 
 **Offline-to-Online RL**
 
-- Kostrikov, I., Nair, A., & Levine, S. (2021). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR 2022. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169).
+- Kostrikov, I., Nair, A., & Levine, S. (2022). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169).
 - Nakamoto, M., Zhai, Y., Singh, A., Mark, M.S., Ma, Y., Finn, C., Kumar, A., & Levine, S. (2023). *Cal-QL: Calibrated Offline RL Pre-Training for Efficient Online Fine-Tuning.* NeurIPS. [arXiv:2303.05479](https://arxiv.org/abs/2303.05479).
 
 **Безопасный Offline RL**
 
 - Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., & Zhao, D. (2022). *Constrained Variational Policy Optimization for Safe Reinforcement Learning.* ICML. [arXiv:2201.11927](https://arxiv.org/abs/2201.11927).
-- Bharadhwaj, K., Choudhury, S., & Boots, B. (2021). *Conservative Safety Critics for Exploration.* ICLR. [arXiv:2010.14497](https://arxiv.org/abs/2010.14497).
+- Bharadhwaj, H., Kumar, A., Rhinehart, N., Levine, S., Shkurti, F., & Garg, A. (2021). *Conservative Safety Critics for Exploration.* ICLR. [arXiv:2010.14497](https://arxiv.org/abs/2010.14497).
 - Berkenkamp, F., Turchetta, M., Schoellig, A., & Krause, A. (2017). *Safe Model-based Reinforcement Learning with Stability Guarantees.* NeurIPS. [arXiv:1705.08551](https://arxiv.org/abs/1705.08551).
 - Chang, Y.-C., Roohi, N., & Gao, S. (2019). *Neural Lyapunov Control.* NeurIPS. [arXiv:1905.09490](https://arxiv.org/abs/1905.09490).
 

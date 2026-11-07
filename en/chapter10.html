@@ -71,7 +71,7 @@
 <p><strong>Non-uniform data coverage.</strong> Industrial logs are not random exploration data. A process runs near its operating setpoint for 60% of the time, makes occasional planned setpoint changes, and occasionally experiences disturbances — blown bearings, feed composition shifts, ambient temperature swings. The dataset is dense near the nominal operating point and thin everywhere else. An agent that performs well on the dense region and fails on the sparse regions is useless in practice.</p>
 <p><strong>Lag and delay.</strong> In the model, the filler equation uses $u_{f,t-2}$: the flow action at time $t$ affects the filler fraction at time $t+2$ (a two-step transport lag for $\Delta t = 1$). A pure first-order model that ignores this delay will have systematic prediction errors whenever the feed rate changes.</p>
 <p><strong>Hard physical constraints.</strong> Operating limits are not preferences — they are equipment ratings, regulatory requirements, or safety boundaries. A policy that violates viscosity bounds may cause pump cavitation. A policy that lets the surge tank overflow wastes material and triggers an automatic shutdown.</p>
-<p>This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–9. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way.</p>
+<p>This chapter works through a complete case study on an anonymized five-variable coating process. The goal is not to introduce new algorithms — everything used here has been developed in Chapters 1–9. The goal is to show how they compose in a realistic setting, and what industrial-specific decisions appear along the way. The process is a teaching example; for comparisons with the literature there are open testbeds for the same regime: the Industrial Benchmark (<a href="https://arxiv.org/abs/1709.09480">Hein et al., 2017</a>) for delayed, partially observed industrial control, NeoRL (<a href="https://arxiv.org/abs/2102.00714">Qin et al., 2022</a>) for narrow logs from conservative controllers, and DSRL (<a href="https://arxiv.org/abs/2306.09303">Liu et al., 2024</a>) for offline RL under explicit constraint costs.</p>
 <blockquote>
 <p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter10.py"><code>chapter10.py</code></a></p>
 </blockquote>
@@ -131,12 +131,12 @@
 <tr>
 <td>$a_0$</td>
 <td><code>heat_input</code></td>
-<td>Heater setpoint delta</td>
+<td>Heater command in $[-1, 1]$ (absolute, not a change)</td>
 </tr>
 <tr>
 <td>$a_1$</td>
 <td><code>flow_input</code></td>
-<td>Filler feed rate delta</td>
+<td>Filler feed command in $[-1, 1]$ (absolute, not a change)</td>
 </tr>
 </tbody>
 </table>
@@ -275,11 +275,13 @@
 <div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">coating_physics_fn</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                         <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
     <span class="n">T</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">L</span> <span class="o">=</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">4</span><span class="p">]</span>
-    <span class="n">heat_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
+    <span class="n">heat_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>    <span class="c1"># actions stay in [-1, 1]; they are not normalized</span>
     <span class="n">flow_in</span>  <span class="o">=</span> <span class="n">action</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.5</span>
+    <span class="n">lagged</span>   <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">5</span>           <span class="c1"># 7 columns: (..., u_f(t-2), u_f(t-1))</span>
+    <span class="n">feed_f</span>   <span class="o">=</span> <span class="n">state</span><span class="p">[:,</span> <span class="mi">5</span><span class="p">]</span> <span class="k">if</span> <span class="n">lagged</span> <span class="k">else</span> <span class="n">flow_in</span>   <span class="c1"># the feed that reaches the zone now</span>
 
     <span class="n">T_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">T</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_T</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_T</span> <span class="o">*</span> <span class="n">heat_in</span>
-    <span class="n">f_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">f</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_F</span> <span class="o">*</span> <span class="n">flow_in</span>
+    <span class="n">f_new</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">f</span> <span class="o">+</span> <span class="p">(</span><span class="n">DT</span><span class="o">/</span><span class="n">TAU_F</span><span class="p">)</span> <span class="o">*</span> <span class="n">K_F</span> <span class="o">*</span> <span class="n">feed_f</span>
 
     <span class="c1"># Linearized viscosity (true is nonlinear)</span>
     <span class="n">v_new</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.75</span> <span class="o">-</span> <span class="mf">0.45</span><span class="o">*</span><span class="n">T_new</span> <span class="o">+</span> <span class="mf">0.38</span><span class="o">*</span><span class="n">f_new</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
@@ -289,22 +291,26 @@
     <span class="n">inflow</span>  <span class="o">=</span> <span class="n">flow_in</span> <span class="o">*</span> <span class="mf">0.4</span>
     <span class="n">L_new</span>   <span class="o">=</span> <span class="p">(</span><span class="n">L</span> <span class="o">+</span> <span class="n">DT</span> <span class="o">*</span> <span class="p">(</span><span class="n">inflow</span> <span class="o">-</span> <span class="n">Q_OUT</span><span class="p">))</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">T_new</span><span class="p">,</span> <span class="n">f_new</span><span class="p">,</span> <span class="n">v_new</span><span class="p">,</span> <span class="n">d_new</span><span class="p">,</span> <span class="n">L_new</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="p">[</span><span class="n">T_new</span><span class="p">,</span> <span class="n">f_new</span><span class="p">,</span> <span class="n">v_new</span><span class="p">,</span> <span class="n">d_new</span><span class="p">,</span> <span class="n">L_new</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">lagged</span><span class="p">:</span>                               <span class="c1"># shift the feed commands in transit</span>
+        <span class="n">out</span> <span class="o">+=</span> <span class="p">[</span><span class="n">state</span><span class="p">[:,</span> <span class="mi">6</span><span class="p">],</span> <span class="n">flow_in</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 </code></pre></div>
 
+<p>The level still responds to the current command — the tank fills as soon as the feed changes — while the filler fraction in the coating zone responds to the command issued two steps earlier. With the lagged columns the function also advances the two-step shift register, so multi-step rollouts of the hybrid model stay consistent.</p>
 <p>Before training the hybrid ensemble, run <code>diagnose_physics_coverage</code> to see where the physics model actually helps:</p>
 <div class="codehilite"><pre><span></span><code><span class="n">ensemble</span><span class="o">.</span><span class="n">diagnose_physics_coverage</span><span class="p">(</span><span class="n">norm_dataset</span><span class="p">)</span>
 
 <span class="c1"># Variance of s' - s explained by physics, mean over ten seeds [range]:</span>
 <span class="c1">#                         5 variables              with lagged feed commands</span>
-<span class="c1">#   temperature           36.7%  [32.8, 38.6]      36.7%  [32.8, 38.6]</span>
-<span class="c1">#   filler_fraction      -39.9%  [-45.4, -31.3]    53.6%  [51.6, 57.0]</span>
-<span class="c1">#   viscosity              2.2%  [-2.5, 7.6]       41.5%  [38.9, 43.0]</span>
-<span class="c1">#   density              -31.2%  [-36.3, -24.2]    51.4%  [48.2, 53.8]</span>
-<span class="c1">#   level                 98.0%  [97.8, 98.2]      98.0%  [97.8, 98.2]</span>
+<span class="c1">#   temperature           47.9%  [47.3, 48.4]      47.9%  [47.3, 48.4]</span>
+<span class="c1">#   filler_fraction      -50.4%  [-51.9, -49.1]    64.3%  [63.9, 64.6]</span>
+<span class="c1">#   viscosity              6.8%  [5.4, 8.2]        55.3%  [54.5, 56.1]</span>
+<span class="c1">#   density              -34.6%  [-36.0, -33.0]    64.2%  [63.7, 64.5]</span>
+<span class="c1">#   level                 98.7%  [98.7, 98.8]      98.7%  [98.7, 98.8]</span>
 </code></pre></div>
 
-<p>The diagnostic measures skill on increments (Chapter 9), and it tells a sharper story than a "fraction of variance of $s'$" would. The mass balance is essentially exact for the level. For temperature the physics explains about a third of the step-to-step change; most of the rest is measurement noise, which no model can explain. On the five logged variables the filler fraction scores negative: a first-order model that has no access to the feed command in transit predicts the increments <em>worse than predicting no change at all</em>, because it reacts to the current command two steps too early. Density, computed from the filler fraction, inherits the problem, and viscosity sits near zero. With the two lagged commands in the state, the same physics applies the delay exactly and the filler, density and viscosity scores turn clearly positive. In the five-variable case the residual network cannot repair this either: the command that drives the filler is not among its inputs. And, as Chapter 9 warns, the ensemble's uncertainty cannot see that the shared physics is wrong there.</p>
+<p>The diagnostic measures skill on increments (Chapter 9), and it tells a sharper story than a "fraction of variance of $s'$" would. The mass balance is essentially exact for the level. For temperature the physics explains about half of the step-to-step change; much of the rest is measurement noise, which no model can explain. On the five logged variables the filler fraction scores negative: a first-order model that has no access to the feed command in transit predicts the increments <em>worse than predicting no change at all</em>, because it reacts to the current command two steps too early. Density, computed from the filler fraction, inherits the problem, and viscosity sits near zero. With the two lagged commands in the state, the same physics applies the delay exactly and the filler, density and viscosity scores turn clearly positive. In the five-variable case the residual network cannot repair this either: the command that drives the filler is not among its inputs. And, as Chapter 9 warns, the ensemble's uncertainty cannot see that the shared physics is wrong there.</p>
 <hr />
 <h2>Algorithm 1: Behavioral Cloning</h2>
 <p>BC is the baseline: clone the behavior policy directly. Its failure mode on industrial data is predictable — compounding error during setpoint transitions and disturbances, where the agent encounters states it never saw during training.</p>
@@ -352,7 +358,7 @@
             <span class="n">eval_every</span><span class="o">=</span><span class="mi">16</span><span class="p">)</span>    <span class="c1"># no evaluation on the real process during training</span>
 </code></pre></div>
 
-<p>The budgets differ and should be stated with the results. With 40,000 transitions and batches of 256, BC takes about 9,400 gradient steps and each CQL variant about 12,500, while HybridMOReL trains its ensemble for 30 epochs and then takes 4,500 SAC steps on mixed real and model data. No hyperparameters were tuned per method; all use the values shown.</p>
+<p>The budgets differ and should be stated with the results. With 40,000 transitions and batches of 256, BC takes about 9,400 gradient steps and each CQL variant about 12,500, while HybridMOReL trains its ensemble for 30 epochs and then takes 4,500 SAC steps on mixed real and model data. No hyperparameters were tuned per method; all use the values shown. The obvious worry — that HybridMOReL simply gets too few policy updates — is answered by the oracle ablation below: with the same 4,500 SAC steps and the true dynamics, the same agent beats CQL, so the budget is not what holds the hybrid version back.</p>
 <hr />
 <h2>Results</h2>
 <p><code>python code/chapter10.py</code> runs all four algorithms on ten seeds and writes <code>code/results/ch10_benchmark.json</code>; <code>python code/chapter10.py --lagged-flow</code> repeats the benchmark on the augmented state and writes <code>ch10_benchmark_lagged.json</code>. Each takes about an hour on a laptop CPU; the oracle ablation below has its own flag. The numbers below come from those files: the mean over seeds with a 95% $t$-interval.</p>
@@ -386,7 +392,7 @@
 <td>Temperature IAE</td>
 <td>0.042 [0.040, 0.044]</td>
 <td>0.027 [0.026, 0.029]</td>
-<td>0.027 [0.026, 0.029]</td>
+<td>0.027 [0.026, 0.028]</td>
 <td>0.052 [0.031, 0.073]</td>
 </tr>
 <tr>
@@ -400,21 +406,21 @@
 <td>Level IAE</td>
 <td>0.093 [0.084, 0.102]</td>
 <td>0.036 [0.030, 0.042]</td>
-<td>0.028 [0.022, 0.034]</td>
+<td>0.031 [0.026, 0.036]</td>
 <td>0.150 [0.087, 0.212]</td>
 </tr>
 <tr>
 <td>DA temperature</td>
 <td>57.8% [57.0, 58.7]</td>
 <td>65.7% [64.4, 67.0]</td>
-<td>65.7% [63.9, 67.4]</td>
+<td>65.8% [64.4, 67.3]</td>
 <td>57.6% [54.0, 61.2]</td>
 </tr>
 <tr>
 <td>DA filler</td>
 <td>68.0% [67.2, 68.8]</td>
 <td>66.5% [65.8, 67.2]</td>
-<td>66.1% [65.3, 66.8]</td>
+<td>66.3% [65.5, 67.2]</td>
 <td>65.2% [64.2, 66.2]</td>
 </tr>
 <tr>
@@ -456,7 +462,7 @@
 <td>Level IAE</td>
 <td>0.095 [0.092, 0.098]</td>
 <td>0.027 [0.023, 0.032]</td>
-<td>0.024 [0.020, 0.028]</td>
+<td>0.025 [0.021, 0.029]</td>
 <td>0.103 [0.072, 0.134]</td>
 </tr>
 <tr>
@@ -487,9 +493,9 @@
 </tr>
 <tr>
 <td>CQL+Physics − CQL</td>
-<td>+0.06 [+0.01, +0.11]</td>
-<td>+0.06 [+0.01, +0.11]</td>
-<td>−0.008 [−0.015, −0.000]</td>
+<td>+0.05 [−0.02, +0.11]</td>
+<td>+0.07 [+0.03, +0.10]</td>
+<td>−0.005 [−0.013, +0.003]</td>
 </tr>
 <tr>
 <td>HybridMOReL − BC</td>
@@ -572,9 +578,9 @@
 <p>The uncertainty is informative but weak. The quintile with the highest $u$ has about twice the error of the lowest, and random actions are labelled UNKNOWN more often than logged ones; but the rank correlation is only about 0.4, and the KNOWN set keeps more than half the error rate of the UNKNOWN one. One-step errors are also small on average, so the failures come from where the policy steers the model over several steps — classic model exploitation, which an uncertainty this loosely tied to the error cannot prevent. These are one-step measurements on dataset states; errors along the policy's own multi-step rollouts are not measured here.</p>
 <h3>Reading the Results</h3>
 <p><strong>CQL improves clearly on the logging policy and on BC</strong>, with or without the lagged commands. It removes the steady-state offsets that the proportional operators left behind: the temperature error falls by about a third and the level stays two to three times closer to its setpoint, which accounts for most of the difference in return. BC reproduces the operators, offsets included. The gain is not free on every axis: CQL tracks the filler fraction slightly worse than BC (IAE 0.026 against 0.024, a small but consistent paired difference). The reward trades filler against level, and with one actuator for both, CQL leans toward the level.</p>
-<p><strong>The constraint penalty helped a little, and only a paired comparison shows it.</strong> Side by side, the CQL+Physics and CQL intervals overlap on every metric, and neither violated a bound even from disturbed starts. Paired by seed, the penalty raises the return by about 0.06 (4%) in both versions of the state, mostly through better level tracking. A plausible mechanism, not tested here: the penalty makes the logged low-level excursions more costly, which pushes the policy to keep the tank fuller, closer to its setpoint. With a dozen paired comparisons in the table, one should expect a borderline result or two by chance, so treat this one as suggestive. It is still a useful lesson about method: overlapping intervals of two means are not evidence of no difference.</p>
+<p><strong>The constraint penalty helped a little, and only a paired comparison shows it.</strong> Side by side, the CQL+Physics and CQL intervals overlap on every metric, and neither violated a bound even from disturbed starts. Paired by seed, the penalty raises the return by about 0.05–0.07 (3–5%): clearly on the Markov state, within noise on the logged one, and with level tracking slightly better but not significantly so. A plausible mechanism, not tested here: the penalty makes the logged low-level excursions more costly, which pushes the policy to keep the tank fuller, closer to its setpoint. With a dozen paired comparisons in the table, one should expect a borderline result or two by chance, so treat this one as suggestive. It is still a useful lesson about method: overlapping intervals of two means are not evidence of no difference.</p>
 <p><strong>HybridMOReL was unstable on both versions of the state.</strong> With five variables, nine seeds landed between −2.1 and −5.7, and one drove the level out of bounds in 62% of steps from disturbed starts. With the lagged commands, where the physics prior is no longer wrong on the filler loop, the first run had no failing seed, but the oracle ablation repeated it on the same datasets with a different initialization and two of ten seeds failed. Fixing the prior improved the model a great deal on the filler loop, and the stable runs got better, but it did not make the method reliable; one failure in ten runs against two in twenty is far too little data to say whether the failure rate changed. The oracle ablation locates the problem: with exact dynamics the same optimizer is the best method in the chapter, so what holds HybridMOReL back is the learned model and an uncertainty that only loosely tracks its error.</p>
-<p><strong>The calibrated $\lambda$ varied more than thirtyfold across seeds</strong>, from about 2 to 73, because it depends on the single largest violation in each logged dataset. A rule keyed to the worst observation inherits that observation's randomness; in practice, use a robust reference such as a high quantile of the violations, or set the cost of a violation from engineering judgment.</p>
+<p><strong>The calibrated $\lambda$ is about 2.2 on every seed</strong>, because the largest logged violation is always the same 0.15: the level hits zero, its physical floor, 0.15 below the lower bound. An earlier version of <code>calibrate_lambda</code> looked only at the first 2,000 transitions. The logs are ordered by regime, normal operation first, so that prefix held only the occasional small violation, and $\lambda$ swung from 2 to 73 across seeds depending on which one happened to fall into it. Two lessons follow. Compute calibration statistics on the whole dataset, or on a random sample of it, never on a prefix of logs that are sorted by anything. And a reference that comes out identical on every seed deserves a look: here it measures a saturation of the plant, not the typical size of a violation, which is why a high quantile of the violations (<code>quantile=0.95</code>) or an engineering cost is often the better reference.</p>
 <h3>What This Case Study Shows</h3>
 <p>One might expect the model-based method with a physics prior to win on reward and the penalized method to win on safety. Measured over ten seeds, with intervals and paired comparisons, the picture is less tidy and more useful: the simple conservative method won among the methods that learn from data alone; the penalty added a small gain that only a paired comparison could detect; the hybrid model stayed unreliable even after its prior and its state accounted for the transport delay; and the oracle ablation showed that with a perfect model the same model-based optimizer would have beaten everything else. A good model is worth a lot — and an ensemble's uncertainty is a poor guarantee that you have one. Before trusting a comparison like this one, check four things: that the state is Markov, or that you know what it is missing; that physical quantities are computed in physical units; that the physics model beats persistence on the variables that matter; and that the result survives several seeds when compared pairwise.</p>
 <hr />
@@ -582,8 +588,8 @@
 <p>Working through this case study surfaces several decisions that do not appear in benchmark papers.</p>
 <h3>The Transport Delay Problem</h3>
 <p>The filler equation has a two-step delay: the agent's flow input at time $t$ affects the filler fraction at time $t+2$, not $t+1$. The physics model ignores this delay — it predicts an immediate first-order response.</p>
-<p>It is tempting to leave the delay to the hybrid ensemble's residual network, but on the five logged variables the residual cannot learn it: the command that reaches the filler now was issued two steps ago, and it is not among the network's inputs. The tell-tale sign of a delay mismatch is a systematic residual that is positive when <code>flow_input</code> recently increased and negative when it recently decreased. In this case study the coverage diagnostic shows the problem plainly: the filler dimension scores about −40%, worse than the trivial no-change model. A negative score on a variable whose physics you trust is the signature of a timing error such as an unmodeled delay.</p>
-<p>The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model use them. Here $k = 2$ turned the filler score from −40% to +54%. It did not by itself make HybridMOReL reliable (see the oracle ablation), which is a reminder that a better one-step model is necessary but not sufficient. The engineering knowledge required is only the approximate delay length; if it is uncertain, include a few more lags than you think you need and let the residual learn which ones matter.</p>
+<p>It is tempting to leave the delay to the hybrid ensemble's residual network, but on the five logged variables the residual cannot learn it: the command that reaches the filler now was issued two steps ago, and it is not among the network's inputs. The tell-tale sign of a delay mismatch is a systematic residual that is positive when <code>flow_input</code> recently increased and negative when it recently decreased. In this case study the coverage diagnostic shows the problem plainly: the filler dimension scores about −50%, worse than the trivial no-change model. A negative score on a variable whose physics you trust is the signature of a timing error such as an unmodeled delay.</p>
+<p>The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model use them. Here $k = 2$ turned the filler score from −50% to +64%. It did not by itself make HybridMOReL reliable (see the oracle ablation), which is a reminder that a better one-step model is necessary but not sufficient. The engineering knowledge required is only the approximate delay length; if it is uncertain, include a few more lags than you think you need and let the residual learn which ones matter.</p>
 <h3>Constraint Calibration</h3>
 <p><code>make_bounds_penalty</code> calibrates $\lambda$ with <code>calibrate_lambda</code>. Check the result on the training data before training an agent:</p>
 <div class="codehilite"><pre><span></span><code><span class="n">pen</span> <span class="o">=</span> <span class="n">penalty</span><span class="p">(</span><span class="n">s_norm</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2_norm</span><span class="p">)</span>                  <span class="c1"># normalized-reward units</span>
@@ -592,7 +598,7 @@
       <span class="sa">f</span><span class="s2">"mean penalty when active: </span><span class="si">{</span><span class="n">pen</span><span class="p">[</span><span class="n">active</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2"> | mean |r|: </span><span class="si">{</span><span class="n">r_norm</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 
-<p>If the penalty fires on a large share of transitions, the bounds or the units are wrong — evaluating physical bounds on normalized states produces exactly that. If it is active but tiny compared with the reward, the agent will ignore it. And as the results showed, a $\lambda$ keyed to the single worst logged violation can vary by more than an order of magnitude between datasets.</p>
+<p>If the penalty fires on a large share of transitions, the bounds or the units are wrong — evaluating physical bounds on normalized states produces exactly that. If it is active but tiny compared with the reward, the agent will ignore it. And compute it on the whole dataset: calibrating on a prefix of regime-ordered logs once made $\lambda$ vary thirtyfold across seeds in this chapter.</p>
 <h3>Normalizing the 5D State</h3>
 <p>Five variables with different physical scales and variances require per-dimension normalization. The provided <code>normalize_dataset</code> normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — the reward is structurally non-positive (a sum of negative squared errors), so zero marks a meaningful "perfect" anchor; with variable episode lengths, a constant offset would also accumulate differently across episodes.</p>
 <h3>Physics Lives in Physical Units</h3>
@@ -658,7 +664,7 @@
 <tr>
 <td>CQL+Physics</td>
 <td>CQL + bounds penalty</td>
-<td>A small paired gain over CQL (about 4% in return); no violations observed</td>
+<td>A small paired gain over CQL (3–5% in return, clear on the Markov state); no violations observed</td>
 </tr>
 <tr>
 <td>HybridMOReL</td>
@@ -672,6 +678,9 @@
 <hr />
 <h2>References</h2>
 <ul>
+<li>Hein, D., Depeweg, S., Tokic, M., Udluft, S., Hentschel, A., Runkler, T. A., et al. (2017). <em>A Benchmark Environment Motivated by Industrial Control Problems (Industrial Benchmark).</em> IEEE SSCI. <a href="https://arxiv.org/abs/1709.09480">arXiv:1709.09480</a>.</li>
+<li>Qin, R., Gao, S., Zhang, X., Xu, Z., Huang, S., Li, Z., et al. (2022). <em>NeoRL: A Near Real-World Benchmark for Offline Reinforcement Learning.</em> NeurIPS Datasets and Benchmarks. <a href="https://arxiv.org/abs/2102.00714">arXiv:2102.00714</a>.</li>
+<li>Liu, Z., Guo, Z., Lin, H., Yao, Y., Zhu, J., Cen, Z., et al. (2024). <em>Datasets and Benchmarks for Offline Safe Reinforcement Learning (DSRL).</em> Journal of Data-centric Machine Learning Research. <a href="https://arxiv.org/abs/2306.09303">arXiv:2306.09303</a>.</li>
 <li>All references from Chapters 1–9 apply to the algorithms used here.</li>
 <li>Åström, K.J., &amp; Wittenmark, B. (2013). <em>Computer-Controlled Systems.</em> Dover. <em>(PID baseline, first-order process models)</em></li>
 <li>Seborg, D.E., Edgar, T.F., Mellichamp, D.A., &amp; Doyle, F.J. (2016). <em>Process Dynamics and Control.</em> Wiley. <em>(industrial process control, transport delay)</em></li>

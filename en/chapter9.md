@@ -56,9 +56,15 @@ The same constraint functions appear in two roles in this chapter and the next, 
 
 **Monotone relationships.** Many physical relationships are guaranteed to be monotone. Viscosity of a liquid decreases with temperature (for most fluids in normal operating ranges). Conversion in a reactor increases with residence time up to some limit. If the learned dynamics model predicts the wrong sign, it is physically wrong.
 
-$$g_{mono}(s, s') = \bigl|\text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\bigr|$$
+On logged transitions, for a variable $x$ known to fall during normal operation, the constraint compares the observed change with its allowed sign:
 
-For a differentiable training loss (rather than pure reward shaping), use $g_{mono} = \max(0,\ -\hat{f} \cdot \text{sign}(f_{phys}))$, which penalizes a predicted change whose sign opposes the known physics.
+$$g_{mono}(s, a, s') = \max(0,\; x' - x - \delta_{noise})$$
+
+As a training loss for a dynamics model, compare the predicted increment of variable $i$, $\Delta\hat{s}_i(s, a) = \hat{s}'_i - s_i$, with the sign of its physical increment $\Delta s_{phys,i}(s, a)$:
+
+$$g_{mono}(s, a) = \max\bigl(0,\; -\Delta\hat{s}_i(s, a) \cdot \text{sign}\,\Delta s_{phys,i}(s, a)\bigr),$$
+
+which penalizes a predicted change whose direction opposes the known physics and is differentiable in the model's output. Only the first form fits `PhysicsRewardWrapper`, whose constraints see a transition $(s, a, s')$ and no model.
 
 **Conservation laws.** Mass and energy must balance. For a mixing process with input flows $q_{in}$ and output flow $q_{out}$ and a tank of volume $V$:
 
@@ -66,7 +72,7 @@ $$\frac{dV}{dt} = q_{in} - q_{out}$$
 
 If a discrete-time model predicts $V_{t+1}$ inconsistent with this, the violation magnitude is:
 
-$$g_{mass}(s_t, s_{t+1}) = \bigl| V_{t+1} - V_t - \Delta t (q_{in,t} - q_{out,t}) \bigr| - \delta$$
+$$g_{mass}(s_t, s_{t+1}) = \max\Bigl(0,\; \bigl| V_{t+1} - V_t - \Delta t (q_{in,t} - q_{out,t}) \bigr| - \delta\Bigr)$$
 
 where $\delta$ is a tolerance for measurement noise and unmodeled flows.
 
@@ -83,8 +89,9 @@ class PhysicsRewardWrapper:
     """
     Wraps any reward function with physics-based penalty terms.
 
-    Constraints are callables g(state, action, next_state) -> float,
-    returning a non-negative violation magnitude (0 = constraint satisfied).
+    Constraints are callables g(state, action, next_state) -> tensor of shape
+    (batch,), returning a non-negative violation magnitude (0 = satisfied).
+    Negative values are clipped to 0, so a constraint never acts as a bonus.
 
     Usage:
         reward_fn = PhysicsRewardWrapper(
@@ -108,7 +115,7 @@ class PhysicsRewardWrapper:
         r = self.base_reward(state, action, next_state)
         for g, lam in zip(self.constraints, self.lambdas):
             violation = g(state, action, next_state)        # (batch,) >= 0
-            r = r - lam * violation
+            r = r - lam * violation.clamp(min=0.0)       # a violation is never a bonus
         return r
 ```
 
@@ -139,7 +146,7 @@ def first_order_consistency(state, action, next_state,
 
 The penalty weight $\lambda$ has the same role as $\alpha$ in CQL: too small and violations persist; too large and the policy becomes overly conservative, ignoring the reward signal.
 
-The book's code calibrates $\lambda$ with `calibrate_lambda` in `physics_informed.py`, which Chapter 10 reuses. It compares two per-step quantities measured on the dataset — the average reward magnitude $\overline{|r|}$ and a reference violation $C_{ref}$, the largest violation seen in the data (or a small tolerance if there is none) — and sets
+The book's code calibrates $\lambda$ with `calibrate_lambda` in `physics_informed.py`, which Chapter 10 reuses. It compares two per-step quantities measured on the dataset — the average reward magnitude $\overline{|r|}$ and a reference violation $C_{ref}$, the largest violation in the whole dataset (or, with `quantile=0.95`, a high quantile of the violations, which one outlier cannot move; and a small tolerance, with a warning, if there are none) — and sets
 
 $$\lambda = k \cdot \frac{\overline{|r|}}{C_{ref}}, \qquad k = 10 \text{ by default},$$
 
@@ -148,10 +155,11 @@ so that a violation of size $C_{ref}$ costs as much as $k$ average steps of rewa
 ```python
 def calibrate_lambda(dataset, constraint_fn, base_reward_fn,
                      cost_ratio=10.0, tol=1e-3, device='cpu'):
-    n  = min(2000, len(dataset['states']))
-    s  = torch.FloatTensor(dataset['states'][:n]).to(device)
-    a  = torch.FloatTensor(dataset['actions'][:n]).to(device)
-    s2 = torch.FloatTensor(dataset['next_states'][:n]).to(device)
+    # The whole dataset: logs are often sorted by regime, and a prefix can miss
+    # the rare episodes in which violations happen.
+    s  = torch.FloatTensor(dataset['states']).to(device)
+    a  = torch.FloatTensor(dataset['actions']).to(device)
+    s2 = torch.FloatTensor(dataset['next_states']).to(device)
     with torch.no_grad():
         c_ref  = max(constraint_fn(s, a, s2).max().item(), tol)
         r_mean = base_reward_fn(s, a, s2).abs().mean().item()
@@ -255,7 +263,7 @@ class HybridDynamicsNet(nn.Module):
 
     def nll_loss(self, state: torch.Tensor, action: torch.Tensor,
                  next_state: torch.Tensor) -> tuple[torch.Tensor, dict]:
-        """NLL of next_state; target is residual from physics."""
+        """Gaussian NLL of the full next_state; `mean` already includes the physics, so the network fits the residual."""
         mean, log_var = self.forward(state, action)
         # The target is the full next_state; mean already includes physics
         var = log_var.exp()
@@ -284,7 +292,7 @@ def first_order_physics(state: torch.Tensor,
     For a multi-variable state, apply element-wise with per-variable
     tau and K (pass as vectors).
     """
-    return state + (dt / tau) * (K * action[:, :state.shape[1]] - state)
+    return state + (dt / tau) * (K * action[..., :state.shape[-1]] - state)
 ```
 
 ### Building a Hybrid Ensemble
@@ -371,7 +379,7 @@ def diagnose_hybrid_model(hybrid_model, dataset, physics_fn, device='cpu'):
     return coverage
 ```
 
-Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{tot}$ would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.
+Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{inc}$, with $\sigma_{inc}$ the standard deviation of the increment, would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.
 
 ---
 
@@ -422,7 +430,7 @@ Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
                    └────────────┴─────────────┴──────────────┘
 ```
 
-The bottom-left cell (dense data, no physics) is the D4RL benchmark — the standard suite of offline datasets for MuJoCo-style simulated control, where Chapters 4–8 shine. Industrial settings typically live in the top row, with sparse data, and in one of its two right-hand cells: partial or strong physics knowledge.
+"Hybrid + CQL" means a model-based method whose pessimism lives in the value function rather than in an uncertainty penalty, such as COMBO ([Yu et al., 2021](https://arxiv.org/abs/2102.08363)): CQL trained on real transitions plus rollouts of the hybrid model, with Q-values pushed down on the synthetic ones. It is the natural choice when the hybrid ensemble's uncertainty cannot be trusted because its members share the physics. The bottom-left cell (dense data, no physics) is the D4RL benchmark — the standard suite of offline datasets for MuJoCo-style simulated control, where Chapters 4–8 shine. Industrial settings typically live in the top row, with sparse data, and in one of its two right-hand cells: partial or strong physics knowledge.
 
 ---
 
@@ -455,6 +463,7 @@ Chapter 10 works through an industrial case study showing how these pieces fit t
 
 ## References
 
+- Yu, T., Kumar, A., Rafailov, R., Rajeswaran, A., Levine, S., & Finn, C. (2021). *COMBO: Conservative Offline Model-Based Policy Optimization.* NeurIPS. [arXiv:2102.08363](https://arxiv.org/abs/2102.08363).
 - Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* Expert Systems with Applications. [arXiv:2309.01909](https://arxiv.org/abs/2309.01909).
 - Raissi, M., Perdikaris, P., & Karniadakis, G. (2019). *Physics-Informed Neural Networks.* Journal of Computational Physics. [arXiv:1711.10561](https://arxiv.org/abs/1711.10561).
 - Liu, Y., & Wang, X. (2021). *Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.* [arXiv:2008.05598](https://arxiv.org/abs/2008.05598).

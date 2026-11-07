@@ -86,12 +86,15 @@
 <p>The same constraint functions appear in two roles in this chapter and the next, and it helps to keep them apart. Applied to logged or synthetic transitions as a <strong>reward penalty</strong>, $g$ discourages the <em>policy</em> from steering the process toward states that violate the constraint. Applied to the predictions of a learned dynamics model, the same functions check whether the <em>model</em> is physically consistent; there they act as a training loss or a diagnostic, not as a reward. Bounds and conservation laws serve both roles. Monotonicity and first-order consistency checks are mainly about the model: on real logged data they flag transitions that the simple physics fails to explain.</p>
 <h3>Types of Physical Constraints</h3>
 <p><strong>Monotone relationships.</strong> Many physical relationships are guaranteed to be monotone. Viscosity of a liquid decreases with temperature (for most fluids in normal operating ranges). Conversion in a reactor increases with residence time up to some limit. If the learned dynamics model predicts the wrong sign, it is physically wrong.</p>
-<p><div class="math-display">$$g_{mono}(s, s') = \bigl|\text{sign}\bigl(\hat{f}(s')\bigr) - \text{sign}\bigl(f_{phys}(s')\bigr)\bigr|$$</div></p>
-<p>For a differentiable training loss (rather than pure reward shaping), use $g_{mono} = \max(0,\ -\hat{f} \cdot \text{sign}(f_{phys}))$, which penalizes a predicted change whose sign opposes the known physics.</p>
+<p>On logged transitions, for a variable $x$ known to fall during normal operation, the constraint compares the observed change with its allowed sign:</p>
+<p><div class="math-display">$$g_{mono}(s, a, s') = \max(0,\; x' - x - \delta_{noise})$$</div></p>
+<p>As a training loss for a dynamics model, compare the predicted increment of variable $i$, $\Delta\hat{s}_i(s, a) = \hat{s}'_i - s_i$, with the sign of its physical increment $\Delta s_{phys,i}(s, a)$:</p>
+<p><div class="math-display">$$g_{mono}(s, a) = \max\bigl(0,\; -\Delta\hat{s}_i(s, a) \cdot \text{sign}\,\Delta s_{phys,i}(s, a)\bigr),$$</div></p>
+<p>which penalizes a predicted change whose direction opposes the known physics and is differentiable in the model's output. Only the first form fits <code>PhysicsRewardWrapper</code>, whose constraints see a transition $(s, a, s')$ and no model.</p>
 <p><strong>Conservation laws.</strong> Mass and energy must balance. For a mixing process with input flows $q_{in}$ and output flow $q_{out}$ and a tank of volume $V$:</p>
 <p><div class="math-display">$$\frac{dV}{dt} = q_{in} - q_{out}$$</div></p>
 <p>If a discrete-time model predicts $V_{t+1}$ inconsistent with this, the violation magnitude is:</p>
-<p><div class="math-display">$$g_{mass}(s_t, s_{t+1}) = \bigl| V_{t+1} - V_t - \Delta t (q_{in,t} - q_{out,t}) \bigr| - \delta$$</div></p>
+<p><div class="math-display">$$g_{mass}(s_t, s_{t+1}) = \max\Bigl(0,\; \bigl| V_{t+1} - V_t - \Delta t (q_{in,t} - q_{out,t}) \bigr| - \delta\Bigr)$$</div></p>
 <p>where $\delta$ is a tolerance for measurement noise and unmodeled flows.</p>
 <p><strong>Feasibility bounds.</strong> Physical state variables have hard limits from thermodynamics, equipment ratings, or safety considerations. Temperature cannot exceed the boiling point of the medium. Concentration cannot be negative. A valve position is in $[0, 1]$.</p>
 <p><div class="math-display">$$g_{bounds}(s) = \sum_i \max(0,\ s_i - s_i^{max}) + \max(0,\ s_i^{min} - s_i)$$</div></p>
@@ -103,8 +106,9 @@
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Wraps any reward function with physics-based penalty terms.</span>
 
-<span class="sd">    Constraints are callables g(state, action, next_state) -&gt; float,</span>
-<span class="sd">    returning a non-negative violation magnitude (0 = constraint satisfied).</span>
+<span class="sd">    Constraints are callables g(state, action, next_state) -&gt; tensor of shape</span>
+<span class="sd">    (batch,), returning a non-negative violation magnitude (0 = satisfied).</span>
+<span class="sd">    Negative values are clipped to 0, so a constraint never acts as a bonus.</span>
 
 <span class="sd">    Usage:</span>
 <span class="sd">        reward_fn = PhysicsRewardWrapper(</span>
@@ -128,7 +132,7 @@
         <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_reward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">lam</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lambdas</span><span class="p">):</span>
             <span class="n">violation</span> <span class="o">=</span> <span class="n">g</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">next_state</span><span class="p">)</span>        <span class="c1"># (batch,) &gt;= 0</span>
-            <span class="n">r</span> <span class="o">=</span> <span class="n">r</span> <span class="o">-</span> <span class="n">lam</span> <span class="o">*</span> <span class="n">violation</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">r</span> <span class="o">-</span> <span class="n">lam</span> <span class="o">*</span> <span class="n">violation</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>       <span class="c1"># a violation is never a bonus</span>
         <span class="k">return</span> <span class="n">r</span>
 </code></pre></div>
 
@@ -152,15 +156,16 @@
 
 <h3>Choosing $\lambda$</h3>
 <p>The penalty weight $\lambda$ has the same role as $\alpha$ in CQL: too small and violations persist; too large and the policy becomes overly conservative, ignoring the reward signal.</p>
-<p>The book's code calibrates $\lambda$ with <code>calibrate_lambda</code> in <code>physics_informed.py</code>, which Chapter 10 reuses. It compares two per-step quantities measured on the dataset — the average reward magnitude $\overline{|r|}$ and a reference violation $C_{ref}$, the largest violation seen in the data (or a small tolerance if there is none) — and sets</p>
+<p>The book's code calibrates $\lambda$ with <code>calibrate_lambda</code> in <code>physics_informed.py</code>, which Chapter 10 reuses. It compares two per-step quantities measured on the dataset — the average reward magnitude $\overline{|r|}$ and a reference violation $C_{ref}$, the largest violation in the whole dataset (or, with <code>quantile=0.95</code>, a high quantile of the violations, which one outlier cannot move; and a small tolerance, with a warning, if there are none) — and sets</p>
 <p><div class="math-display">$$\lambda = k \cdot \frac{\overline{|r|}}{C_{ref}}, \qquad k = 10 \text{ by default},$$</div></p>
 <p>so that a violation of size $C_{ref}$ costs as much as $k$ average steps of reward. The units work out: $\lambda g$ is a reward whatever the units of $g$. If $g$ is measured in different units, $\lambda$ rescales inversely and the penalty does not change; if rewards are scaled up, $\lambda$ scales up with them. This is still a heuristic, not a guarantee — $k$ encodes how bad a violation is relative to ordinary tracking error, which is an engineering judgment.</p>
 <div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">calibrate_lambda</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">constraint_fn</span><span class="p">,</span> <span class="n">base_reward_fn</span><span class="p">,</span>
                      <span class="n">cost_ratio</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cpu'</span><span class="p">):</span>
-    <span class="n">n</span>  <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">2000</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">]))</span>
-    <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'actions'</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-    <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'next_states'</span><span class="p">][:</span><span class="n">n</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="c1"># The whole dataset: logs are often sorted by regime, and a prefix can miss</span>
+    <span class="c1"># the rare episodes in which violations happen.</span>
+    <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'actions'</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">s2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'next_states'</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
     <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
         <span class="n">c_ref</span>  <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">constraint_fn</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="n">tol</span><span class="p">)</span>
         <span class="n">r_mean</span> <span class="o">=</span> <span class="n">base_reward_fn</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
@@ -241,7 +246,7 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">nll_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
                  <span class="n">next_state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">"""NLL of next_state; target is residual from physics."""</span>
+<span class="w">        </span><span class="sd">"""Gaussian NLL of the full next_state; `mean` already includes the physics, so the network fits the residual."""</span>
         <span class="n">mean</span><span class="p">,</span> <span class="n">log_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
         <span class="c1"># The target is the full next_state; mean already includes physics</span>
         <span class="n">var</span> <span class="o">=</span> <span class="n">log_var</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
@@ -268,7 +273,7 @@
 <span class="sd">    For a multi-variable state, apply element-wise with per-variable</span>
 <span class="sd">    tau and K (pass as vectors).</span>
 <span class="sd">    """</span>
-    <span class="k">return</span> <span class="n">state</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">action</span><span class="p">[:,</span> <span class="p">:</span><span class="n">state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">-</span> <span class="n">state</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">state</span> <span class="o">+</span> <span class="p">(</span><span class="n">dt</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">K</span> <span class="o">*</span> <span class="n">action</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="n">state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">-</span> <span class="n">state</span><span class="p">)</span>
 </code></pre></div>
 
 <h3>Building a Hybrid Ensemble</h3>
@@ -349,7 +354,7 @@
     <span class="k">return</span> <span class="n">coverage</span>
 </code></pre></div>
 
-<p>Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{tot}$ would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.</p>
+<p>Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{inc}$, with $\sigma_{inc}$ the standard deviation of the increment, would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.</p>
 <hr />
 <h2>Part III: Constraint-Based Policy (Brief)</h2>
 <h3>Hard vs Soft Constraints</h3>
@@ -380,7 +385,7 @@ Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
                    └────────────┴─────────────┴──────────────┘
 </code></pre></div>
 
-<p>The bottom-left cell (dense data, no physics) is the D4RL benchmark — the standard suite of offline datasets for MuJoCo-style simulated control, where Chapters 4–8 shine. Industrial settings typically live in the top row, with sparse data, and in one of its two right-hand cells: partial or strong physics knowledge.</p>
+<p>"Hybrid + CQL" means a model-based method whose pessimism lives in the value function rather than in an uncertainty penalty, such as COMBO (<a href="https://arxiv.org/abs/2102.08363">Yu et al., 2021</a>): CQL trained on real transitions plus rollouts of the hybrid model, with Q-values pushed down on the synthetic ones. It is the natural choice when the hybrid ensemble's uncertainty cannot be trusted because its members share the physics. The bottom-left cell (dense data, no physics) is the D4RL benchmark — the standard suite of offline datasets for MuJoCo-style simulated control, where Chapters 4–8 shine. Industrial settings typically live in the top row, with sparse data, and in one of its two right-hand cells: partial or strong physics knowledge.</p>
 <hr />
 <h2>Further Directions</h2>
 <p><strong>Koopman operator methods.</strong> Nonlinear dynamics become linear in a suitable latent space — the Koopman eigenspace. If this space can be learned or approximated, the dynamics model simplifies enormously: linear prediction, linear uncertainty propagation, and tractable optimal control. Active research area; not yet standardized for offline RL.</p>
@@ -425,6 +430,7 @@ Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
 <hr />
 <h2>References</h2>
 <ul>
+<li>Yu, T., Kumar, A., Rafailov, R., Rajeswaran, A., Levine, S., &amp; Finn, C. (2021). <em>COMBO: Conservative Offline Model-Based Policy Optimization.</em> NeurIPS. <a href="https://arxiv.org/abs/2102.08363">arXiv:2102.08363</a>.</li>
 <li>Banerjee, C., Nguyen, T., Fookes, C., &amp; Raissi, M. (2023). <em>A Survey on Physics Informed Reinforcement Learning.</em> Expert Systems with Applications. <a href="https://arxiv.org/abs/2309.01909">arXiv:2309.01909</a>.</li>
 <li>Raissi, M., Perdikaris, P., &amp; Karniadakis, G. (2019). <em>Physics-Informed Neural Networks.</em> Journal of Computational Physics. <a href="https://arxiv.org/abs/1711.10561">arXiv:1711.10561</a>.</li>
 <li>Liu, Y., &amp; Wang, X. (2021). <em>Physics-Informed Dyna-style Model-Based Deep Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2008.05598">arXiv:2008.05598</a>.</li>

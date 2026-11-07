@@ -199,7 +199,7 @@ class PhysicsRewardWrapper:
         r = self.base_reward(state, action, next_state)
         for g, lam in zip(self.constraints, self.lambdas):
             violation = g(state, action, next_state)   # (batch,) ≥ 0
-            r = r - lam * violation
+            r = r - lam * violation.clamp(min=0.0)   # a violation is never a bonus
         return r
 
     def audit(self, state: torch.Tensor,
@@ -223,27 +223,44 @@ def calibrate_lambda(
     base_reward_fn: Callable,
     cost_ratio:     float = 10.0,
     tol:            float = 1e-3,
+    quantile:       Optional[float] = None,
     device:         str   = 'cpu',
 ) -> float:
     """
     Calibrate the penalty weight λ from data (Chapter 9 heuristic, not a guarantee):
 
-        λ = cost_ratio * mean|r| / C_ref,   C_ref = max(largest observed violation, tol)
+        λ = cost_ratio * mean|r| / C_ref
 
     so that a violation of size C_ref costs as much as `cost_ratio` average
     steps of reward. The penalty λ·g is then in reward units whatever the units
     of g: rescaling g by c rescales λ by 1/c, and rescaling rewards by c
     rescales λ by c. Per-step reward and per-step violation are compared
     directly; no discounted return enters the formula.
+
+    C_ref is computed over the whole dataset: the largest violation, or, with
+    `quantile` (e.g. 0.95), that quantile of the positive violations, which is
+    less sensitive to a single outlier. Logs are often ordered by regime, so
+    a prefix of the dataset can miss the rare episodes in which violations
+    happen. If the data contain no violation at all, C_ref falls back to `tol`,
+    which is in the units of g and so no longer scale-free: the function warns,
+    and the cost of a violation should then come from engineering judgment.
     """
-    n  = min(2000, len(dataset['states']))
-    s  = torch.FloatTensor(dataset['states'][:n]).to(device)
-    a  = torch.FloatTensor(dataset['actions'][:n]).to(device)
-    s2 = torch.FloatTensor(dataset['next_states'][:n]).to(device)
+    s  = torch.FloatTensor(dataset['states']).to(device)
+    a  = torch.FloatTensor(dataset['actions']).to(device)
+    s2 = torch.FloatTensor(dataset['next_states']).to(device)
 
     with torch.no_grad():
-        c_ref  = max(constraint_fn(s, a, s2).max().item(), tol)
+        g      = constraint_fn(s, a, s2)
         r_mean = base_reward_fn(s, a, s2).abs().mean().item()
+    pos = g[g > 0]
+    if len(pos) == 0:
+        print(f"  calibrate_lambda: WARNING no violations in the data; C_ref = tol = {tol:g} "
+              f"(set the cost of a violation from engineering judgment instead)")
+        c_ref = tol
+    elif quantile is None:
+        c_ref = max(pos.max().item(), tol)
+    else:
+        c_ref = max(torch.quantile(pos, quantile).item(), tol)
 
     lam = cost_ratio * r_mean / c_ref
     print(f"  calibrate_lambda: C_ref={c_ref:.4f} | mean|r|={r_mean:.4f} | "
@@ -417,7 +434,7 @@ def make_first_order_physics(tau, K, dt: float = 1.0) -> Callable:
     tau, K: scalar or 1D tensor of length state_dim (per-dimension constants).
     """
     def physics_fn(state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        u = action[:, :state.shape[1]]
+        u = action[..., :state.shape[-1]]
         return state + (dt / tau) * (K * u - state)
     return physics_fn
 
@@ -530,17 +547,15 @@ class HybridEnsemble:
         """
         Print, per state dimension, the fraction of the variance of the increment
         s' - s that the physics model explains (skill over persistence).
-        Run BEFORE training to decide whether physics_fn is adequate.
-
-        Interpretation:
-          > 85%: excellent — residual network needs little capacity
-          50–85%: good — standard residual capacity
-          < 50%: ⚠ consider revising physics_fn or using more capacity
+        Run BEFORE training to decide whether physics_fn is adequate. There is
+        no universal threshold: look at which dimensions are explained poorly,
+        and treat a negative score (worse than s' = s) as a red flag.
+        Uses the whole dataset: logs are often ordered by regime, and a prefix
+        would describe only the first regime.
         """
-        n  = min(1000, len(dataset['states']))
-        s  = torch.FloatTensor(dataset['states'][:n]).to(self.device)
-        a  = torch.FloatTensor(dataset['actions'][:n]).to(self.device)
-        s2 = torch.FloatTensor(dataset['next_states'][:n]).to(self.device)
+        s  = torch.FloatTensor(dataset['states']).to(self.device)
+        a  = torch.FloatTensor(dataset['actions']).to(self.device)
+        s2 = torch.FloatTensor(dataset['next_states']).to(self.device)
 
         with torch.no_grad():
             phys    = self.physics_fn(s, a)
@@ -557,11 +572,8 @@ class HybridEnsemble:
             filled = int(max(0.0, cov) * 20)
             bar    = '█' * filled + '░' * (20 - filled)
             print(f"  state dim {j}: {cov:6.1%}  {bar}")
-        mc = coverage.mean()
-        status = ("✓ strong" if mc > 0.85
-                  else "⚠  consider revising physics_fn" if mc < 0.5
-                  else "")
-        print(f"  Overall  : {mc:6.1%}  {status}")
+        if (coverage < 0).any():
+            print("  ⚠ negative score: physics predicts the increment worse than no change")
         return coverage
 
     @torch.no_grad()

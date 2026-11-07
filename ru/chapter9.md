@@ -75,13 +75,14 @@ def calibrate_lambda(dataset, constraint_fn, base_reward_fn,
                      cost_ratio=10.0, tol=1e-3, device='cpu'):
     """
     Эвристика масштаба (не гарантия):
-        λ = cost_ratio * mean|r| / C_ref,  C_ref = max(наибольшее нарушение, tol),
+        λ = cost_ratio * mean|r| / C_ref,  C_ref = max(наибольшее нарушение во всём датасете, tol),
     так что нарушение величины C_ref стоит cost_ratio средних шагов награды.
     """
-    n  = min(2000, len(dataset['states']))
-    s  = torch.FloatTensor(dataset['states'][:n]).to(device)
-    a  = torch.FloatTensor(dataset['actions'][:n]).to(device)
-    s2 = torch.FloatTensor(dataset['next_states'][:n]).to(device)
+    # Весь датасет: логи часто упорядочены по режимам, и префикс может
+    # пропустить редкие эпизоды, в которых и случаются нарушения.
+    s  = torch.FloatTensor(dataset['states']).to(device)
+    a  = torch.FloatTensor(dataset['actions']).to(device)
+    s2 = torch.FloatTensor(dataset['next_states']).to(device)
 
     with torch.no_grad():
         c_ref  = max(constraint_fn(s, a, s2).max().item(), tol)
@@ -94,7 +95,7 @@ def calibrate_lambda(dataset, constraint_fn, base_reward_fn,
 
 **Законы сохранения.** Для смесительного бака с притоком $q_{in}$, оттоком $q_{out}$, объёмом $V$:
 
-$$g_{mass}(s_t, s_{t+1}) = \bigl|V_{t+1} - V_t - \Delta t\,(q_{in,t} - q_{out,t})\bigr| - \delta$$
+$$g_{mass}(s_t, s_{t+1}) = \max\Bigl(0,\; \bigl|V_{t+1} - V_t - \Delta t\,(q_{in,t} - q_{out,t})\bigr| - \delta\Bigr)$$
 
 где $\delta$ поглощает шум измерений и неизмеренные возмущения.
 
@@ -238,7 +239,7 @@ def make_first_order_physics(tau, K, dt=1.0):
     tau, K могут быть скалярами или 1D-тензорами длины state_dim.
     """
     def physics_fn(state, action):
-        u = action[:, :state.shape[1]]
+        u = action[..., :state.shape[-1]]
         return state + (dt / tau) * (K * u - state)
     return physics_fn
 ```
@@ -395,7 +396,7 @@ class LagrangianPolicyOptimizer:
                └──────────────────┴─────────────────┴──────────────────┘
 ```
 
-D4RL-эталоны (стандартный набор офлайн-датасетов для симулированного управления в духе MuJoCo) находятся внизу слева: плотные данные, нет физики. Промышленный offline RL обычно находится в верхней строке, с редкими данными, и в одной из двух правых ячеек: частичная или хорошая физика.
+«Гибрид + CQL» — это модельный метод, у которого пессимизм заложен в функцию ценности, а не в штраф за неопределённость, например COMBO ([Yu et al., 2021](https://arxiv.org/abs/2102.08363)): CQL, обученный на реальных переходах и rollouts гибридной модели, с занижением Q-значений на синтетических. Это естественный выбор, когда неопределённости гибридного ансамбля нельзя доверять, потому что физика у его членов общая. D4RL-эталоны (стандартный набор офлайн-датасетов для симулированного управления в духе MuJoCo) находятся внизу слева: плотные данные, нет физики. Промышленный offline RL обычно находится в верхней строке, с редкими данными, и в одной из двух правых ячеек: частичная или хорошая физика.
 
 ---
 
@@ -427,6 +428,7 @@ Physics-informed методы — это модульный слой, а не з
 
 ## Литература
 
+- Yu, T., Kumar, A., Rafailov, R., Rajeswaran, A., Levine, S., & Finn, C. (2021). *COMBO: Conservative Offline Model-Based Policy Optimization.* NeurIPS. [arXiv:2102.08363](https://arxiv.org/abs/2102.08363).
 - Altman, E. (1999). *Constrained Markov Decision Processes.* CRC Press.
 - Banerjee, C., Nguyen, T., Fookes, C., & Raissi, M. (2023). *A Survey on Physics Informed Reinforcement Learning.* [arXiv:2309.01909](https://arxiv.org/abs/2309.01909).
 - Paternain, S., Chamon, L. F. O., Calvo-Fullana, M., & Ribeiro, A. (2019). *Constrained Reinforcement Learning Has Zero Duality Gap.* NeurIPS. [arXiv:1910.13393](https://arxiv.org/abs/1910.13393).
