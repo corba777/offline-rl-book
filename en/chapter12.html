@@ -174,6 +174,41 @@
 <p><strong>Tiny illustration.</strong> Two agents must solve a ticket: agent 1 chooses a short message $m$ to agent 2; agent 2 chooses a tool action $u$. The environment returns a single team reward $r \in \{0,1\}$ at the end. Offline logs show many $(m,u,r)$ triples with $r=1$. That does <strong>not</strong> tell you whether success came from $m$, from $u$, or only from the pair $(m,u)$. A single-agent update that averages credit over the concatenated transcript will happily reinforce the wrong speaker. Offline MARL starts where that ambiguity is treated as first-class — not where you paste OREO/IQL onto a longer chat.</p>
 <p>This chapter stays single-agent on purpose. Treat the Markov-game boundary as a <strong>stop sign</strong>: if your product is already multi-agent, reuse the logging and OPE discipline here, but do not assume single-agent conservative RL transfers unchanged to joint actions and team rewards.</p>
 <hr />
+<h2>The Policy Interface Determines the Training Method</h2>
+<p>Specify which policy is being updated before choosing a loss. A structured classifier is still a policy $\pi(a\mid s)$, even when it uses an LLM encoder; it need not generate language.</p>
+<table>
+<thead>
+<tr>
+<th>Policy interface</th>
+<th>Action space</th>
+<th>Baseline</th>
+<th>Candidate methods</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Token-generating LLM</td>
+<td>Token sequences / serialized tool calls</td>
+<td>SFT on demonstrations</td>
+<td>ILQL-style token values; DPO on preference pairs; trajectory methods with compatible action probabilities</td>
+</tr>
+<tr>
+<td>Action classifier</td>
+<td>Finite set of tool/action labels</td>
+<td>Cross-entropy BC on action logits</td>
+<td>Discrete CQL, IQL with a categorical actor, support-constrained value learning</td>
+</tr>
+<tr>
+<td>Router / orchestrator</td>
+<td>Agent, tool, handoff or scheduling decisions</td>
+<td>BC on routing decisions</td>
+<td>Offline RL on the routing process, with its own observations, rewards and support constraints</td>
+</tr>
+</tbody>
+</table>
+<p>DPO is preference optimization, not a replacement for trajectory-level credit assignment. Token-level ILQL and language-model SFT require a token policy and an LM head; a classifier instead learns through its action logits. Text retrospection can supply annotations or features, but a text-generation loss cannot directly train a classifier without a compatible output head and targets.</p>
+<p>The calculator example below implements the <strong>tabular</strong> stage; a classifier and then an LLM are possible extensions. Changing the model does not remove the need to define action support; changing the interface can require a different training objective.</p>
+<hr />
 <h2>BC / SFT as the Baseline</h2>
 <p><strong>Supervised fine-tuning (SFT)</strong> on expert or filtered successful trajectories is behavioral cloning in disguise. It is strong when:</p>
 <ul>
@@ -212,6 +247,7 @@
 </tbody>
 </table>
 <h3>Mapping classical offline RL ideas</h3>
+<p>Let $\pi_b$ denote the policy that collected the logs and $\pi_{\mathrm{ref}}$ the frozen reference model. TD3+BC fits actions actually observed in the dataset; <a href="https://arxiv.org/abs/2305.18290">DPO</a> instead compares sequence probabilities relative to $\pi_{\mathrm{ref}}$. They may be close when the same SFT checkpoint collected the data with matching prompts and sampling, but mixtures of checkpoints, filtering and changed decoding break that correspondence. A reference penalty does not itself establish dataset support. DPO encodes reference regularization through its preference objective; the presence, coefficient and role of an explicit KL penalty in GRPO depend on the implementation.</p>
 <p>Do <strong>not</strong> read this table as “drop in CQL unchanged.” Read it as <strong>design vocabulary</strong>:</p>
 <table>
 <thead>
@@ -226,8 +262,12 @@
 <td>SFT on successful traces</td>
 </tr>
 <tr>
-<td><strong>Policy constraint (TD3+BC, Ch. 6)</strong></td>
-<td>The KL-to-reference penalty in RLHF / DPO / GRPO is the same "stay near the behavior policy" regularizer</td>
+<td><strong>Dataset-action constraint (TD3+BC, Ch. 6)</strong></td>
+<td>Penalize distance to logged actions; this constrains deviation from dataset behavior</td>
+</tr>
+<tr>
+<td><strong>Reference-policy regularization</strong></td>
+<td>KL to a frozen reference in KL-regularized RLHF; DPO uses policy/reference log-probability ratios; GRPO variants differ</td>
 </tr>
 <tr>
 <td><strong>AWR / AWAC / IQL-style extraction</strong></td>
@@ -251,7 +291,7 @@
 </tr>
 <tr>
 <td><strong>OPE (Ch. 3)</strong></td>
-<td>Replay in sandbox, verifier rollouts, learned value model</td>
+<td>Environment re-execution / action-conditioned simulation / learned value model; distinguish direct evaluation from fixed-data OPE</td>
 </tr>
 </tbody>
 </table>
@@ -271,12 +311,22 @@
 <p>Chapter 3’s OPE toolbox applies, but agent environments rarely offer a faithful closed-form simulator.</p>
 <p>Practical evaluation layers:</p>
 <ol>
-<li><strong>Replay in sandbox</strong> — re-execute tool calls against cached fixtures or recorded API responses (when safe and deterministic).</li>
+<li><strong>Environment re-execution / action-conditioned simulation</strong> — execute candidate actions in a resettable sandbox, or simulate their outcomes under explicit model assumptions; cached responses require matching actions and environment snapshots.</li>
 <li><strong>Verifiers</strong> — unit tests, SQL result checks, retrieval precision, code execution outcomes.</li>
 <li><strong>Learned critics</strong> — FQE-style $Q(s,a)$ or goal-conditioned value models trained on logs. <em>Planning without Search</em> (<a href="https://arxiv.org/abs/2505.18098">Hong et al., 2025</a>) — uses offline goal-conditioned values as a <strong>natural-language critic</strong> at inference without fine-tuning the base LLM.</li>
 <li><strong>Human or A/B review</strong> — expensive but necessary for high-stakes deploy.</li>
 </ol>
 <p>Offline RL for agents fails quietly when OPE measures <strong>format quality</strong> instead of <strong>task success</strong>. Align metrics with deployment risk, as in Chapter 3’s coverage warnings.</p>
+<h3>Replay Is Not Counterfactual Evaluation</h3>
+<p>Distinguish three operations before interpreting an evaluation score:</p>
+<ol>
+<li><strong>Exact trace replay</strong> feeds the same recorded actions and observations through the pipeline. It tests parsing, state reconstruction and regressions, but cannot measure the return of a policy that chooses different actions.</li>
+<li><strong>Environment re-execution</strong> executes the candidate's actual actions in a resettable sandbox. It estimates performance in that environment; transfer depends on sandbox fidelity, tool versions and representative initial tasks. It is direct interaction with a test environment, rather than evaluation from a fixed dataset alone.</li>
+<li><strong>Simulator rollout</strong> generates observations conditioned on each new action and the current simulated state. A learned simulator adds model bias, especially outside logged support; validate it separately and report uncertainty.</li>
+</ol>
+<p>A cached response may be reused only when the complete request and relevant environment state match: arguments, authentication scope, document/database snapshot, tool version and any random inputs that affect the result. Determinism alone is insufficient if the snapshot changed. A cache miss must trigger sandbox execution, a validated simulation, or an explicit unsupported outcome; never silently substitute a response from another action.</p>
+<p>For example, a recorded <code>open_pdf(page=42)</code> result cannot become the observation after <code>open_pdf(page=43)</code>. Even the same page number is insufficient if the underlying filing changed. Reusing the old observation hides the consequences of the candidate's decision and creates an invalid counterfactual.</p>
+<p>Report which operation produced each metric. Exact replay can establish that a pipeline reproduces a logged run; it cannot establish that a new policy improves task success. For unavailable environments, use supported statistical OPE or learned value estimates with their assumptions and coverage limitations, rather than treating cached transcripts as new rollouts.</p>
 <h3>Evaluation Contract for an Agent Policy</h3>
 <p>OPE methods tell you <em>how</em> to estimate return; they do not define <em>what counts as improvement</em>. For tool-using agents, a policy can raise task success while increasing cost, latency, redundant tool calls, or safety violations. Before comparing offline-trained candidates, write a short <strong>evaluation contract</strong> — a spec stakeholders can execute without re-debating metrics after every training run.</p>
 <p><strong>Baselines (always report against both):</strong></p>
@@ -479,7 +529,7 @@
 </tr>
 </tbody>
 </table>
-<p>The tabular state key is <code>(task, x_known, y_known, result)</code> — including the <strong>numeric result</strong> when set, so a wrong arithmetic outcome does not alias with a correct one.</p>
+<p>The tabular state key is <code>(task, x, y, result)</code>, with <code>None</code> for values not yet observed. Keeping the observed operands as well as the result prevents correct and incorrect outcomes from sharing a key. The policy never receives hidden operands before lookup.</p>
 <h3>Four policies on two datasets</h3>
 <table>
 <thead>
@@ -491,7 +541,7 @@
 <tbody>
 <tr>
 <td><strong>Behavior</strong></td>
-<td>Stochastic logger (sometimes wrong op, extra steps)</td>
+<td>Stochastic logger (sometimes wrong op)</td>
 </tr>
 <tr>
 <td><strong>BC</strong></td>
@@ -503,7 +553,7 @@
 </tr>
 <tr>
 <td><strong>Support-constrained FQI</strong></td>
-<td>Same, but argmax restricted to actions seen in the dataset at each state (toy CQL / support mask)</td>
+<td>Same, but argmax restricted to logged actions at each state; abstains if none are supported (support mask, not the CQL objective)</td>
 </tr>
 </tbody>
 </table>
@@ -512,15 +562,18 @@
 <li><strong>Good coverage</strong> — <code>mul</code> appears in logs when the task is multiplication.</li>
 <li><strong>Coverage gap</strong> — on <code>mul</code> tasks, behavior logs only <code>add</code> / <code>sub</code>, never <code>mul</code>.</li>
 </ol>
+<p>An unknown state or an empty valid support set makes the constrained policy abstain (<code>None</code>); evaluation counts this as an unsuccessful termination.</p>
 <p>Run: <code>python code/agentic_offline_rl_toy.py</code></p>
-<p>Example output (your numbers may vary slightly with seed):</p>
+<p>Example output (deterministic for the default seed; other seeds give slightly different numbers):</p>
 <div class="codehilite"><pre><span></span><code>Dataset: good coverage (mul in logs)
+  mul-task op support (x,y known): ['add', 'mul', 'sub']
   Behavior success (all tasks):    0.72
-  BC success:                    1.00
+  BC success:                    0.99
   Naive FQI success:             1.00
   Support-constrained FQI:       1.00
 
 Dataset: no multiplication support
+  mul-task op support (x,y known): ['add', 'sub']
   Behavior success (all tasks):    0.52
   BC success:                    0.67
   Naive FQI success:             1.00
@@ -533,7 +586,7 @@ Dataset: no multiplication support
 <ol>
 <li><strong>BC</strong> clones the behavior policy. It improves over raw logging when the majority action at a state is good, but cannot invent unsupported tools.</li>
 <li><strong>Naive FQI</strong> can stitch successful sub-trajectories (<code>lookup_x → lookup_y → correct op → final</code>) when coverage exists.</li>
-<li><strong>Without <code>mul</code> in the logs</strong>, support-constrained FQI <strong>cannot</strong> solve multiplication — it never selects an unsupported tool. That is the conservative behavior you want offline.</li>
+<li><strong>Without <code>mul</code> in the logs</strong>, support-constrained FQI never selects multiplication. It may still succeed when a supported operation happens to give the same answer. That is the conservative behavior you want offline.</li>
 <li><strong>Naive FQI on mul tasks</strong> may still pick <code>mul</code> even though it was absent from behavior logs at that state: Q-values for unseen actions default to 0, which can beat negative Q on logged wrong ops — an <strong>extrapolation / OOD action</strong> effect. In the toy simulator <code>mul</code> succeeds; in deployment that would be a policy with no evidential support.</li>
 </ol>
 <p><strong>Thesis (same as classical offline RL):</strong> improvement is possible <strong>inside</strong> the action/state support of the dataset; conservative methods refuse unsupported gains; unconstrained value learning can overtrust unvisited actions.</p>
@@ -542,46 +595,49 @@ Dataset: no multiplication support
 <h2>Practical Logging Schema</h2>
 <p>For applied work, a consistent JSON (or parquet) schema matters as much as algorithm choice:</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;episode_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;task_001&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;t&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Find quarterly revenue in uploaded 10-K&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;user_goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;conversation_history&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;available_tools&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;search&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;open_pdf&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;calculator&quot;</span><span class="p">],</span>
-<span class="w">    </span><span class="nt">&quot;memory&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;retrieved_context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span>
+<span class="w">  </span><span class="nt">"episode_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"task_001"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"t"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"task"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Find quarterly revenue in uploaded 10-K"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"state"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"user_goal"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"conversation_history"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"available_tools"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"search"</span><span class="p">,</span><span class="w"> </span><span class="s2">"open_pdf"</span><span class="p">,</span><span class="w"> </span><span class="s2">"calculator"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"memory"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"retrieved_context"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span>
 <span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tool_call&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;tool&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;open_pdf&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;arguments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;page&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">}</span>
+<span class="w">  </span><span class="nt">"action"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tool_call"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"tool"</span><span class="p">:</span><span class="w"> </span><span class="s2">"open_pdf"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"arguments"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"page"</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">}</span>
 <span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;observation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;tool_result&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="nt">"observation"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"tool_result"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;reward&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;done&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;prompt_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;agent_prompt_v12&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;tool_schema_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tools_2026_06_20&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;environment_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sandbox_v3&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;action_logprobs&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;reward_components&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;task_success&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;format_valid&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;tool_error_penalty&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;cost_penalty&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-0.0031</span>
+<span class="w">  </span><span class="nt">"reward"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"done"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"prompt_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"agent_prompt_v12"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"tool_schema_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tools_2026_06_20"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"environment_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sandbox_v3"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"action_logprobs"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"reward_components"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"task_success"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"format_valid"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"tool_error_penalty"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"cost_penalty"</span><span class="p">:</span><span class="w"> </span><span class="mf">-0.0031</span>
 <span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;reward_source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;verifier_v2&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;verifier_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sec_filing_checker_2026_06&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;split&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;train&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;behavior_policy&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;gpt-4.1-agent-v3&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;temperature&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.2</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;latency_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1400</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;cost_usd&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0031</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;safety_flags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="w">  </span><span class="nt">"reward_source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"verifier_v2"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"verifier_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sec_filing_checker_2026_06"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"task_family_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sec_revenue_extraction_filing_001"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"source_hash"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sha256:&lt;source-snapshot-digest&gt;"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"collection_window"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"start"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-06-01"</span><span class="p">,</span><span class="w"> </span><span class="nt">"end"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-06-30"</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"split"</span><span class="p">:</span><span class="w"> </span><span class="s2">"train"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"metadata"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"behavior_policy"</span><span class="p">:</span><span class="w"> </span><span class="s2">"gpt-4.1-agent-v3"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"temperature"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.2</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"latency_ms"</span><span class="p">:</span><span class="w"> </span><span class="mi">1400</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"cost_usd"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0031</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"safety_flags"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
@@ -593,6 +649,49 @@ Dataset: no multiplication support
 <li><strong><code>reward</code></strong> can be relabeled offline (verifier, human, LLM critic) — store <code>reward_components</code>, <code>reward_source</code>, and <code>verifier_version</code> separately from the scalar <code>reward</code>.</li>
 <li><strong><code>action_logprobs</code></strong> (or token/tool-call log-probabilities) are valuable for off-policy evaluation and filtering; log them when the behavior policy exposes them.</li>
 <li><strong><code>metadata.behavior_policy</code></strong> is necessary for <strong>dataset provenance</strong>. Importance-weighted OPE additionally requires comparable action representations and behavior/target action probabilities — often <strong>unavailable</strong> for free-form LLM actions unless log-probs were recorded at collection time.</li>
+</ul>
+<h3>Multi-agent extension</h3>
+<p>Attach this record to each acting agent's transition; the parent record holds its action and episode identifier.</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"multi_agent_extension"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"joint_step_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"task_001:3"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"turn_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"agent_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"reader_1"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"document_reader"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"recipient_ids"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"analyst_1"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"local_observation"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"visible_document"</span><span class="p">:</span><span class="w"> </span><span class="s2">"filing_snapshot_v1"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Read page 42"</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"policy_checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"reader_policy_v3"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"team_reward"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"task_verifier_v2"</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"individual_reward"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tool_validity_v1"</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"credit_label"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Use <code>joint_step_id</code> to link actions and messages belonging to one environment decision; <code>turn_id</code> preserves order within it. Record each agent's local observation, recipients and checkpoint here; the probability of its actual sampled action under the collection-time policy, including sampling settings, goes in the parent record's <code>action_logprobs</code>, so it is not duplicated. A null probability means unknown, not zero.</p>
+<p>A flat transcript does not preserve private observations, simultaneous decisions or policy provenance. Team reward, individual reward and later credit annotations have different meanings and sources; a credit label is not an observed counterfactual. These records enable reconstruction but do not identify counterfactual contributions without additional assumptions or interventions.</p>
+<h3>Dataset Splits and Leakage</h3>
+<p>Assign splits <strong>before extracting transitions</strong>, keeping whole episodes together. Group related episodes by task family and source document: variants, shared cached outputs and near-duplicate sources must not cross splits. Record <code>task_family_id</code>, <code>source_hash</code> (of the source snapshot) and <code>collection_window</code>; a hash alone does not detect semantic duplicates.</p>
+<p>Define the grouping granularity first: <code>task_family_id</code> identifies a base task and its related variants, not a broad category such as all revenue-extraction tasks. Hold out independent task groups and source documents within the intended task categories to test new instances. Holding out entire categories instead tests transfer to unseen task families; label that result separately. Add a temporal/version holdout collected later or under changed prompts, tools or environments, and report it separately because version changes also test robustness.</p>
+<p>Leakage checklist:</p>
+<ul>
+<li>Keep all steps and multi-agent turns of an episode in one split.</li>
+<li>Group task variants and duplicated or overlapping sources before assigning splits.</li>
+<li>Fit reward models, normalization and verifier calibration on training data; tune prompts and select candidates on validation data.</li>
+<li>Freeze the test set and evaluation protocol; never tune on test outcomes.</li>
+<li>Audit cache provenance and collection windows, and report task-family counts alongside transition counts.</li>
 </ul>
 <hr />
 <h2>Limitations and Honest Scope</h2>

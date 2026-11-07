@@ -113,6 +113,22 @@ $$a_t = (a_t^1,\ldots,a_t^N),$$
 
 ---
 
+## Интерфейс политики определяет метод обучения
+
+До выбора функции потерь определите, какую политику обновляете. Классификатор действий остаётся политикой $\pi(a\mid s)$, даже если использует энкодер LLM; генерация текста для этого не обязательна.
+
+| Интерфейс политики | Пространство действий | Baseline | Возможные методы |
+|--------------------|-----------------------|----------|------------------|
+| Генеративная LLM | Последовательности токенов / сериализованные tool calls | SFT на демонстрациях | ILQL с token values; DPO на preference pairs; trajectory methods с совместимыми вероятностями действий |
+| Классификатор действий | Конечный набор tools / action labels | Cross-entropy BC на action logits | Discrete CQL, IQL с categorical actor, value learning с ограничением поддержки |
+| Router / orchestrator | Выбор агента, tool, handoff или расписания | BC на routing decisions | Offline RL для процесса маршрутизации со своими observations, rewards и support constraints |
+
+DPO оптимизирует предпочтения и не заменяет trajectory-level credit assignment. Token-level ILQL и language-model SFT требуют token policy и LM head; classifier обучается через action logits. Текстовая retrospection может дать annotations или features, но loss генерации текста нельзя напрямую перенести на classifier без совместимой выходной головы и targets.
+
+Пример калькулятора ниже реализует **табличную политику**; классификатор и LLM предложены как дальнейшие расширения. Замена модели не устраняет необходимость определить action support; замена интерфейса может потребовать другого objective.
+
+---
+
 ## BC / SFT как baseline
 
 **SFT** на expert или отфильтрованных успешных траекториях — behavioral cloning. Силён, когда behavior policy хорош, horizon короткий, failure modes редки.
@@ -140,18 +156,21 @@ $$a_t = (a_t^1,\ldots,a_t^N),$$
 
 ### Соответствие классическим идеям offline RL
 
+Обозначим политику сбора логов как $\pi_b$, а frozen reference model как $\pi_{\mathrm{ref}}$. TD3+BC приближает действия из датасета; [DPO](https://arxiv.org/abs/2305.18290) сравнивает sequence probabilities относительно $\pi_{\mathrm{ref}}$. Они могут быть близки, если данные собирал тот же SFT checkpoint при одинаковых prompts и sampling, но смесь checkpoints, фильтрация и другое декодирование нарушают это соответствие. Reference penalty сам по себе не обеспечивает dataset support. DPO задаёт reference regularization через preference objective; наличие, коэффициент и роль явного KL-штрафа в GRPO зависят от реализации.
+
 **Не** читайте как «вставь CQL как есть». Это **design vocabulary**:
 
 | Классический offline RL | Agentic AI analogue |
 |-------------------------|---------------------|
 | **BC** | SFT на успешных traces |
-| **Policy constraint (TD3+BC, гл. 6)** | KL-штраф к reference в RLHF / DPO / GRPO — тот же регуляризатор «держись близко к поведенческой» |
+| **Ограничение по действиям датасета (TD3+BC, гл. 6)** | Штраф за расстояние до logged actions ограничивает отклонение от поведения в датасете |
+| **Регуляризация к reference policy** | KL к frozen reference в KL-regularized RLHF; DPO использует отношения policy/reference probabilities; варианты GRPO различаются |
 | **AWR / AWAC / IQL** | Веса по advantage, verifier score, process reward (**ILQL** = IQL прямо для токенной генерации) |
 | **CQL / pessimism** | Штраф unsupported tool calls / plans |
 | **FQE / learned Q** | Critic по agent states и actions |
 | **Decision Transformer** | Conditioning на desired return / success |
 | **Model-based offline RL** | Simulator, verifier, world model |
-| **OPE (гл. 3)** | Sandbox replay, verifier rollouts, learned value |
+| **OPE (гл. 3)** | Повторное исполнение в среде / action-conditioned simulation / learned value model; отличайте прямую оценку от OPE по фиксированным данным |
 
 **LightningRL** — hierarchical credit assignment + single-turn RL updates. Это **off-policy RL bridge**, не замена CQL/IQL на fixed logs.
 
@@ -167,12 +186,26 @@ $$a_t = (a_t^1,\ldots,a_t^N),$$
 
 ## OPE для агентов
 
-1. **Replay в sandbox** — cached fixtures, recorded API responses.
+1. **Повторное исполнение / action-conditioned simulation** — выполняйте действия кандидата в сбрасываемом sandbox либо симулируйте их последствия с явными предположениями; cached responses требуют совпадения действий и snapshot среды.
 2. **Verifiers** — unit tests, SQL, retrieval, code execution.
 3. **Learned critics** — FQE-style или goal-conditioned values. *Planning without Search* ([Hong et al., 2025](https://arxiv.org/abs/2505.18098)) — natural-language critic без fine-tuning base LLM.
 4. **Human / A/B review** — при высоком deploy risk.
 
 Offline RL для агентов тихо проваливается, когда OPE меряет **format quality** вместо **task success**. Метрики должны соответствовать deployment risk (предупреждения главы 3 о coverage).
+
+### Replay — не контрфактуальная оценка
+
+Перед интерпретацией метрик различайте три операции:
+
+1. **Точное воспроизведение trace** подаёт в pipeline прежние действия и observations. Оно проверяет parsing, восстановление state и регрессии, но не return политики, выбирающей другие действия.
+2. **Повторное исполнение в среде** выполняет реальные действия кандидата в сбрасываемом sandbox. Это оценка в тестовой среде, а не только по фиксированному датасету; перенос зависит от fidelity sandbox, версий tools и репрезентативности начальных задач.
+3. **Rollout в симуляторе** создаёт observations с учётом нового действия и текущего simulated state. Обученный simulator добавляет model bias, особенно вне поддержки логов; его нужно отдельно валидировать и сообщать неопределённость.
+
+Cached response можно переиспользовать, только если совпадают полный запрос и релевантное состояние среды: arguments, права доступа, snapshot документа/базы, версия tool и случайные входы, влияющие на результат. Одной детерминированности недостаточно, если snapshot изменился. Cache miss должен приводить к исполнению в sandbox, проверенной симуляции или явному unsupported outcome; подставлять ответ другого действия нельзя.
+
+Например, результат `open_pdf(page=42)` нельзя выдавать после `open_pdf(page=43)`. Даже одинакового номера страницы недостаточно, если изменился исходный документ. Старая observation скрывает последствия решения кандидата и создаёт недействительный контрфактуал.
+
+Для каждой метрики указывайте, какая операция её породила. Exact replay подтверждает воспроизводимость прежнего запуска, но не улучшение success новой политики. Если среда недоступна, используйте статистическую OPE или learned value estimates с явными предположениями и ограничениями покрытия, а не выдавайте cached transcript за новый rollout.
 
 ### Контракт оценки политики агента
 
@@ -244,9 +277,11 @@ Reward hacking, spurious tool use, template collapse (RAGEN-2), unsupported tool
 
 **Среда:** задачи `x+y`, `x-y`, `x*y`; tools `lookup_x`, `lookup_y`, `add`, `sub`, `mul`, `final`. Награды: +1 / −1 / −0.02 за шаг.
 
-**Четыре политики:** Behavior (logger), BC (majority action), naive FQI (tabular Q), support-constrained FQI (argmax только по actions из dataset на state — toy analogue CQL/support mask).
+**Четыре политики:** Behavior (logger), BC (majority action), naive FQI (tabular Q), support-constrained FQI (argmax только по actions из dataset на state — маска поддержки, а не функция потерь CQL).
 
 **Два режима данных:** (1) `mul` есть в логах; (2) на mul-задачах behavior никогда не вызывает `mul`.
+
+В неизвестном состоянии или при пустом наборе допустимых поддержанных действий constrained policy отказывается от действия (`None`); оценка учитывает это как неуспешное завершение. Поддержанная операция иногда случайно даёт правильный ответ на mul-задаче, поэтому успех может быть ненулевым даже без `mul`.
 
 Запуск: `python code/agentic_offline_rl_toy.py`
 
@@ -255,7 +290,7 @@ Reward hacking, spurious tool use, template collapse (RAGEN-2), unsupported tool
 - **Good coverage:** FQI ≈ 1.0, улучшение над behavior (~0.7).
 - **No mul support:** BC ~0.67; **naive FQI на mul-only ≈ 1.0** (extrapolation — выбирает `mul` без support); **support-constrained на mul ≈ 0** (отказывается от unsupported op).
 
-State key включает `(task, x_known, y_known, result)` — числовой `result`, чтобы wrong/correct outcome не сливались.
+Ключ состояния — `(task, x, y, result)`, где `None` означает ещё не наблюдавшееся значение. Наблюдаемые операнды вместе с результатом позволяют различать правильные и неправильные исходы. До вызова lookup политика не получает скрытые операнды.
 
 **Тезис:** offline RL улучшает **внутри support**; conservative methods отказываются от unsupported improvement; unconstrained Q может «галлюцинировать» OOD actions. Начинайте с tabular toy, затем classifier / LLM + support filter.
 
@@ -298,6 +333,9 @@ State key включает `(task, x_known, y_known, result)` — числово
   },
   "reward_source": "verifier_v2",
   "verifier_version": "sec_filing_checker_2026_06",
+  "task_family_id": "sec_revenue_extraction_filing_001",
+  "source_hash": "sha256:<source-snapshot-digest>",
+  "collection_window": {"start": "2026-06-01", "end": "2026-06-30"},
   "split": "train",
   "metadata": {
     "behavior_policy": "gpt-4.1-agent-v3",
@@ -316,6 +354,57 @@ State key включает `(task, x_known, y_known, result)` — числово
 - **`reward`** — храните `reward_components`, `reward_source`, `verifier_version` отдельно от scalar `reward`.
 - **`action_logprobs`** — для off-policy evaluation; логируйте, если behavior policy их отдаёт.
 - **`metadata.behavior_policy`** — **provenance**. Importance-weighted OPE дополнительно требует comparable actions и behavior/target probabilities — для free-form LLM actions часто **недоступно** без log-probs при сборе.
+
+### Multi-agent extension
+
+Добавляйте запись к transition каждого действующего агента; action и episode identifier находятся в основной записи.
+
+```json
+{
+  "multi_agent_extension": {
+    "joint_step_id": "task_001:3",
+    "turn_id": 7,
+    "agent_id": "reader_1",
+    "role": "document_reader",
+    "recipient_ids": ["analyst_1"],
+    "local_observation": {
+      "visible_document": "filing_snapshot_v1",
+      "message": "Read page 42"
+    },
+    "policy_checkpoint": "reader_policy_v3",
+    "team_reward": {
+      "value": 0.0,
+      "source": "task_verifier_v2"
+    },
+    "individual_reward": {
+      "value": 0.0,
+      "source": "tool_validity_v1"
+    },
+    "credit_label": {
+      "value": null,
+      "source": null
+    }
+  }
+}
+```
+
+Через `joint_step_id` связывайте действия и сообщения одного решения среды; `turn_id` сохраняет порядок внутри него. Для каждого агента храните здесь local observation, recipients и checkpoint; вероятность фактически выбранного действия под политикой сбора, включая sampling settings, записывается в `action_logprobs` основной записи, чтобы не дублировать её. Null означает неизвестную вероятность, а не нулевую.
+
+Плоский transcript не сохраняет private observations, одновременные решения и provenance политик. Team reward, individual reward и поздние credit annotations имеют разные значения и источники; credit label не является наблюдаемым контрфактуалом. Такая запись позволяет восстановить trajectory, но не идентифицирует контрфактуальный вклад без дополнительных предположений или вмешательств.
+
+### Разбиение данных и утечки
+
+Назначайте split **до извлечения transitions**, сохраняя эпизоды целиком. Группируйте связанные эпизоды по task family и исходному документу: варианты задач, общие cached outputs и близкие дубликаты не должны попадать в разные splits. Храните `task_family_id`, `source_hash` (хеш snapshot источника) и `collection_window`; сам хеш не выявляет смысловые дубликаты.
+
+Сначала определите гранулярность группировки: `task_family_id` объединяет базовую задачу и её варианты, а не всю категорию вроде извлечения выручки. Отложите независимые группы задач и исходные документы внутри целевых категорий для проверки новых примеров. Удержание целых категорий проверяет перенос на незнакомые семейства задач; сообщайте этот результат отдельно. Добавьте temporal/version holdout, собранный позже либо при новых prompts, tools или environments: он проверяет также устойчивость к изменениям среды.
+
+Проверка утечек:
+
+- Все шаги и multi-agent turns эпизода находятся в одном split.
+- Варианты задач и дублирующиеся или пересекающиеся источники сгруппированы до разбиения.
+- Reward model, normalization и verifier calibration обучаются на train; prompts и кандидаты выбираются по validation.
+- Test set и протокол оценки зафиксированы; по test outcomes ничего не настраивается.
+- Provenance cache и collection windows проверены; вместе с числом transitions указано число task families.
 
 ---
 

@@ -26,7 +26,8 @@ STEP_COST = 0.02
 GAMMA = 0.99
 FQI_EPOCHS = 200
 
-StateKey = Tuple[str, bool, bool, Optional[int]]  # (task, x_known, y_known, result or None)
+# (task, observed x, observed y, result); None means not yet observed / computed.
+StateKey = Tuple[str, Optional[int], Optional[int], Optional[int]]
 
 
 @dataclass
@@ -37,7 +38,7 @@ class AgentState:
     result: Optional[int] = None
 
     def key(self) -> StateKey:
-        return (self.task, self.x is not None, self.y is not None, self.result)
+        return (self.task, self.x, self.y, self.result)
 
 
 @dataclass
@@ -74,8 +75,13 @@ def valid_actions(state: AgentState) -> List[str]:
     return acts
 
 
-def step(state: AgentState, action: str, x_true: int, y_true: int) -> Tuple[AgentState, float, bool]:
-    """Environment step. Returns (next_state, reward, done)."""
+def step(
+    state: AgentState,
+    action: Optional[str],
+    x_true: int,
+    y_true: int,
+) -> Tuple[AgentState, float, bool]:
+    """Environment step. Returns (next_state, reward, done); action None (abstain) terminates."""
     if action not in valid_actions(state):
         return state, -1.0, True
 
@@ -106,7 +112,7 @@ def step(state: AgentState, action: str, x_true: int, y_true: int) -> Tuple[Agen
 
 
 def behavior_policy(state: AgentState, rng: random.Random, mul_in_support: bool) -> str:
-    """Stochastic logging policy: sometimes redundant, sometimes wrong op."""
+    """Stochastic logging policy: sometimes chooses the wrong operation."""
     valid = valid_actions(state)
     op = correct_op(state.task)
 
@@ -178,8 +184,8 @@ def train_bc(dataset: List[Transition]) -> Dict[StateKey, str]:
 def state_from_key(key: StateKey) -> AgentState:
     return AgentState(
         task=key[0],
-        x=1 if key[1] else None,
-        y=1 if key[2] else None,
+        x=key[1],
+        y=key[2],
         result=key[3],
     )
 
@@ -188,12 +194,13 @@ def q_greedy_action(
     q: Dict[Tuple[StateKey, str], float],
     state: AgentState,
     allowed: Optional[Set[str]] = None,
-) -> str:
+) -> Optional[str]:
+    """Return None to abstain when no supported valid action exists."""
     valid = valid_actions(state)
     if allowed is not None:
         cands = [a for a in valid if a in allowed]
         if not cands:
-            cands = valid
+            return None
     else:
         cands = valid
     return max(cands, key=lambda a: q[(state.key(), a)])
@@ -203,6 +210,12 @@ def train_fqi(
     dataset: List[Transition],
     support: Optional[Dict[StateKey, Set[str]]] = None,
 ) -> Tuple[Dict[StateKey, str], Dict[Tuple[StateKey, str], float]]:
+    """Tabular FQI; with `support`, bootstrap max and argmax use only logged actions.
+
+    The constrained variant assumes complete episodes: every nonterminal next_state
+    must also appear as a logged state. Truncated or subsampled episodes violate this
+    and raise ValueError instead of silently bootstrapping from unsupported actions.
+    """
     q: Dict[Tuple[StateKey, str], float] = defaultdict(float)
 
     for _ in range(FQI_EPOCHS):
@@ -215,7 +228,10 @@ def train_fqi(
                 if support is not None:
                     cands = [a2 for a2 in next_valid if a2 in support.get(s_next, set())]
                     if not cands:
-                        cands = next_valid
+                        raise ValueError(
+                            f"Nonterminal state {s_next} has no supported valid action "
+                            "(truncated episode?)"
+                        )
                 else:
                     cands = next_valid
                 target = r + GAMMA * max(q[(s_next, a2)] for a2 in cands)
@@ -229,7 +245,9 @@ def train_fqi(
             allowed = support.get(s, set())
             if not allowed:
                 continue
-            policy[s] = q_greedy_action(q, dummy, allowed=allowed)
+            action = q_greedy_action(q, dummy, allowed=allowed)
+            if action is not None:
+                policy[s] = action
         else:
             policy[s] = q_greedy_action(q, dummy, allowed=None)
     return policy, q
@@ -238,9 +256,9 @@ def train_fqi(
 def make_q_policy_fn(
     q: Dict[Tuple[StateKey, str], float],
     support: Optional[Dict[StateKey, Set[str]]] = None,
-) -> Callable[[AgentState], str]:
-    def act(state: AgentState) -> str:
-        allowed = support.get(state.key()) if support is not None else None
+) -> Callable[[AgentState], Optional[str]]:
+    def act(state: AgentState) -> Optional[str]:
+        allowed = support.get(state.key(), set()) if support is not None else None
         return q_greedy_action(q, state, allowed=allowed)
 
     return act
@@ -248,9 +266,9 @@ def make_q_policy_fn(
 
 def make_policy_fn(
     policy: Dict[StateKey, str],
-    fallback: Callable[[AgentState], str],
-) -> Callable[[AgentState], str]:
-    def act(state: AgentState) -> str:
+    fallback: Callable[[AgentState], Optional[str]],
+) -> Callable[[AgentState], Optional[str]]:
+    def act(state: AgentState) -> Optional[str]:
         return policy.get(state.key(), fallback(state))
 
     return act
@@ -261,7 +279,7 @@ def fallback_valid(state: AgentState) -> str:
 
 
 def evaluate_policy(
-    policy_fn: Callable[[AgentState], str],
+    policy_fn: Callable[[AgentState], Optional[str]],
     n_episodes: int = 500,
     seed: int = 0,
     tasks: Optional[List[str]] = None,
@@ -286,7 +304,11 @@ def evaluate_policy(
     return successes / n_episodes
 
 
-def behavior_success_rate(n_episodes: int = 500, seed: int = 0, mul_in_support: bool = True) -> float:
+def behavior_success_rate(
+    n_episodes: int = 500,
+    seed: int = 0,
+    mul_in_support: bool = True,
+) -> float:
     rng = random.Random(seed)
     successes = 0
     for _ in range(n_episodes):
@@ -324,9 +346,13 @@ def run_experiment(label: str, mul_in_support: bool, seed: int = 42) -> None:
     naive_s = evaluate_policy(naive_fn, seed=seed + 3)
     constr_s = evaluate_policy(constrained_fn, seed=seed + 4)
 
-    mul_states = [s for s in support if s[0] == "mul" and s[1] and s[2] and s[3] is None]
+    mul_states = [
+        s for s in support
+        if s[0] == "mul" and s[1] is not None and s[2] is not None and s[3] is None
+    ]
     if mul_states:
-        print(f"  mul-task op support (x,y known): { {s: sorted(support[s]) for s in mul_states} }")
+        mul_ops = sorted(set().union(*(support[s] for s in mul_states)))
+        print(f"  mul-task op support (x,y known): {mul_ops}")
 
     print(f"  Behavior success (all tasks):    {beh:.2f}")
     print(f"  BC success:                    {bc_s:.2f}")
@@ -347,7 +373,7 @@ def main() -> None:
     run_experiment("no multiplication support", mul_in_support=False)
     print("\nQualitative takeaway:")
     print("  Good coverage: FQI can match or beat BC by stitching successful traces.")
-    print("  No mul support: constrained FQI cannot solve mul (unsupported op);")
+    print("  No mul support: constrained FQI never selects mul;")
     print("  naive FQI may pick unseen mul anyway — extrapolation that works in sim")
     print("  but would lack evidential support in a real offline deploy.")
 

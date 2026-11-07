@@ -113,6 +113,22 @@ This chapter stays single-agent on purpose. Treat the Markov-game boundary as a 
 
 ---
 
+## The Policy Interface Determines the Training Method
+
+Specify which policy is being updated before choosing a loss. A structured classifier is still a policy $\pi(a\mid s)$, even when it uses an LLM encoder; it need not generate language.
+
+| Policy interface | Action space | Baseline | Candidate methods |
+|------------------|--------------|----------|-------------------|
+| Token-generating LLM | Token sequences / serialized tool calls | SFT on demonstrations | ILQL-style token values; DPO on preference pairs; trajectory methods with compatible action probabilities |
+| Action classifier | Finite set of tool/action labels | Cross-entropy BC on action logits | Discrete CQL, IQL with a categorical actor, support-constrained value learning |
+| Router / orchestrator | Agent, tool, handoff or scheduling decisions | BC on routing decisions | Offline RL on the routing process, with its own observations, rewards and support constraints |
+
+DPO is preference optimization, not a replacement for trajectory-level credit assignment. Token-level ILQL and language-model SFT require a token policy and an LM head; a classifier instead learns through its action logits. Text retrospection can supply annotations or features, but a text-generation loss cannot directly train a classifier without a compatible output head and targets.
+
+The calculator example below implements the **tabular** stage; a classifier and then an LLM are possible extensions. Changing the model does not remove the need to define action support; changing the interface can require a different training objective.
+
+---
+
 ## BC / SFT as the Baseline
 
 **Supervised fine-tuning (SFT)** on expert or filtered successful trajectories is behavioral cloning in disguise. It is strong when:
@@ -146,18 +162,21 @@ The conceptual contrast:
 
 ### Mapping classical offline RL ideas
 
+Let $\pi_b$ denote the policy that collected the logs and $\pi_{\mathrm{ref}}$ the frozen reference model. TD3+BC fits actions actually observed in the dataset; [DPO](https://arxiv.org/abs/2305.18290) instead compares sequence probabilities relative to $\pi_{\mathrm{ref}}$. They may be close when the same SFT checkpoint collected the data with matching prompts and sampling, but mixtures of checkpoints, filtering and changed decoding break that correspondence. A reference penalty does not itself establish dataset support. DPO encodes reference regularization through its preference objective; the presence, coefficient and role of an explicit KL penalty in GRPO depend on the implementation.
+
 Do **not** read this table as “drop in CQL unchanged.” Read it as **design vocabulary**:
 
 | Classical offline RL (this book) | Agentic AI analogue |
 |-----------------------------------|---------------------|
 | **BC** | SFT on successful traces |
-| **Policy constraint (TD3+BC, Ch. 6)** | The KL-to-reference penalty in RLHF / DPO / GRPO is the same "stay near the behavior policy" regularizer |
+| **Dataset-action constraint (TD3+BC, Ch. 6)** | Penalize distance to logged actions; this constrains deviation from dataset behavior |
+| **Reference-policy regularization** | KL to a frozen reference in KL-regularized RLHF; DPO uses policy/reference log-probability ratios; GRPO variants differ |
 | **AWR / AWAC / IQL-style extraction** | Weight steps or trajectories by advantage, verifier score, or process reward (**ILQL** applies IQL directly to token-level language generation) |
 | **CQL / pessimism** | Penalize unsupported tool calls, plans, or API invocations |
 | **FQE / learned Q** | Critic over agent states and actions (text or structured) |
 | **Decision Transformer** | Condition generation on desired return / success label |
 | **Model-based offline RL** | Simulator, verifier, or world model for tool outcomes |
-| **OPE (Ch. 3)** | Replay in sandbox, verifier rollouts, learned value model |
+| **OPE (Ch. 3)** | Environment re-execution / action-conditioned simulation / learned value model; distinguish direct evaluation from fixed-data OPE |
 
 Agent Lightning’s **LightningRL** adds hierarchical credit assignment: allocate trajectory-level return to individual LLM calls, then apply standard single-turn RL updates — a practical pattern when episodes are long but each call is trainable. Treat this as an **off-policy RL bridge**, not a drop-in replacement for CQL or IQL on fixed logs.
 
@@ -183,12 +202,26 @@ Chapter 3’s OPE toolbox applies, but agent environments rarely offer a faithfu
 
 Practical evaluation layers:
 
-1. **Replay in sandbox** — re-execute tool calls against cached fixtures or recorded API responses (when safe and deterministic).
+1. **Environment re-execution / action-conditioned simulation** — execute candidate actions in a resettable sandbox, or simulate their outcomes under explicit model assumptions; cached responses require matching actions and environment snapshots.
 2. **Verifiers** — unit tests, SQL result checks, retrieval precision, code execution outcomes.
 3. **Learned critics** — FQE-style $Q(s,a)$ or goal-conditioned value models trained on logs. *Planning without Search* ([Hong et al., 2025](https://arxiv.org/abs/2505.18098)) — uses offline goal-conditioned values as a **natural-language critic** at inference without fine-tuning the base LLM.
 4. **Human or A/B review** — expensive but necessary for high-stakes deploy.
 
 Offline RL for agents fails quietly when OPE measures **format quality** instead of **task success**. Align metrics with deployment risk, as in Chapter 3’s coverage warnings.
+
+### Replay Is Not Counterfactual Evaluation
+
+Distinguish three operations before interpreting an evaluation score:
+
+1. **Exact trace replay** feeds the same recorded actions and observations through the pipeline. It tests parsing, state reconstruction and regressions, but cannot measure the return of a policy that chooses different actions.
+2. **Environment re-execution** executes the candidate's actual actions in a resettable sandbox. It estimates performance in that environment; transfer depends on sandbox fidelity, tool versions and representative initial tasks. It is direct interaction with a test environment, rather than evaluation from a fixed dataset alone.
+3. **Simulator rollout** generates observations conditioned on each new action and the current simulated state. A learned simulator adds model bias, especially outside logged support; validate it separately and report uncertainty.
+
+A cached response may be reused only when the complete request and relevant environment state match: arguments, authentication scope, document/database snapshot, tool version and any random inputs that affect the result. Determinism alone is insufficient if the snapshot changed. A cache miss must trigger sandbox execution, a validated simulation, or an explicit unsupported outcome; never silently substitute a response from another action.
+
+For example, a recorded `open_pdf(page=42)` result cannot become the observation after `open_pdf(page=43)`. Even the same page number is insufficient if the underlying filing changed. Reusing the old observation hides the consequences of the candidate's decision and creates an invalid counterfactual.
+
+Report which operation produced each metric. Exact replay can establish that a pipeline reproduces a logged run; it cannot establish that a new policy improves task success. For unavailable environments, use supported statistical OPE or learned value estimates with their assumptions and coverage limitations, rather than treating cached transcripts as new rollouts.
 
 ### Evaluation Contract for an Agent Policy
 
@@ -294,34 +327,38 @@ This mirrors an LLM agent trace:
 | Verifier | Exact arithmetic checker |
 | Agent trace | Offline RL transition |
 
-The tabular state key is `(task, x_known, y_known, result)` — including the **numeric result** when set, so a wrong arithmetic outcome does not alias with a correct one.
+The tabular state key is `(task, x, y, result)`, with `None` for values not yet observed. Keeping the observed operands as well as the result prevents correct and incorrect outcomes from sharing a key. The policy never receives hidden operands before lookup.
 
 ### Four policies on two datasets
 
 | Policy | Role |
 |--------|------|
-| **Behavior** | Stochastic logger (sometimes wrong op, extra steps) |
+| **Behavior** | Stochastic logger (sometimes wrong op) |
 | **BC** | Majority action per state in logs (SFT-on-traces) |
 | **Naive FQI** | Tabular fitted Q with greedy improvement over **valid** actions |
-| **Support-constrained FQI** | Same, but argmax restricted to actions seen in the dataset at each state (toy CQL / support mask) |
+| **Support-constrained FQI** | Same, but argmax restricted to logged actions at each state; abstains if none are supported (support mask, not the CQL objective) |
 
 Two data regimes:
 
 1. **Good coverage** — `mul` appears in logs when the task is multiplication.
 2. **Coverage gap** — on `mul` tasks, behavior logs only `add` / `sub`, never `mul`.
 
+An unknown state or an empty valid support set makes the constrained policy abstain (`None`); evaluation counts this as an unsuccessful termination.
+
 Run: `python code/agentic_offline_rl_toy.py`
 
-Example output (your numbers may vary slightly with seed):
+Example output (deterministic for the default seed; other seeds give slightly different numbers):
 
 ```text
 Dataset: good coverage (mul in logs)
+  mul-task op support (x,y known): ['add', 'mul', 'sub']
   Behavior success (all tasks):    0.72
-  BC success:                    1.00
+  BC success:                    0.99
   Naive FQI success:             1.00
   Support-constrained FQI:       1.00
 
 Dataset: no multiplication support
+  mul-task op support (x,y known): ['add', 'sub']
   Behavior success (all tasks):    0.52
   BC success:                    0.67
   Naive FQI success:             1.00
@@ -334,7 +371,7 @@ Dataset: no multiplication support
 
 1. **BC** clones the behavior policy. It improves over raw logging when the majority action at a state is good, but cannot invent unsupported tools.
 2. **Naive FQI** can stitch successful sub-trajectories (`lookup_x → lookup_y → correct op → final`) when coverage exists.
-3. **Without `mul` in the logs**, support-constrained FQI **cannot** solve multiplication — it never selects an unsupported tool. That is the conservative behavior you want offline.
+3. **Without `mul` in the logs**, support-constrained FQI never selects multiplication. It may still succeed when a supported operation happens to give the same answer. That is the conservative behavior you want offline.
 4. **Naive FQI on mul tasks** may still pick `mul` even though it was absent from behavior logs at that state: Q-values for unseen actions default to 0, which can beat negative Q on logged wrong ops — an **extrapolation / OOD action** effect. In the toy simulator `mul` succeeds; in deployment that would be a policy with no evidential support.
 
 **Thesis (same as classical offline RL):** improvement is possible **inside** the action/state support of the dataset; conservative methods refuse unsupported gains; unconstrained value learning can overtrust unvisited actions.
@@ -382,6 +419,9 @@ For applied work, a consistent JSON (or parquet) schema matters as much as algor
   },
   "reward_source": "verifier_v2",
   "verifier_version": "sec_filing_checker_2026_06",
+  "task_family_id": "sec_revenue_extraction_filing_001",
+  "source_hash": "sha256:<source-snapshot-digest>",
+  "collection_window": {"start": "2026-06-01", "end": "2026-06-30"},
   "split": "train",
   "metadata": {
     "behavior_policy": "gpt-4.1-agent-v3",
@@ -400,6 +440,57 @@ Design choices:
 - **`reward`** can be relabeled offline (verifier, human, LLM critic) — store `reward_components`, `reward_source`, and `verifier_version` separately from the scalar `reward`.
 - **`action_logprobs`** (or token/tool-call log-probabilities) are valuable for off-policy evaluation and filtering; log them when the behavior policy exposes them.
 - **`metadata.behavior_policy`** is necessary for **dataset provenance**. Importance-weighted OPE additionally requires comparable action representations and behavior/target action probabilities — often **unavailable** for free-form LLM actions unless log-probs were recorded at collection time.
+
+### Multi-agent extension
+
+Attach this record to each acting agent's transition; the parent record holds its action and episode identifier.
+
+```json
+{
+  "multi_agent_extension": {
+    "joint_step_id": "task_001:3",
+    "turn_id": 7,
+    "agent_id": "reader_1",
+    "role": "document_reader",
+    "recipient_ids": ["analyst_1"],
+    "local_observation": {
+      "visible_document": "filing_snapshot_v1",
+      "message": "Read page 42"
+    },
+    "policy_checkpoint": "reader_policy_v3",
+    "team_reward": {
+      "value": 0.0,
+      "source": "task_verifier_v2"
+    },
+    "individual_reward": {
+      "value": 0.0,
+      "source": "tool_validity_v1"
+    },
+    "credit_label": {
+      "value": null,
+      "source": null
+    }
+  }
+}
+```
+
+Use `joint_step_id` to link actions and messages belonging to one environment decision; `turn_id` preserves order within it. Record each agent's local observation, recipients and checkpoint here; the probability of its actual sampled action under the collection-time policy, including sampling settings, goes in the parent record's `action_logprobs`, so it is not duplicated. A null probability means unknown, not zero.
+
+A flat transcript does not preserve private observations, simultaneous decisions or policy provenance. Team reward, individual reward and later credit annotations have different meanings and sources; a credit label is not an observed counterfactual. These records enable reconstruction but do not identify counterfactual contributions without additional assumptions or interventions.
+
+### Dataset Splits and Leakage
+
+Assign splits **before extracting transitions**, keeping whole episodes together. Group related episodes by task family and source document: variants, shared cached outputs and near-duplicate sources must not cross splits. Record `task_family_id`, `source_hash` (of the source snapshot) and `collection_window`; a hash alone does not detect semantic duplicates.
+
+Define the grouping granularity first: `task_family_id` identifies a base task and its related variants, not a broad category such as all revenue-extraction tasks. Hold out independent task groups and source documents within the intended task categories to test new instances. Holding out entire categories instead tests transfer to unseen task families; label that result separately. Add a temporal/version holdout collected later or under changed prompts, tools or environments, and report it separately because version changes also test robustness.
+
+Leakage checklist:
+
+- Keep all steps and multi-agent turns of an episode in one split.
+- Group task variants and duplicated or overlapping sources before assigning splits.
+- Fit reward models, normalization and verifier calibration on training data; tune prompts and select candidates on validation data.
+- Freeze the test set and evaluation protocol; never tune on test outcomes.
+- Audit cache provenance and collection windows, and report task-family counts alongside transition counts.
 
 ---
 
