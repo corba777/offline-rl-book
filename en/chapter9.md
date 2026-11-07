@@ -139,26 +139,26 @@ def first_order_consistency(state, action, next_state,
 
 The penalty weight $\lambda$ has the same role as $\alpha$ in CQL: too small and violations persist; too large and the policy becomes overly conservative, ignoring the reward signal.
 
-The book's code calibrates $\lambda$ with `calibrate_lambda` in `physics_informed.py`, which Chapter 10 reuses. It measures two quantities on the dataset — the largest observed violation $C_{max}$ and a typical discounted return $\bar{R} = \overline{|r|}/(1-\gamma)$ — and sets
+The book's code calibrates $\lambda$ with `calibrate_lambda` in `physics_informed.py`, which Chapter 10 reuses. It compares two per-step quantities measured on the dataset — the average reward magnitude $\overline{|r|}$ and a reference violation $C_{ref}$, the largest violation seen in the data (or a small tolerance if there is none) — and sets
 
-$$\lambda = \frac{2\, C_{max}}{f \cdot \bar{R}}, \qquad f = 0.1 \text{ by default.}$$
+$$\lambda = k \cdot \frac{\overline{|r|}}{C_{ref}}, \qquad k = 10 \text{ by default},$$
 
-This is a scaling heuristic, not a guarantee. It makes the penalty grow with the worst violation present in the data and shrink as rewards grow, so that the penalty stays a modest, tunable fraction $f$ of the return: "expensive but not catastrophic."
+so that a violation of size $C_{ref}$ costs as much as $k$ average steps of reward. The units work out: $\lambda g$ is a reward whatever the units of $g$. If $g$ is measured in different units, $\lambda$ rescales inversely and the penalty does not change; if rewards are scaled up, $\lambda$ scales up with them. This is still a heuristic, not a guarantee — $k$ encodes how bad a violation is relative to ordinary tracking error, which is an engineering judgment.
 
 ```python
 def calibrate_lambda(dataset, constraint_fn, base_reward_fn,
-                     target_gap_fraction=0.1, gamma=0.99, device='cpu'):
+                     cost_ratio=10.0, tol=1e-3, device='cpu'):
     n  = min(2000, len(dataset['states']))
     s  = torch.FloatTensor(dataset['states'][:n]).to(device)
     a  = torch.FloatTensor(dataset['actions'][:n]).to(device)
     s2 = torch.FloatTensor(dataset['next_states'][:n]).to(device)
     with torch.no_grad():
-        C_max    = constraint_fn(s, a, s2).max().item()
-        mean_ret = base_reward_fn(s, a, s2).abs().mean().item() / (1 - gamma)
-    return 2.0 * C_max / max(target_gap_fraction * mean_ret, 1e-8)
+        c_ref  = max(constraint_fn(s, a, s2).max().item(), tol)
+        r_mean = base_reward_fn(s, a, s2).abs().mean().item()
+    return cost_ratio * r_mean / c_ref
 ```
 
-After calibrating, check the result directly: on training data a typical violation should be clearly expensive without dominating the reward. Chapter 10 ("Constraint Calibration") shows such a check.
+Compute both quantities in the same units the penalty will be applied in: if the agent trains on normalized states and rewards, evaluate the constraint on de-normalized states and divide the penalty by the same reward scale (Chapter 10 does exactly this). After calibrating, check the result directly: on training data a typical violation should be clearly expensive without dominating the reward.
 
 ---
 
@@ -358,20 +358,20 @@ def diagnose_hybrid_model(hybrid_model, dataset, physics_fn, device='cpu'):
 
     with torch.no_grad():
         phys_pred = physics_fn(s, a)
-        residuals = s2 - phys_pred                     # what the NN must learn
-        residual_std = residuals.std(0).cpu().numpy()
-        full_std     = s2.std(0).cpu().numpy()
+        res_var   = (s2 - phys_pred).var(0).cpu().numpy()   # what the NN must learn
+        inc_var   = (s2 - s).var(0).cpu().numpy()           # what s' = s leaves unexplained
 
-    coverage = 1.0 - (residual_std / (full_std + 1e-8))
+    # Variance (not std) ratio, measured on the increment s' - s: a model that
+    # merely predicts "nothing changes" scores 0, not a flattering 90%.
+    coverage = 1.0 - res_var / (inc_var + 1e-8)
 
-    print("Physics model coverage (fraction of variance explained):")
-    for i, (cov, rs, fs) in enumerate(zip(coverage, residual_std, full_std)):
-        print(f"  State dim {i}: physics covers {cov:.1%}  "
-              f"(residual std={rs:.4f}, total std={fs:.4f})")
+    print("Physics coverage (variance of s' - s explained):")
+    for i, cov in enumerate(coverage):
+        print(f"  State dim {i}: {cov:.1%}")
     return coverage
 ```
 
-A physics model explaining 70–90% of variance is excellent; the residual model needs to learn only the remaining 10–30%, which requires far less data.
+Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{tot}$ would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.
 
 ---
 

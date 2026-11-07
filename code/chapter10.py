@@ -2,31 +2,29 @@
 chapter10.py
 ===========
 Industrial Applications of Offline RL — complete case study.
-Chapter 7 of "Offline RL: From Theory to Industrial Practice"
+Chapter 10 of "Offline RL: From Theory to Industrial Practice"
 
 This file integrates algorithms from Chapters 1–6 into a single
 industrial pipeline. It does NOT reimplement existing algorithms;
-instead it imports them and adds only what is new for Chapter 7:
+instead it imports them and adds only what is new for Chapter 10:
 
   CoatingProcessEnv       : 5-variable thermal coating process
   IndustrialDataset       : realistic log collection with operating regimes
-  IndustrialEvaluator     : DA, RMSE, constraint violation rate
+  IndustrialEvaluator     : DA outside the noise band, IAE, overshoot, violations
   PhysicsInformedCQL      : CQL + physics reward shaping (Ch3 + Ch6)
   HybridMOReL             : MOReL with hybrid ensemble (Ch5 + Ch6)
-  run_industrial_benchmark: full 4-algorithm comparison with plots
+  run_industrial_benchmark: 4-algorithm comparison for one seed
+  run_multi_seed          : several seeds, bootstrap CIs, JSON results
 
 Algorithms imported (not reimplemented):
   Ch1: BCAgent            from behavioral_cloning.py / cql.py (BCAgent)
-  Ch3: CQLAgent           from cql.py
-  Ch5: MOReeLAgent        from morel.py
-  Ch6: PhysicsRewardWrapper, HybridEnsemble, calibrate_lambda,
-       bounds_constraint, first_order_constraint  from physics_informed.py
+  Ch4: CQLAgent           from cql.py
+  Ch8: MOReeLAgent        from morel.py
+  Ch9: PhysicsRewardWrapper, HybridEnsemble, calibrate_lambda,
+       bounds_constraint                         from physics_informed.py
 
-Expected comparison:
-  BC             — strong within distribution, degrades on transitions
-  CQL            — better generalization, occasional constraint violations
-  CQL+Physics    — fewer violations, similar or better reward
-  HybridMOReL    — best extrapolation, physically consistent dynamics
+Results are produced by run_multi_seed() and stored in
+results/ch10_benchmark.json; the chapter quotes that file.
 """
 
 import sys
@@ -67,7 +65,7 @@ except ImportError:
 try:
     from physics_informed import (
         PhysicsRewardWrapper, HybridEnsemble,
-        calibrate_lambda, bounds_constraint, first_order_constraint,
+        calibrate_lambda, bounds_constraint,
     )
     _PHYSICS_AVAILABLE = True
 except ImportError:
@@ -80,7 +78,7 @@ except ImportError:
 
 class CoatingProcessEnv:
     """
-    Anonymized thermal coating process — industrial case study for Chapter 7.
+    Anonymized thermal coating process — industrial case study for Chapter 10.
 
     Extends ThermalProcessEnv from Chapters 1–5 to 5 state variables,
     representative of a real multi-variable continuous manufacturing process.
@@ -90,7 +88,7 @@ class CoatingProcessEnv:
       s[1]  filler_fraction — fraction of filler material in the blend
       s[2]  viscosity       — blend viscosity (nonlinear fn of T and filler)
       s[3]  density         — bulk material density
-      s[4]  level           — surge tank level (integrating dynamics)
+      s[4]  level           — surge tank level (integrating: no self-regulation)
 
     Actions (2 variables):
       a[0]  heat_input  — heater setpoint delta, in [-1, 1]
@@ -101,14 +99,15 @@ class CoatingProcessEnv:
       filler_fraction: first-order, tau=8,  K=0.90, with 2-step transport delay
       viscosity:       nonlinear(T, filler) + noise
       density:         linear(T, filler) + small drift
-      level:           integrating: L_{t+1} = L_t + dt*(inflow - outflow)
+      level:           integrating: L_{t+1} = L_t + dt*(0.4*flow_in - Q_OUT)
+                       Q_OUT is set by the downstream consumer and does not depend on L
 
     Known physics model (available to agent):
       temperature:     first-order, tau=12, K=0.85     (~90% variance explained)
       filler_fraction: first-order, tau=8,  K=0.90     (~85%, delay ignored)
       viscosity:       linearized approximation         (~65%)
       density:         linear combination               (~80%)
-      level:           Euler mass balance               (~92%)
+      level:           mass balance (exact)
 
     Hard operating constraints:
       temperature:     [0.35, 0.85]
@@ -117,8 +116,9 @@ class CoatingProcessEnv:
       density:         [0.30, 0.80]
       level:           [0.15, 0.85]
 
-    The level variable is the key industrial challenge: integrating dynamics,
-    no natural setpoint, drifts over time. Mass balance must be respected.
+    The level variable is the key industrial challenge: it integrates the
+    imbalance between filler inflow and downstream demand, has no natural
+    equilibrium, and shares its only actuator (flow_in) with the filler fraction.
     """
 
     STATE_DIM  = 5
@@ -143,6 +143,9 @@ class CoatingProcessEnv:
     K_T   = 0.85
     K_F   = 0.90
     DT    = 1.0
+    # Downstream demand, chosen so that inflow balances outflow when the filler
+    # loop sits at its setpoint (f* = K_F * flow_in*  =>  flow_in* = F_TARGET / K_F).
+    Q_OUT = 0.4 * F_TARGET / K_F
 
     def __init__(self, noise_std: float = 0.015,
                  max_steps: int = 200,
@@ -192,11 +195,11 @@ class CoatingProcessEnv:
         ))
         v_new = self._viscosity(T_new, f_new)
         d_new = self._density(T_new, f_new)
-        # Integrating level — mass balance (outflow = 0.35*L - 0.05*heat: more heat → less outflow)
+        # Integrating level: inflow from the filler feed, outflow fixed by the
+        # downstream consumer. No term pulls L back by itself.
         inflow  = flow_in * 0.4
-        outflow = L * 0.35 - 0.05 * heat_in
         L_new   = float(np.clip(
-            L + self.DT * (inflow - outflow)
+            L + self.DT * (inflow - self.Q_OUT)
             + self.rng.normal(0, self.noise_std * 0.5),
             0.0, 1.0,
         ))
@@ -282,11 +285,14 @@ def collect_industrial_dataset(
                 noise_ep = noise_scale * 0.8
 
             for _ in range(episode_len):
-                # Proportional controller + exploration
+                # Proportional operators + exploration. The feed operator also
+                # watches the surge tank and nudges the feed to keep it from
+                # draining or overflowing: one actuator, two goals.
                 u_heat = float(np.clip(
                     1.8 * (env.T_TARGET - obs[env.STATE_T_IDX]) + rng.normal(0, noise_ep), -1, 1))
                 u_flow = float(np.clip(
-                    1.8 * (env.F_TARGET - obs[env.STATE_F_IDX]) + rng.normal(0, noise_ep), -1, 1))
+                    1.8 * (env.F_TARGET - obs[env.STATE_F_IDX])
+                    + 1.0 * (env.LEVEL_TARGET - obs[4]) + rng.normal(0, noise_ep), -1, 1))
                 action = np.array([u_heat, u_flow], dtype=np.float32)
 
                 s2, r, done, info = env.step(action)
@@ -343,106 +349,115 @@ def make_dataloader(dataset: Dict,
 
 class IndustrialEvaluator:
     """
-    Evaluate a trained policy with industrial-relevant metrics.
+    Evaluate a trained policy with industrial-relevant metrics, per episode.
 
-    Metrics computed:
-      reward_mean / reward_std   — episode return statistics
-      T_rmse, f_rmse, level_rmse — RMSE from setpoints
-      da_T, da_f                 — Directional Accuracy per variable
-      da_mean                    — mean DA across controlled variables
-      constraint_viol_rate       — fraction of steps with any violation
-      constraint_viol_severity   — mean violation magnitude (when violated)
+    For temperature (T) and filler fraction (f):
+      iae          — mean |x - x*| per step (integrated absolute error / T)
+      rmse         — root-mean-square error from setpoint
+      da           — directional accuracy, counted ONLY on steps where the
+                     previous error exceeds a noise band (k * noise_std). Inside
+                     the band the sign of the error is set by noise, and a
+                     perfect regulator would score ~50%.
+      overshoot    — fraction of those steps where the variable crosses the
+                     setpoint and lands more than one band beyond it
+    For the level: iae and rmse.
+    Constraints: violation rate (fraction of steps with any bound violated)
+                 and severity (mean violation magnitude when violated).
 
-    Directional Accuracy (DA):
-      Fraction of steps where the state variable moved toward its setpoint.
-      DA = 0.5 is random; DA > 0.8 is industrially acceptable; DA < 0.5
-      means the policy is systematically pushing the variable the wrong way.
-      DA is important because it is agnostic to action magnitude — a policy
-      that always moves in the right direction but too slowly still has DA=1.
+    Half of the episodes start near the setpoints; the other half start
+    disturbed, like the 'disturbance' regime in the logs (low tank level,
+    shifted temperature and filler). Constraints are only tested in those.
     """
+
+    METRICS = ['reward', 'T_iae', 'f_iae', 'L_iae', 'T_rmse', 'f_rmse', 'L_rmse',
+               'da_T', 'da_f', 'overshoot_T', 'overshoot_f',
+               'viol_rate', 'viol_severity',
+               'viol_rate_disturbed', 'L_iae_disturbed']
 
     def __init__(self, env: CoatingProcessEnv,
                  s_mean:     np.ndarray,
                  s_std:      np.ndarray,
-                 n_episodes: int = 30,
+                 n_episodes: int = 20,
+                 band_k:     float = 2.0,
+                 seed_base:  int = 8000,
                  device:     str = 'cpu'):
         self.env        = env
         self.s_mean     = s_mean
         self.s_std      = s_std
         self.n_episodes = n_episodes
+        self.band       = band_k * env.noise_std
+        self.seed_base  = seed_base
         self.device     = device
 
-    def evaluate(self, agent) -> Dict[str, float]:
-        """
-        Run n_episodes and compute all metrics.
-        agent must have .policy with .act(state_tensor, deterministic=True).
-        """
-        rewards, T_errs, f_errs, L_errs = [], [], [], []
-        da_T_all, da_f_all = [], []
-        viol_rates, viol_sevs = [], []
+    def _episode(self, agent, seed: int, disturbed: bool = False) -> Dict[str, float]:
+        env  = self.env
+        obs  = env.reset(seed=seed)
+        if disturbed:
+            rng = np.random.default_rng(seed + 50_000)
+            env.state[4] = float(rng.uniform(0.15, 0.25))
+            env.state[0] = float(np.clip(env.state[0] + rng.choice([-1, 1]) * 0.12, 0.35, 0.85))
+            env.state[1] = float(np.clip(env.state[1] + rng.choice([-1, 1]) * 0.10, 0.20, 0.75))
+            obs = env.state.copy()
+        tgt  = {'T': env.T_TARGET, 'f': env.F_TARGET}
+        idx  = {'T': env.STATE_T_IDX, 'f': env.STATE_F_IDX}
+        err  = {k: [] for k in ('T', 'f', 'L')}
+        da   = {'T': [], 'f': []}
+        over = {'T': [], 'f': []}
+        ep_r, steps, viol_steps, viol_total, done = 0.0, 0, 0, 0.0, False
 
-        for ep in range(self.n_episodes):
-            obs  = self.env.reset(seed=8000 + ep)
-            ep_r = 0.0
-            done = False
-            steps = viol_steps = 0
-            viol_total = 0.0
+        while not done:
+            prev = {k: float(obs[idx[k]]) for k in ('T', 'f')}
+            s_t  = torch.FloatTensor((obs - self.s_mean) / self.s_std).unsqueeze(0).to(self.device)
+            act  = agent.policy.act(s_t, deterministic=True)
+            obs, r, done, info = env.step(act)
+            ep_r += r
+            for k in ('T', 'f'):
+                e_prev = tgt[k] - prev[k]
+                e_new  = tgt[k] - float(obs[idx[k]])
+                err[k].append(e_new)
+                if abs(e_prev) > self.band:
+                    da[k].append(1.0 if (float(obs[idx[k]]) - prev[k]) * e_prev > 0 else 0.0)
+                    over[k].append(1.0 if (e_new * e_prev < 0 and abs(e_new) > self.band) else 0.0)
+            err['L'].append(env.LEVEL_TARGET - float(obs[4]))
+            steps += 1
+            v = info['constraint_violation']
+            if v > 0:
+                viol_steps += 1
+                viol_total += v
 
-            while not done:
-                prev_T, prev_f = obs[self.env.STATE_T_IDX], obs[self.env.STATE_F_IDX]
-                s_t = torch.FloatTensor(
-                    (obs - self.s_mean) / self.s_std
-                ).unsqueeze(0).to(self.device)
+        m = {'reward': ep_r}
+        for k in ('T', 'f', 'L'):
+            e = np.abs(np.array(err[k]))
+            m[f'{k}_iae']  = float(e.mean())
+            m[f'{k}_rmse'] = float(np.sqrt((e ** 2).mean()))
+        for k in ('T', 'f'):
+            m[f'da_{k}']        = float(np.mean(da[k])) if da[k] else float('nan')
+            m[f'overshoot_{k}'] = float(np.mean(over[k])) if over[k] else float('nan')
+        m['viol_rate']     = viol_steps / max(steps, 1)
+        m['viol_severity'] = viol_total / viol_steps if viol_steps else 0.0
+        m['disturbed']     = disturbed
+        return m
 
-                act = agent.policy.act(s_t, deterministic=True)
-                obs, r, done, info = self.env.step(act)
-                ep_r += r
+    def evaluate(self, agent) -> Dict[str, object]:
+        """Returns per-metric means and the per-episode values (key 'episodes')."""
+        eps = [self._episode(agent, self.seed_base + ep, disturbed=(ep % 2 == 1))
+               for ep in range(self.n_episodes)]
+        dist = [e for e in eps if e['disturbed']]
+        out = {k: float(np.nanmean([e[k] for e in eps]))
+               for k in self.METRICS if not k.endswith('_disturbed')}
+        out['viol_rate_disturbed'] = float(np.mean([e['viol_rate'] for e in dist]))
+        out['L_iae_disturbed']     = float(np.mean([e['L_iae'] for e in dist]))
+        out['episodes'] = eps
+        return out
 
-                T, f, _, _, L = obs
-                T_errs.append((T - self.env.T_TARGET)**2)
-                f_errs.append((f - self.env.F_TARGET)**2)
-                L_errs.append((L - self.env.LEVEL_TARGET)**2)
-
-                # DA: did the state move toward setpoint?
-                da_T_all.append(
-                    1.0 if (T - prev_T) * (self.env.T_TARGET - prev_T) >= 0 else 0.0)
-                da_f_all.append(
-                    1.0 if (f - prev_f) * (self.env.F_TARGET - prev_f) >= 0 else 0.0)
-
-                viol = info['constraint_violation']
-                steps += 1
-                if viol > 0:
-                    viol_steps += 1
-                    viol_total += viol
-
-            rewards.append(ep_r)
-            viol_rates.append(viol_steps / max(steps, 1))
-            viol_sevs.append(viol_total / max(viol_steps, 1))
-
-        return {
-            'reward_mean':            float(np.mean(rewards)),
-            'reward_std':             float(np.std(rewards)),
-            'T_rmse':                 float(np.sqrt(np.mean(T_errs))),
-            'f_rmse':                 float(np.sqrt(np.mean(f_errs))),
-            'level_rmse':             float(np.sqrt(np.mean(L_errs))),
-            'da_T':                   float(np.mean(da_T_all)),
-            'da_f':                   float(np.mean(da_f_all)),
-            'da_mean':                float(np.mean(da_T_all + da_f_all)),
-            'constraint_viol_rate':   float(np.mean(viol_rates)),
-            'constraint_viol_severity': float(np.mean(viol_sevs)),
-        }
-
-    def print_results(self, name: str, metrics: Dict[str, float]) -> None:
-        print(f"\n{'─'*52}")
-        print(f"  {name}")
-        print(f"{'─'*52}")
-        print(f"  Reward        : {metrics['reward_mean']:+.3f} ± {metrics['reward_std']:.3f}")
-        print(f"  T  RMSE / DA  : {metrics['T_rmse']:.4f}  /  {metrics['da_T']:.1%}")
-        print(f"  f  RMSE / DA  : {metrics['f_rmse']:.4f}  /  {metrics['da_f']:.1%}")
-        print(f"  Level RMSE    : {metrics['level_rmse']:.4f}")
-        print(f"  DA (mean)     : {metrics['da_mean']:.1%}")
-        print(f"  Constraint viol: {metrics['constraint_viol_rate']:.1%} of steps  "
-              f"(severity={metrics['constraint_viol_severity']:.5f})")
+    def print_results(self, name: str, m: Dict[str, float]) -> None:
+        print(f"\n{'─'*60}\n  {name}\n{'─'*60}")
+        print(f"  Return         : {m['reward']:+.2f}")
+        print(f"  T  IAE / DA / overshoot : {m['T_iae']:.4f} / {m['da_T']:.1%} / {m['overshoot_T']:.1%}")
+        print(f"  f  IAE / DA / overshoot : {m['f_iae']:.4f} / {m['da_f']:.1%} / {m['overshoot_f']:.1%}")
+        print(f"  Level IAE      : {m['L_iae']:.4f}")
+        print(f"  Violations     : {m['viol_rate']:.1%} of steps (severity {m['viol_severity']:.4f}); "
+              f"disturbed starts: {m['viol_rate_disturbed']:.1%}, level IAE {m['L_iae_disturbed']:.4f}")
 
 
 # ============================================================================
@@ -457,12 +472,10 @@ def coating_physics_fn(state: torch.Tensor,
     Implements the known part of the dynamics; leaves cross-coupling, transport
     delay, and nonlinear viscosity corrections to the neural residual network.
 
-    Physics coverage per dimension (approximate):
-      temperature:     ~90%  (dominant first-order response)
-      filler_fraction: ~80%  (delay model not included)
-      viscosity:       ~65%  (linearized)
-      density:         ~80%
-      level:           ~92%  (mass balance is nearly exact)
+    Omitted on purpose: the 0.03*f*u_T cross-coupling, the 2-step filler delay,
+    and the 0.12*f*(1-T) viscosity term. Measure how much each dimension's
+    increment the model explains with HybridEnsemble.diagnose_physics_coverage.
+      level:           mass balance (exact up to noise)
     """
     TAU_T = CoatingProcessEnv.TAU_T
     TAU_F = CoatingProcessEnv.TAU_F
@@ -486,59 +499,72 @@ def coating_physics_fn(state: torch.Tensor,
     # Linear density
     d_new = (0.55 + 0.25 * f_new - 0.10 * T_new).clamp(0.0, 1.0)
 
-    # Mass balance for level (outflow = 0.35*L - 0.05*heat per true dynamics)
+    # Mass balance for level: inflow from the feed, outflow set downstream
     inflow  = flow_in * 0.4
-    outflow = L * 0.35 - 0.05 * heat_in
-    L_new   = (L + DT * (inflow - outflow)).clamp(0.0, 1.0)
+    L_new   = (L + DT * (inflow - CoatingProcessEnv.Q_OUT)).clamp(0.0, 1.0)
 
     return torch.stack([T_new, f_new, v_new, d_new, L_new], dim=1)
 
 
-def make_coating_constraints(dataset: Dict,
-                              device: str = 'cpu') -> Tuple[List, List]:
+def coating_reward_torch(next_state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+    """The environment's reward, in raw units, for batches of tensors."""
+    T, f, L = next_state[:, 0], next_state[:, 1], next_state[:, 4]
+    return (-2.0 * (T - CoatingProcessEnv.T_TARGET) ** 2
+            - 2.0 * (f - CoatingProcessEnv.F_TARGET) ** 2
+            - 0.5 * (L - CoatingProcessEnv.LEVEL_TARGET) ** 2
+            - 0.05 * action.pow(2).sum(-1))
+
+
+class Units:
     """
-    Build physics constraint functions and calibrated lambdas for CQL+Physics.
+    Converts between the normalized space the agents train in and the raw
+    physical units in which bounds, physics and rewards are defined.
+    Everything physical must be evaluated in raw units.
+    """
+    def __init__(self, s_mean: np.ndarray, s_std: np.ndarray, r_std: float, device: str = 'cpu'):
+        self.mean  = torch.FloatTensor(s_mean).to(device)
+        self.std   = torch.FloatTensor(s_std).to(device)
+        self.r_std = float(r_std)
 
-    Returns:
-      constraints: list of g(s, a, s') -> Tensor (batch,), violation ≥ 0
-      lambdas:     list of floats, calibrated via Chapter 9 lambda heuristic
+    def raw(self, s_norm: torch.Tensor) -> torch.Tensor:
+        return s_norm * self.std + self.mean
 
-    Three constraints:
-      1. Operating bounds: all state variables within hard limits
-      2. Temperature first-order consistency
-      3. Filler fraction first-order consistency (no delay — approximate)
+    def norm(self, s_raw: torch.Tensor) -> torch.Tensor:
+        return (s_raw - self.mean) / self.std
+
+    def physics_fn(self, s_norm: torch.Tensor, a: torch.Tensor) -> torch.Tensor:
+        return self.norm(coating_physics_fn(self.raw(s_norm), a))
+
+    def reward_fn(self, s_norm, a, s2_norm) -> torch.Tensor:
+        return coating_reward_torch(self.raw(s2_norm), a) / self.r_std
+
+
+def make_bounds_penalty(dataset_raw: Dict, units: Units,
+                        cost_ratio: float = 10.0, device: str = 'cpu'):
+    """
+    Penalty for leaving the hard operating bounds, in normalized-reward units.
+
+    Only the bounds constraint is used. First-order consistency checks are
+    about the dynamics model, not the policy: on real logs they would penalize
+    transitions in which the true (unmodeled) delay and coupling show up.
     """
     lower = [lo for lo, hi in CoatingProcessEnv.BOUNDS]
     upper = [hi for lo, hi in CoatingProcessEnv.BOUNDS]
 
-    def bounds_fn(s, a, s2):
+    def bounds_raw(s, a, s2):
         return bounds_constraint(s, a, s2, lower=lower, upper=upper)
 
-    def temp_fn(s, a, s2):
-        return first_order_constraint(
-            s, a, s2, state_idx=0, action_idx=0,
-            tau=CoatingProcessEnv.TAU_T, K=CoatingProcessEnv.K_T,
-            dt=CoatingProcessEnv.DT, tol=0.04)
+    def reward_raw(s, a, s2):
+        return coating_reward_torch(s2, a)
 
-    def filler_fn(s, a, s2):
-        return first_order_constraint(
-            s, a, s2, state_idx=1, action_idx=1,
-            tau=CoatingProcessEnv.TAU_F, K=CoatingProcessEnv.K_F,
-            dt=CoatingProcessEnv.DT, tol=0.05)
+    lam = calibrate_lambda(dataset_raw, bounds_raw, reward_raw,
+                           cost_ratio=cost_ratio, device=device)
 
-    # Calibrate bounds lambda (Chapter 9 heuristic)
-    def base_r(s, a, s2):
-        return (
-            -2.0 * (s2[:, 0] - CoatingProcessEnv.T_TARGET)**2
-            - 2.0 * (s2[:, 1] - CoatingProcessEnv.F_TARGET)**2
-        )
+    def penalty(s_norm, a, s2_norm):
+        g = bounds_raw(units.raw(s_norm), a, units.raw(s2_norm))
+        return lam * g / units.r_std
 
-    lam_bounds = calibrate_lambda(
-        dataset, bounds_fn, base_r, target_gap_fraction=0.10, device=device)
-
-    constraints = [bounds_fn, temp_fn, filler_fn]
-    lambdas     = [lam_bounds, 2.0, 2.0]
-    return constraints, lambdas
+    return penalty, lam
 
 
 # ============================================================================
@@ -547,104 +573,59 @@ def make_coating_constraints(dataset: Dict,
 
 class PhysicsInformedCQL:
     """
-    CQL with physics reward shaping (Chapter 3 + Chapter 6).
-
-    The modification is minimal: apply PhysicsRewardWrapper to the reward
-    before every CQL update. No changes to the CQL algorithm itself.
-    This is the "one-line" physics integration: any offline RL agent can
-    be made constraint-aware by modifying only its reward signal.
+    CQL with a constraint penalty subtracted from the reward (Chapter 4 + Chapter 9).
+    The CQL algorithm itself is unchanged; only its reward signal is.
     """
 
-    def __init__(self, state_dim: int, action_dim: int,
-                 constraints: List, lambdas: List,
-                 alpha_cql:   float = 1.0,
-                 hidden_dim:  int   = 256,
-                 device:      str   = 'cpu'):
-        self.device = device
-
-        def _zero_r(s, a, s2):           # placeholder base reward
-            return torch.zeros(s.shape[0], device=s.device)
-
-        self.reward_wrapper = PhysicsRewardWrapper(
-            base_reward=_zero_r,
-            constraints=constraints,
-            lambdas=lambdas,
-        )
-        self.cql    = CQLAgent(state_dim, action_dim, hidden_dim,
-                               alpha_cql=alpha_cql, device=device)
-        self.policy = self.cql.policy   # expose for evaluator
+    def __init__(self, state_dim: int, action_dim: int, penalty_fn,
+                 alpha_cql: float = 1.0, hidden_dim: int = 256, device: str = 'cpu'):
+        self.device  = device
+        self.penalty = penalty_fn
+        self.cql     = CQLAgent(state_dim, action_dim, hidden_dim,
+                                alpha_cql=alpha_cql, device=device)
+        self.policy  = self.cql.policy
 
     def update(self, batch: Tuple) -> Dict:
         s, a, r, s2, d = [x.to(self.device) for x in batch]
         with torch.no_grad():
-            penalty = sum(
-                lam * g(s, a, s2)
-                for g, lam in zip(self.reward_wrapper.constraints,
-                                   self.reward_wrapper.lambdas)
-            )
-        return self.cql.update((s, a, r - penalty, s2, d))
+            pen = self.penalty(s, a, s2)
+        return self.cql.update((s, a, r - pen, s2, d))
 
 
 class HybridMOReL:
     """
-    MOReL with hybrid dynamics ensemble (Chapter 5 + Chapter 6).
+    MOReL with a hybrid dynamics ensemble (Chapter 8 + Chapter 9).
 
-    Replaces MOReL's pure neural ensemble with HybridEnsemble.
-    All rollout generation, P-MDP construction, and SAC training
-    logic is unchanged from Chapter 5 — only the dynamics model changes.
-
-    The hybrid ensemble improves two things:
-    1. Dynamics accuracy in OOD regions (physics provides a consistent prior)
-    2. Calibrated uncertainty: the residual network has lower variance than
-       a full black-box, so ensemble disagreement better reflects genuine
-       epistemic uncertainty rather than fitting noise.
+    The ensemble predicts physics + learned residual. Caveat (Chapter 9): every
+    member shares the same physics, so where the physics is wrong the members
+    agree and the uncertainty used for HALT is too low.
     """
 
-    def __init__(self, state_dim: int, action_dim: int,
-                 physics_fn,
-                 n_ensemble:  int   = 5,
-                 hidden_dim:  int   = 128,
-                 halt_thresh: float = 0.15,
-                 horizon:     int   = 5,
-                 device:      str   = 'cpu'):
+    def __init__(self, state_dim: int, action_dim: int, units: Units,
+                 kappa: float, n_ensemble: int = 4, hidden_dim: int = 128,
+                 rollout_horizon: int = 5, epsilon_percentile: float = 80.0,
+                 device: str = 'cpu'):
         self.device = device
-
+        self.epsilon_percentile = epsilon_percentile
         self.hybrid_ensemble = HybridEnsemble(
-            n_models   = n_ensemble,
-            state_dim  = state_dim,
-            action_dim = action_dim,
-            physics_fn = physics_fn,
-            hidden_dim = hidden_dim,
-            device     = device,
-        )
+            n_models=n_ensemble, state_dim=state_dim, action_dim=action_dim,
+            physics_fn=units.physics_fn, hidden_dim=hidden_dim, device=device)
         self.morel_agent = MOReeLAgent(
-            state_dim   = state_dim,
-            action_dim  = action_dim,
-            n_models    = n_ensemble,
-            hidden_dim  = hidden_dim,
-            halt_thresh = halt_thresh,
-            horizon     = horizon,
-            device      = device,
-        )
+            state_dim, action_dim, n_ensemble=n_ensemble,
+            rollout_horizon=rollout_horizon, kappa=kappa, device=device)
+        # The coating reward (raw units, then scaled like the dataset rewards)
+        self.morel_agent._model_reward = units.reward_fn
         self.policy = self.morel_agent.policy
 
-    def train_dynamics(self, dataset: Dict,
-                       n_epochs: int = 50, batch_size: int = 256) -> None:
-        """Train hybrid ensemble, then swap into MOReL."""
-        print("\n  Physics coverage diagnosis:")
-        self.hybrid_ensemble.diagnose_physics_coverage(dataset)
-        print("\n  Training hybrid ensemble...")
-        self.hybrid_ensemble.train_ensemble(
-            dataset, n_epochs=n_epochs, batch_size=batch_size)
-        # Swap: MOReL.generate_synthetic_data calls self.ensemble
+    def train_dynamics(self, dataset: Dict, n_epochs: int = 30, batch_size: int = 256):
+        print("\n  Physics coverage (increment variance explained):")
+        coverage = self.hybrid_ensemble.diagnose_physics_coverage(dataset)
+        self.hybrid_ensemble.train_ensemble(dataset, n_epochs=n_epochs,
+                                            batch_size=batch_size, log_every=n_epochs)
         self.morel_agent.ensemble = self.hybrid_ensemble
-        print("  ✓ HybridEnsemble installed in MOReL")
-
-    def generate_synthetic_data(self, real_states: torch.Tensor) -> Dict:
-        return self.morel_agent.generate_synthetic_data(real_states)
-
-    def update(self, batch: Tuple, synthetic: Optional[Dict]) -> Dict:
-        return self.morel_agent.update(batch, synthetic)
+        self.morel_agent.epsilon = self.hybrid_ensemble.calibrate_epsilon(
+            dataset, percentile=self.epsilon_percentile)
+        return coverage
 
 
 # ============================================================================
@@ -679,113 +660,24 @@ def train_cql_agent(agent, loader: DataLoader,
             print("  CQL | " + " | ".join(parts))
 
 
-def train_hybrid_morel_agent(
-    agent:              HybridMOReL,
-    dataset:            Dict,
-    norm_dataset:       Dict,
-    env:                CoatingProcessEnv,
-    s_mean:             np.ndarray,
-    s_std:              np.ndarray,
-    n_dynamics_epochs:  int = 40,
-    n_outer_iters:      int = 20,
-    sac_steps_per_iter: int = 500,
-    batch_size:         int = 256,
-    device:             str = 'cpu',
-) -> List[float]:
-    """Two-phase HybridMOReL training: dynamics first, then policy."""
-    agent.train_dynamics(norm_dataset,
-                         n_epochs=n_dynamics_epochs, batch_size=batch_size)
-    print("\n  MOReL outer loop...")
-    return train_morel(
-        agent               = agent.morel_agent,
-        dataset             = norm_dataset,
-        env                 = env,
-        s_mean              = s_mean,
-        s_std               = s_std,
-        n_outer_iters       = n_outer_iters,
-        sac_steps_per_iter  = sac_steps_per_iter,
-        batch_size          = batch_size,
-        device              = device,
-        eval_every          = 5,
-    )
+def train_hybrid_morel_agent(agent: HybridMOReL, norm_dataset: Dict, env: CoatingProcessEnv,
+                             s_mean: np.ndarray, s_std: np.ndarray,
+                             n_dynamics_epochs: int = 30, n_outer_iters: int = 15,
+                             sac_steps_per_iter: int = 300, batch_size: int = 256,
+                             device: str = 'cpu'):
+    """Two-phase HybridMOReL training: dynamics first, then the P-MDP policy loop."""
+    coverage = agent.train_dynamics(norm_dataset, n_epochs=n_dynamics_epochs,
+                                    batch_size=batch_size)
+    train_morel(agent=agent.morel_agent, dataset=norm_dataset, env=env,
+                s_mean=s_mean, s_std=s_std, n_outer_iters=n_outer_iters,
+                sac_steps_per_iter=sac_steps_per_iter, batch_size=batch_size,
+                device=device, eval_every=n_outer_iters + 1)   # no env peeking
+    return coverage
 
 
 # ============================================================================
 # 7. VISUALIZATION
 # ============================================================================
-
-def plot_comparison(results: Dict[str, Dict[str, float]],
-                    save_path: str = 'ch7_comparison.png') -> None:
-    """Four-panel comparison: reward, DA, RMSE, constraint violation rate."""
-    names   = list(results.keys())
-    colours = ['#5b9bd5', '#70ad47', '#ffc000', '#e04545'][:len(names)]
-    x       = np.arange(len(names))
-
-    fig = plt.figure(figsize=(14, 10))
-    fig.suptitle('Chapter 7: Industrial Benchmark — Thermal Coating Process',
-                 fontsize=13, fontweight='bold', y=0.98)
-    gs = gridspec.GridSpec(2, 2, hspace=0.45, wspace=0.35)
-
-    # Panel 1: Reward
-    ax1 = fig.add_subplot(gs[0, 0])
-    means = [results[n]['reward_mean'] for n in names]
-    stds  = [results[n]['reward_std']  for n in names]
-    bars  = ax1.bar(x, means, yerr=stds, capsize=5, color=colours,
-                    edgecolor='white', error_kw={'elinewidth': 1.5})
-    ax1.axhline(0, color='k', lw=0.7, ls='--', alpha=0.4)
-    ax1.set_xticks(x); ax1.set_xticklabels(names, rotation=15, ha='right')
-    ax1.set_ylabel('Mean Episode Reward')
-    ax1.set_title('Return (↑ better)')
-    for bar, m in zip(bars, means):
-        ax1.text(bar.get_x() + bar.get_width()/2,
-                 bar.get_height() + abs(bar.get_height()) * 0.02,
-                 f'{m:.2f}', ha='center', va='bottom', fontsize=8)
-
-    # Panel 2: Directional Accuracy
-    ax2 = fig.add_subplot(gs[0, 1])
-    da_T = [results[n]['da_T'] for n in names]
-    da_f = [results[n]['da_f'] for n in names]
-    w = 0.35
-    ax2.bar(x - w/2, da_T, w, label='Temperature',     color='#4472c4', alpha=0.85)
-    ax2.bar(x + w/2, da_f, w, label='Filler fraction', color='#ed7d31', alpha=0.85)
-    ax2.axhline(0.5, color='r', lw=1.0, ls='--', alpha=0.6, label='Random (0.5)')
-    ax2.axhline(0.8, color='g', lw=1.0, ls=':',  alpha=0.6, label='Good DA (0.8)')
-    ax2.set_ylim(0, 1.05)
-    ax2.set_xticks(x); ax2.set_xticklabels(names, rotation=15, ha='right')
-    ax2.set_ylabel('Directional Accuracy')
-    ax2.set_title('DA (↑ better, >0.8 = industrially useful)')
-    ax2.legend(fontsize=7, loc='lower right')
-
-    # Panel 3: RMSE
-    ax3 = fig.add_subplot(gs[1, 0])
-    w2 = 0.25
-    ax3.bar(x - w2, [results[n]['T_rmse']     for n in names], w2,
-            label='Temperature',     color='#4472c4', alpha=0.85)
-    ax3.bar(x,      [results[n]['f_rmse']     for n in names], w2,
-            label='Filler fraction', color='#ed7d31', alpha=0.85)
-    ax3.bar(x + w2, [results[n]['level_rmse'] for n in names], w2,
-            label='Level',           color='#a9d18e', alpha=0.85)
-    ax3.set_xticks(x); ax3.set_xticklabels(names, rotation=15, ha='right')
-    ax3.set_ylabel('RMSE from setpoint')
-    ax3.set_title('Tracking error (↓ better)')
-    ax3.legend(fontsize=7)
-
-    # Panel 4: Constraint violations
-    ax4 = fig.add_subplot(gs[1, 1])
-    viol = [results[n]['constraint_viol_rate'] * 100 for n in names]
-    bars4 = ax4.bar(x, viol, color=colours, edgecolor='white')
-    ax4.set_xticks(x); ax4.set_xticklabels(names, rotation=15, ha='right')
-    ax4.set_ylabel('Constraint violation rate (%)')
-    ax4.set_title('Physical constraint violations (↓ better)')
-    for bar, v in zip(bars4, viol):
-        ax4.text(bar.get_x() + bar.get_width()/2,
-                 bar.get_height() + 0.2, f'{v:.1f}%',
-                 ha='center', va='bottom', fontsize=8)
-
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    print(f"Comparison plot saved: {save_path}")
-
 
 def plot_episode_trajectory(
     agent,
@@ -795,7 +687,7 @@ def plot_episode_trajectory(
     agent_name: str = 'Agent',
     device:     str = 'cpu',
     seed:       int = 42,
-    save_path:  str = 'ch7_trajectory.png',
+    save_path:  str = 'ch10_trajectory.png',
 ) -> None:
     """Plot single-episode state trajectory with setpoints and constraint bounds."""
     obs  = env.reset(seed=seed)
@@ -843,164 +735,142 @@ def plot_episode_trajectory(
 # 8. RESULTS TABLE
 # ============================================================================
 
-def print_results_table(results: Dict[str, Dict[str, float]]) -> None:
-    metrics = [
-        ('reward_mean',            'Reward (mean)',    '{:+.3f}', 'max'),
-        ('da_mean',                'DA (mean)',        '{:.1%}',  'max'),
-        ('da_T',                   'DA temperature',   '{:.1%}',  'max'),
-        ('da_f',                   'DA filler',        '{:.1%}',  'max'),
-        ('T_rmse',                 'T RMSE',           '{:.4f}',  'min'),
-        ('f_rmse',                 'f RMSE',           '{:.4f}',  'min'),
-        ('level_rmse',             'Level RMSE',       '{:.4f}',  'min'),
-        ('constraint_viol_rate',   'Violation rate',   '{:.1%}',  'min'),
-    ]
-    names  = list(results.keys())
-    col_w  = max(len(n) for n in names) + 3
-    mw     = 20
-
-    hdr = f"{'Metric':{mw}}" + "".join(f"{n:>{col_w}}" for n in names)
-    print("\n" + "=" * len(hdr))
-    print("  CHAPTER 10 — INDUSTRIAL BENCHMARK RESULTS")
-    print("=" * len(hdr))
-    print(hdr)
-    print("-" * len(hdr))
-
-    for key, label, fmt, direction in metrics:
-        vals     = [results[n][key] for n in names]
-        best_idx = int(np.argmin(vals) if direction == 'min' else np.argmax(vals))
-        row      = f"{label:{mw}}"
-        for i, v in enumerate(vals):
-            cell = fmt.format(v)
-            tag  = '▶ ' if i == best_idx else '  '
-            row += f"{tag + cell:>{col_w}}"
-        print(row)
-
-    print("=" * len(hdr))
-    print("  ▶ = best value for this metric\n")
-
-
-# ============================================================================
-# 9. MAIN BENCHMARK
-# ============================================================================
-
-def run_industrial_benchmark(
-    device:        str  = 'cpu',
-    n_train_ep:    int  = 400,
-    n_bc_epochs:   int  = 60,
-    n_cql_epochs:  int  = 80,
-    n_morel_iters: int  = 15,
-    n_eval_ep:     int  = 20,
-    batch_size:    int  = 256,
-    quick_test:    bool = False,
-) -> Dict[str, Dict[str, float]]:
+def run_industrial_benchmark(seed: int = 0, device: str = 'cpu',
+                             n_train_ep: int = 400, n_bc_epochs: int = 60,
+                             n_cql_epochs: int = 80, n_morel_iters: int = 15,
+                             n_eval_ep: int = 20, batch_size: int = 256,
+                             quick_test: bool = False) -> Dict[str, object]:
     """
-    Full 4-algorithm comparison on the industrial coating process:
-
-      1. BC            (Chapter 1) — behavioral cloning baseline
-      2. CQL           (Chapter 3) — conservative Q-learning
-      3. CQL+Physics   (Chapter 3 + 6) — CQL with physics reward shaping
-      4. HybridMOReL   (Chapter 5 + 6) — model-based + hybrid dynamics
-
-    quick_test=True runs in minimal settings for CI / smoke testing.
+    One seed of the 4-algorithm comparison. The seed controls the logged
+    dataset, network initialization and the evaluation episodes.
     """
     if quick_test:
-        n_train_ep     = 50
-        n_bc_epochs    = 5
-        n_cql_epochs   = 5
-        n_morel_iters  = 3
-        n_eval_ep      = 5
+        n_train_ep, n_bc_epochs, n_cql_epochs, n_morel_iters, n_eval_ep = 40, 2, 2, 2, 3
 
-    print("=" * 60)
-    print("Chapter 7: Industrial Offline RL Benchmark")
-    print("  Process : Thermal Coating Line (anonymized)")
-    print(f"  State   : {CoatingProcessEnv.STATE_DIM}D  "
-          f"Action: {CoatingProcessEnv.ACTION_DIM}D")
-    print("=" * 60)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    S, A = CoatingProcessEnv.STATE_DIM, CoatingProcessEnv.ACTION_DIM
+    env  = CoatingProcessEnv(seed=seed)
 
-    S   = CoatingProcessEnv.STATE_DIM
-    A   = CoatingProcessEnv.ACTION_DIM
-    env = CoatingProcessEnv(seed=0)
-
-    # Data
-    print(f"\n[1] Collecting dataset ({n_train_ep} episodes)...")
-    dataset          = collect_industrial_dataset(n_episodes=n_train_ep, seed=0)
+    dataset = collect_industrial_dataset(n_episodes=n_train_ep, seed=seed)
     norm_dataset, s_mean, s_std = normalize_dataset(dataset)
-    loader           = make_dataloader(norm_dataset, batch_size, device)
-    s_tensor         = torch.FloatTensor(norm_dataset['states'])
-    evaluator        = IndustrialEvaluator(env, s_mean, s_std, n_eval_ep, device)
+    r_std  = float(dataset['rewards'].std() + 1e-8)
+    units  = Units(s_mean, s_std, r_std, device)
+    loader = make_dataloader(norm_dataset, batch_size, device)
+    evaluator = IndustrialEvaluator(env, s_mean, s_std, n_eval_ep,
+                                    seed_base=8000 + 100 * seed, device=device)
+    out = {'seed': seed, 'results': {}, 'extra': {}}
 
-    results   = {}
-    agent_map = {}
+    print(f"\n[seed {seed}] BC")
+    bc = CQLBCAgent(S, A, device=device)
+    train_bc(bc, loader, n_epochs=n_bc_epochs)
+    out['results']['BC'] = evaluator.evaluate(bc)
 
-    # BC
-    if _CQL_AVAILABLE:
-        print(f"\n[2] Training BC ({n_bc_epochs} epochs)...")
-        bc = CQLBCAgent(S, A, device=device)
-        train_bc(bc, loader, n_epochs=n_bc_epochs)
-        m = evaluator.evaluate(bc)
-        evaluator.print_results("BC (Chapter 1)", m)
-        results['BC'] = m; agent_map['BC'] = bc
+    print(f"\n[seed {seed}] CQL")
+    cql = CQLAgent(S, A, alpha_cql=1.0, device=device)
+    train_cql_agent(cql, loader, n_cql_epochs)
+    out['results']['CQL'] = evaluator.evaluate(cql)
 
-    # CQL
-    if _CQL_AVAILABLE:
-        print(f"\n[3] Training CQL ({n_cql_epochs} epochs)...")
-        cql = CQLAgent(S, A, alpha_cql=1.0, device=device)
-        train_cql_agent(cql, loader, n_cql_epochs)
-        m = evaluator.evaluate(cql)
-        evaluator.print_results("CQL (Chapter 4)", m)
-        results['CQL'] = m; agent_map['CQL'] = cql
+    print(f"\n[seed {seed}] CQL+Physics")
+    penalty, lam = make_bounds_penalty(dataset, units, device=device)
+    cql_p = PhysicsInformedCQL(S, A, penalty, alpha_cql=1.0, device=device)
+    train_cql_agent(cql_p, loader, n_cql_epochs)
+    out['results']['CQL+Physics'] = evaluator.evaluate(cql_p)
+    out['extra']['lambda_bounds'] = lam
 
-    # CQL + Physics
-    if _CQL_AVAILABLE and _PHYSICS_AVAILABLE:
-        print(f"\n[4] Training CQL+Physics ({n_cql_epochs} epochs)...")
-        constraints, lambdas = make_coating_constraints(dataset, device)
-        cql_phys = PhysicsInformedCQL(
-            S, A, constraints=constraints, lambdas=lambdas,
-            alpha_cql=1.0, device=device)
-        train_cql_agent(cql_phys, loader, n_cql_epochs)
-        m = evaluator.evaluate(cql_phys)
-        evaluator.print_results("CQL+Physics (Ch3+6)", m)
-        results['CQL+Physics'] = m; agent_map['CQL+Physics'] = cql_phys
+    print(f"\n[seed {seed}] HybridMOReL")
+    # HALT must outweigh staying forever in the worst-rewarded state (Chapter 8).
+    r_min = float(np.abs(norm_dataset['rewards']).max())
+    kappa = max(100.0, 2.0 * r_min / (1 - 0.99))
+    hm = HybridMOReL(S, A, units, kappa=kappa, device=device)
+    coverage = train_hybrid_morel_agent(
+        hm, norm_dataset, env, s_mean, s_std,
+        n_dynamics_epochs=30 if not quick_test else 2,
+        n_outer_iters=n_morel_iters,
+        sac_steps_per_iter=300 if not quick_test else 20,
+        batch_size=batch_size, device=device)
+    out['results']['HybridMOReL'] = evaluator.evaluate(hm)
+    out['extra'].update({'kappa': kappa, 'physics_coverage': [float(c) for c in coverage],
+                         'halt_rate_last': float(hm.morel_agent.halt_rate_history[-1])
+                         if hm.morel_agent.halt_rate_history else None,
+                         'n_transitions': int(len(dataset['states']))})
 
-    # HybridMOReL
-    if _MOREL_AVAILABLE and _PHYSICS_AVAILABLE:
-        print(f"\n[5] Training HybridMOReL ({n_morel_iters} outer iters)...")
-        hm = HybridMOReL(S, A, physics_fn=coating_physics_fn,
-                         n_ensemble=4, hidden_dim=128,
-                         halt_thresh=0.15, device=device)
-        train_hybrid_morel_agent(
-            agent              = hm,
-            dataset            = dataset,
-            norm_dataset       = norm_dataset,
-            env                = env,
-            s_mean             = s_mean,
-            s_std              = s_std,
-            n_dynamics_epochs  = 30 if not quick_test else 3,
-            n_outer_iters      = n_morel_iters,
-            sac_steps_per_iter = 300 if not quick_test else 20,
-            batch_size         = batch_size,
-            device             = device,
-        )
-        m = evaluator.evaluate(hm)
-        evaluator.print_results("HybridMOReL (Ch5+6)", m)
-        results['HybridMOReL'] = m; agent_map['HybridMOReL'] = hm
+    for name, m in out['results'].items():
+        evaluator.print_results(f"{name} (seed {seed})", m)
+    return out
 
-    if results:
-        print_results_table(results)
-        plot_comparison(results)
-        # Trajectory for best policy by DA
-        best = max(results, key=lambda k: results[k]['da_mean'])
-        if best in agent_map:
-            plot_episode_trajectory(agent_map[best], env, s_mean, s_std,
-                                    agent_name=best, device=device)
 
-    return results
+def bootstrap_ci(values, n_boot: int = 10_000, alpha: float = 0.05, seed: int = 0):
+    """Percentile bootstrap CI of the mean."""
+    v = np.asarray([x for x in values if not np.isnan(x)], dtype=float)
+    if len(v) == 0:
+        return float('nan'), float('nan'), float('nan')
+    rng = np.random.default_rng(seed)
+    boots = rng.choice(v, size=(n_boot, len(v)), replace=True).mean(1)
+    return float(v.mean()), float(np.quantile(boots, alpha / 2)), float(np.quantile(boots, 1 - alpha / 2))
+
+
+def summarize(runs: List[Dict]) -> Dict[str, Dict[str, Tuple[float, float, float]]]:
+    """
+    Hierarchical bootstrap over seeds: per-seed means are resampled, so the
+    interval reflects seed-to-seed variation (dataset + training), which is
+    larger than the episode-to-episode noise within one trained policy.
+    """
+    methods = list(runs[0]['results'].keys())
+    summary = {}
+    for mth in methods:
+        summary[mth] = {k: bootstrap_ci([r['results'][mth][k] for r in runs])
+                        for k in IndustrialEvaluator.METRICS}
+    return summary
+
+
+def print_summary(summary) -> None:
+    rows = [('reward', 'Return', '{:+.1f}'), ('T_iae', 'T IAE', '{:.4f}'),
+            ('f_iae', 'f IAE', '{:.4f}'), ('L_iae', 'Level IAE', '{:.4f}'),
+            ('da_T', 'DA temperature', '{:.1%}'), ('da_f', 'DA filler', '{:.1%}'),
+            ('overshoot_T', 'Overshoot T', '{:.1%}'), ('overshoot_f', 'Overshoot f', '{:.1%}'),
+            ('viol_rate', 'Violation rate', '{:.1%}'),
+            ('viol_rate_disturbed', 'Viol. (disturbed)', '{:.1%}'),
+            ('L_iae_disturbed', 'Level IAE (dist.)', '{:.4f}')]
+    names = list(summary.keys())
+    print("\n" + "=" * 100)
+    print("  CHAPTER 10 — mean over seeds [95% bootstrap CI]")
+    print("=" * 100)
+    print(f"{'Metric':16}" + "".join(f"{n:>21}" for n in names))
+    for key, label, fmt in rows:
+        cells = []
+        for n in names:
+            m, lo, hi = summary[n][key]
+            cells.append(f"{fmt.format(m)} [{fmt.format(lo)}, {fmt.format(hi)}]")
+        print(f"{label:16}" + "".join(f"{c:>21}" for c in cells))
+
+
+def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
+                   quick_test: bool = False, device: str = 'cpu') -> Dict:
+    runs = [run_industrial_benchmark(seed=s, device=device, quick_test=quick_test) for s in seeds]
+    summary = summarize(runs)
+    print_summary(summary)
+    if out_path:
+        import json
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        slim = [{'seed': r['seed'], 'extra': r['extra'],
+                 'results': {m: {k: v for k, v in res.items() if k != 'episodes'}
+                             for m, res in r['results'].items()}} for r in runs]
+        with open(out_path, 'w') as fh:
+            json.dump({'seeds': list(seeds), 'runs': slim,
+                       'summary': {m: {k: list(v) for k, v in d.items()} for m, d in summary.items()}},
+                      fh, indent=2)
+        print(f"\nSaved {out_path}")
+    return {'runs': runs, 'summary': summary}
 
 
 if __name__ == '__main__':
     import argparse
     p = argparse.ArgumentParser()
-    p.add_argument('--quick',  action='store_true')
+    p.add_argument('--quick', action='store_true')
+    p.add_argument('--seeds', type=int, nargs='+', default=[0, 1, 2, 3, 4])
+    p.add_argument('--out', default=os.path.join(_HERE, 'results', 'ch10_benchmark.json'))
     p.add_argument('--device', default='cpu')
     args = p.parse_args()
-    run_industrial_benchmark(device=args.device, quick_test=args.quick)
+    run_multi_seed(tuple(args.seeds), out_path=None if args.quick else args.out,
+                   quick_test=args.quick, device=args.device)

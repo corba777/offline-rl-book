@@ -63,8 +63,8 @@
   <!-- outflow -->
   <line x1="680" y1="240" x2="752" y2="240" stroke="#1a1a2e" stroke-width="2" marker-end="url(#arr)"/>
   <text x="716" y="230" text-anchor="middle" fill="#555570" font-size="12">outflow</text>
-  <text x="716" y="262" text-anchor="middle" fill="#555570" font-size="12">∝ L, less</text>
-  <text x="716" y="277" text-anchor="middle" fill="#555570" font-size="12">with more heat</text>
+  <text x="716" y="262" text-anchor="middle" fill="#555570" font-size="12">set by</text>
+  <text x="716" y="277" text-anchor="middle" fill="#555570" font-size="12">downstream demand</text>
 
   <!-- legend -->
   <g font-size="12">

@@ -75,9 +75,9 @@ $$v_{t+1} = 0.75 - 0.45\,T_{t+1} + 0.38\,f_{t+1} + 0.12\,f_{t+1}(1-T_{t+1}) + \e
 
 $$d_{t+1} = 0.55 + 0.25\,f_{t+1} - 0.10\,T_{t+1} + \epsilon_d \quad \text{(density, algebraic from $T$ and $f$)}$$
 
-$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_{f}}_{\text{inflow}} - \underbrace{0.35\,L_t - 0.05\,u_{T,t}}_{\text{outflow}}\right) + \epsilon_L$$
+$$L_{t+1} = L_t + \Delta t\left(\underbrace{0.4\,u_{f}}_{\text{inflow}} - \underbrace{Q_{out}}_{\text{downstream demand}}\right) + \epsilon_L, \qquad Q_{out} = \frac{0.4\, f^*}{K_f} \approx 0.222$$
 
-Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$. In code, control inputs are $a[0]$ (heat, mapped to $u_{T,t}$) and $a[1]$ (flow, mapped to $u_f$).
+Parameters: $\tau_T = 12$, $K_T = 0.85$, $\tau_f = 8$, $K_f = 0.90$, $\Delta t = 1$. In code, control inputs are $a[0]$ (heat, mapped to $u_{T,t}$) and $a[1]$ (flow, mapped to $u_f$), both rescaled from $[-1, 1]$ to $[0, 1]$. The downstream demand $Q_{out}$ does not depend on the level, so nothing pulls $L$ back by itself; it is set so that inflow balances outflow when the filler loop sits at its setpoint.
 
 Three things are deliberately hidden from the agent's physics model:
 1. The cross-coupling term $0.03 f_t u_T$ in the temperature equation
@@ -122,11 +122,12 @@ class CoatingProcessEnv:
     TAU_T, TAU_F = 12.0, 8.0
     K_T,   K_F   = 0.85, 0.90
     DT           = 1.0
+    Q_OUT        = 0.4 * F_TARGET / K_F   # downstream demand; balances inflow at f*
 ```
 
-### Why the Level Variable is the Hardest
+### Self-Regulating and Integrating Variables
 
-The first four state variables are **self-regulating**: if the heater is turned off, temperature eventually returns to ambient. The level variable is **integrating**: it has no natural setpoint. Left alone, it drifts in the direction of net flow imbalance. Controlling an integrating state requires the agent to predict the sign and magnitude of its own long-term effect — which is exactly what offline RL struggles with when data is sparse near the constraint boundaries.
+Temperature and filler fraction are **self-regulating**: each relaxes toward a value set by its input, and viscosity and density follow them algebraically. The level is **integrating**: it has no equilibrium of its own and drifts in the direction of the net flow imbalance for as long as the imbalance lasts. It also shares its only actuator with the filler fraction — the feed rate that corrects $f$ also changes the inflow — so the agent cannot fix both independently and must trade them off over time. Controlling an integrating state requires predicting the sign and size of one's own long-term effect, which is exactly what offline RL struggles with when data near the constraint boundaries are sparse.
 
 This is not a contrived difficulty. Surge tanks, buffer silos, and intermediate storage vessels are integrating elements in nearly every continuous manufacturing process.
 
@@ -136,7 +137,7 @@ This is not a contrived difficulty. Surge tanks, buffer silos, and intermediate 
 
 Industrial data is not uniformly distributed. `collect_industrial_dataset` simulates three operating regimes that appear in real historical logs:
 
-**Normal operation (60% of episodes):** The process runs near its setpoints. The behavior policy is a proportional controller with moderate exploration noise. This is the bulk of the data — the region where all algorithms will perform reasonably.
+**Normal operation (60% of episodes):** The process runs near its setpoints. The behavior policy is a pair of proportional operators with exploration noise: one adjusts the heater from the temperature error; the other adjusts the feed from the filler error and also nudges it to keep the tank from draining or overflowing. Proportional control leaves steady-state offsets — in the logs the level averages about 0.40 instead of 0.50 and the temperature about 0.56 instead of 0.60 — which gives offline RL something real to improve. This is the bulk of the data.
 
 **Setpoint transitions (25%):** Episodes start away from the nominal operating point. Higher noise, shifted initial states. These transitions stress-test the agent's ability to drive the process back to setpoint rather than just maintaining it.
 
@@ -151,62 +152,52 @@ dataset = collect_industrial_dataset(
 )
 ```
 
-This distribution creates the characteristic industrial imbalance: the trained agents will encounter disturbance scenarios rarely during evaluation but must handle them correctly. An agent that learned only from normal-operation data will be systematically undertrained for the 15% of situations that matter most.
+This distribution creates the characteristic industrial imbalance: the trained agents will encounter disturbance scenarios rarely during evaluation but must handle them correctly. An agent that learned only from normal-operation data will be systematically undertrained for the 15% of situations that matter most. With 400 episodes of 100 steps the dataset holds 40,000 transitions; about 1.5% of the logged states lie outside a bound, all of them level excursions in disturbed episodes.
 
 ---
 
 ## Evaluation: Industrial Metrics
 
-Standard RL metrics — episode return, normalized score — are insufficient for industrial evaluation. `IndustrialEvaluator` computes five metrics that matter in practice.
+Episode return alone hides what operators care about. `IndustrialEvaluator` reports per-episode metrics for temperature, filler fraction and level, and evaluates every policy on two kinds of starts: half of the evaluation episodes begin near the setpoints, the other half begin disturbed — a low tank level and shifted temperature and filler, like the disturbance regime in the logs. Constraints are really tested only in the second half.
 
-### Directional Accuracy (DA)
+### Directional Accuracy Outside the Noise Band
 
-$$\text{DA}_x = \frac{1}{T}\sum_{t=1}^T \mathbf{1}\!\left[\Delta x_t \cdot (x^* - x_{t-1}) \geq 0\right]$$
+Directional accuracy (DA) asks whether a variable moved toward its setpoint:
 
-DA measures whether the controlled variable moved *toward* its setpoint at each step, regardless of how far it moved. A policy that always moves in the right direction but slowly has DA = 1.0. A policy that systematically pushes variables the wrong way has DA < 0.5 (worse than random).
+$$\text{DA}_x = \frac{\sum_t \mathbf{1}\!\left[\Delta x_t\,(x^* - x_{t-1}) > 0\right] \cdot \mathbf{1}\!\left[|x^* - x_{t-1}| > b\right]}{\sum_t \mathbf{1}\!\left[|x^* - x_{t-1}| > b\right]}$$
 
-DA is often more informative than RMSE in industrial settings because:
-- A slow policy with DA ≈ 1.0 can be sped up by tuning the action scaling
-- A fast policy with DA ≈ 0.4 requires fundamental retraining
-- Operators can visually verify DA from trend plots without numerical analysis
+The second indicator matters. Near the setpoint the sign of the error is decided by measurement noise, so counting those steps would give even a perfect regulator about 50%. DA therefore counts only steps whose error exceeds a band $b$ — here twice the noise standard deviation, $b = 0.03$. Even so, DA is a coarse signal: it ignores how far the variable moved, and a policy that rushes past the setpoint can still score well. Two more metrics cover that:
 
-In this case study we treat DA ≥ 80% as the bar operators would accept. The number is illustrative, chosen for this process; it is not an industry standard.
+- **IAE** — the mean absolute error from the setpoint per step, the standard integral measure of tracking quality;
+- **overshoot** — the fraction of out-of-band steps on which the variable crosses the setpoint and lands more than one band beyond it.
 
-### RMSE and Constraint Violation Rate
+### Constraint Violations
 
-RMSE from setpoint is computed per variable:
-
-$$\text{RMSE}_x = \sqrt{\frac{1}{T}\sum_t (x_t - x^*)^2}$$
-
-Constraint violation rate is the fraction of time steps where any state variable falls outside its hard bounds. Severity measures the mean violation magnitude *given* that a violation occurred:
+The violation rate is the fraction of steps on which any state variable lies outside its hard bounds; severity is the mean violation size when one occurs:
 
 $$\text{severity} = \frac{\sum_t \max(0,\, g(s_t))}{\sum_t \mathbf{1}[g(s_t) > 0]}$$
 
 ```python
 class IndustrialEvaluator:
-    """
-    Computes: reward_mean, reward_std, T_rmse, f_rmse, level_rmse,
-              da_T, da_f, da_mean, constraint_viol_rate,
-              constraint_viol_severity
-    """
+    """Per episode: return; IAE and RMSE for T, f, L; DA and overshoot outside a
+    noise band; violation rate and severity. Odd-numbered episodes start disturbed."""
 
-    def evaluate(self, agent) -> Dict[str, float]:
-        for ep in range(self.n_episodes):
-            obs = self.env.reset(seed=8000 + ep)
-            while not done:
-                prev_T, prev_f = obs[env.STATE_T_IDX], obs[env.STATE_F_IDX]
-                s_t  = torch.FloatTensor(
-                    (obs - self.s_mean) / self.s_std).unsqueeze(0)
-                act  = agent.policy.act(s_t, deterministic=True)
-                obs, r, done, info = self.env.step(act)
-
-                # Directional accuracy
-                da_T = 1.0 if (obs[env.STATE_T_IDX]-prev_T)*(env.T_TARGET-prev_T) >= 0 else 0.0
-                da_f = 1.0 if (obs[env.STATE_F_IDX]-prev_f)*(env.F_TARGET-prev_f) >= 0 else 0.0
-
-                # Constraint tracking
-                viol = info['constraint_violation']   # sum of boundary overruns
+    def _episode(self, agent, seed, disturbed=False):
+        obs = self.env.reset(seed=seed)
+        if disturbed:
+            ...                                          # low tank, shifted T and f
+        while not done:
+            prev = {k: obs[idx[k]] for k in ('T', 'f')}
+            act  = agent.policy.act(normalize(obs), deterministic=True)
+            obs, r, done, info = self.env.step(act)
+            for k in ('T', 'f'):
+                e_prev, e_new = tgt[k] - prev[k], tgt[k] - obs[idx[k]]
+                if abs(e_prev) > self.band:              # skip steps inside the noise band
+                    da[k].append((obs[idx[k]] - prev[k]) * e_prev > 0)
+                    over[k].append(e_new * e_prev < 0 and abs(e_new) > self.band)
 ```
+
+Results are aggregated over five seeds; each seed draws a new logged dataset, a new network initialization and new evaluation episodes. The intervals in the results table come from a bootstrap over the five per-seed means, so they reflect seed-to-seed variation — usually the larger source of uncertainty.
 
 ---
 
@@ -228,30 +219,28 @@ def coating_physics_fn(state: torch.Tensor,
     v_new = (0.75 - 0.45*T_new + 0.38*f_new).clamp(0.0, 1.0)
     d_new = (0.55 + 0.25*f_new - 0.10*T_new).clamp(0.0, 1.0)
 
-    # Mass balance — good approximation of true level dynamics
+    # Mass balance: inflow from the feed, outflow set by downstream demand
     inflow  = flow_in * 0.4
-    outflow = L * 0.35 - 0.05 * heat_in   # more heat → less outflow (per true dynamics)
-    L_new   = (L + DT * (inflow - outflow)).clamp(0.0, 1.0)
+    L_new   = (L + DT * (inflow - Q_OUT)).clamp(0.0, 1.0)
 
     return torch.stack([T_new, f_new, v_new, d_new, L_new], dim=1)
 ```
 
-Before training the hybrid ensemble, it is essential to run `diagnose_physics_coverage` to verify that the physics model is actually useful:
+Before training the hybrid ensemble, run `diagnose_physics_coverage` to see where the physics model actually helps:
 
 ```python
 ensemble.diagnose_physics_coverage(norm_dataset)
 
-# Expected output:
-#   Physics model coverage (fraction of variance explained):
-#   state dim 0 (temperature):     91.3%  ██████████████████░░
-#   state dim 1 (filler_fraction): 83.7%  ████████████████░░░░
-#   state dim 2 (viscosity):       64.2%  ████████████░░░░░░░░
-#   state dim 3 (density):         79.8%  ████████████████░░░░
-#   state dim 4 (level):           93.1%  ██████████████████░░
-#   Overall: 82.4%
+# Mean over five seeds [range]:
+#   Physics coverage (variance of s' - s explained by physics):
+#   state dim 0 (temperature):      37.6%   [37.0, 38.6]
+#   state dim 1 (filler_fraction): -41.8%   [-45.4, -38.8]
+#   state dim 2 (viscosity):         1.3%   [-2.5, 5.3]
+#   state dim 3 (density):         -33.1%   [-36.3, -28.7]
+#   state dim 4 (level):            98.0%   [97.8, 98.1]
 ```
 
-Coverage above 80% overall means the residual network needs to learn a 20%-amplitude correction — roughly one quarter the network capacity of a pure black-box model at the same prediction accuracy.
+The diagnostic measures skill on increments (Chapter 9), and it tells a sharper story than a "fraction of variance of $s'$" would. The mass balance is essentially exact for the level. For temperature the physics explains about a third of the step-to-step change; most of the rest is measurement noise, which no model can explain. For the filler fraction the score is negative: a first-order model that ignores the two-step transport delay predicts the increments *worse than predicting no change at all*, because it reacts to the feed two steps too early. Density, computed from the filler fraction, inherits the problem, and viscosity sits near zero. The residual network must carry those dimensions on its own — and, as Chapter 9 warns, the ensemble's uncertainty cannot see that the shared physics is wrong there.
 
 ---
 
@@ -264,144 +253,96 @@ bc = CQLBCAgent(STATE_DIM, ACTION_DIM, device=device)
 train_bc(bc, loader, n_epochs=60)
 ```
 
-BC's DA will be high in normal-operation episodes (the behavior policy was a competent proportional controller) and low during disturbance recovery. Constraint violations are rare in normal operation and frequent in disturbances — exactly the scenarios BC was least trained for.
+BC also inherits the behavior's steady-state offsets. In the results it tracks temperature worse than CQL and keeps the level farther from its setpoint, although it rarely violates a bound, because the logged operators rarely did.
 
 ---
 
 ## Algorithm 2: CQL
 
-CQL (Chapter 4) adds conservatism via the penalty on out-of-distribution Q-values. On industrial data it consistently outperforms BC in disturbance scenarios because the pessimistic Q-function prevents the policy from taking actions that look good under the learned Q but are rare in the dataset.
+CQL (Chapter 4) adds conservatism via the penalty on out-of-distribution Q-values. Here it uses the reward to remove the steady-state offsets that the proportional operators left behind, which BC cannot do.
 
 ```python
 cql = CQLAgent(STATE_DIM, ACTION_DIM, alpha_cql=1.0, device=device)
 train_cql_agent(cql, loader, n_epochs=80)
 ```
 
-CQL's remaining weakness: it has no mechanism to avoid physically inconsistent actions. A setpoint command that CQL's Q-function rates highly may still violate a mass balance or push the level toward a constraint boundary.
+CQL has no explicit notion of the operating limits: it avoids them only insofar as the reward and the logged data steer it away.
 
 ---
 
-## Algorithm 3: CQL + Physics Reward Shaping
+## Algorithm 3: CQL + Constraint Penalty
 
-**PhysicsInformedCQL** is the agent class that wraps `CQLAgent`; the constraint penalty is applied via **PhysicsRewardWrapper** (Chapter 9), the functional module that computes $g(s,a,s')$ and the penalty. The modification to the training loop is exactly one line: replace the batch reward `r` with `r - penalty` before calling `CQLAgent.update`.
+`PhysicsInformedCQL` wraps `CQLAgent` and subtracts a constraint penalty from the reward before every update; the CQL algorithm itself is unchanged. Only one constraint is used: leaving the hard operating bounds. The first-order consistency checks of Chapter 9 are left out on purpose — they test a dynamics *model*, and applied to real logs they would penalize exactly the transitions in which the true, unmodeled delay and coupling show up.
 
 ```python
-constraints, lambdas = make_coating_constraints(dataset, device)
+units = Units(s_mean, s_std, r_std)                   # normalized <-> physical units
+penalty, lam = make_bounds_penalty(dataset, units)    # λ from Chapter 9's rule
 
 class PhysicsInformedCQL:
     def update(self, batch):
         s, a, r, s2, d = [x.to(self.device) for x in batch]
         with torch.no_grad():
-            penalty = sum(
-                lam * g(s, a, s2)
-                for g, lam in zip(self.constraints, self.lambdas)
-            )
-        return self.cql.update((s, a, r - penalty, s2, d))
+            pen = self.penalty(s, a, s2)              # bounds checked in physical units
+        return self.cql.update((s, a, r - pen, s2, d))
 ```
 
-The `lambdas` are calibrated via `calibrate_lambda` using the Chapter 9 heuristic (Part I, "Choosing $\lambda$"): $\lambda$ is scaled to the largest violation observed in the data and to the typical discounted return, with the default fraction $f = 0.1$. This avoids both extremes — a $\lambda$ too small that makes the penalty ignorable, and a $\lambda$ too large that makes the policy ignore reward entirely.
-
-Three constraints are active:
-1. **Operating bounds** — all five state variables within hard limits
-2. **Temperature first-order consistency** — $|T_{t+1} - T^{phys}_{t+1}| \leq 0.04$
-3. **Filler fraction first-order consistency** — same for filler
-
-CQL+Physics has no learned dynamics model, so the first-order consistency terms are evaluated on logged transitions: they penalize transitions whose observed change departs from the expected first-order response. They do not punish the agent for choosing unusual setpoints; they lower the value of poorly explained transitions, which indirectly keeps the policy in regions where the dynamics are predictable. In HybridMOReL below, the same checks apply to model predictions instead (Chapter 9, Part I, explains the two roles).
+Two details decide whether this works at all. First, the agents train on normalized states and rewards, while the bounds (0.35–0.85 for temperature, and so on) are physical. The penalty therefore de-normalizes the next state before checking the bounds and divides the result by the reward scale; evaluating physical bounds on normalized states would produce a penalty that fires on nearly every transition. Second, $\lambda$ comes from `calibrate_lambda` (Chapter 9), so that a violation as large as the worst one in the logs costs ten average steps of reward.
 
 ---
 
 ## Algorithm 4: HybridMOReL
 
-`HybridMOReL` combines the model-based approach from Chapter 8 with the hybrid dynamics model from Chapter 9. The structure is a two-phase training loop.
+`HybridMOReL` combines MOReL (Chapter 8) with the hybrid dynamics ensemble of Chapter 9. Training has two phases.
 
-**Phase 1 — Dynamics training:**
-
-```python
-hm = HybridMOReL(
-    state_dim   = STATE_DIM,
-    action_dim  = ACTION_DIM,
-    physics_fn  = coating_physics_fn,
-    n_ensemble  = 4,
-    hidden_dim  = 128,
-    halt_thresh = 0.15,
-)
-hm.train_dynamics(norm_dataset, n_epochs=30)
-# Output:
-#   Physics coverage: 82.4% — strong
-#   Training hybrid ensemble: 4 models × 30 epochs
-#   ✓ HybridEnsemble installed in MOReL
-```
-
-After training, the hybrid ensemble is installed in the MOReL agent by swapping `morel_agent.ensemble`. The MOReL rollout generator (`generate_synthetic_data`) continues to call `ensemble.predict_with_uncertainty` — it does not know or care whether the ensemble is pure black-box or hybrid.
-
-**Phase 2 — Policy training via MOReL:**
+**Phase 1 — dynamics.** The ensemble predicts physics plus a learned residual. Like the penalty above, the physics must run in physical units, so the ensemble receives a wrapped `physics_fn` that de-normalizes its input and re-normalizes its output. After training, the HALT threshold $\epsilon$ is set to the 80th percentile of the ensemble's uncertainty on dataset transitions.
 
 ```python
-train_morel(
-    agent               = hm.morel_agent,
-    dataset             = norm_dataset,
-    env                 = env,         # real env for evaluation only
-    n_outer_iters       = 15,
-    sac_steps_per_iter  = 300,
-)
+units = Units(s_mean, s_std, r_std)
+kappa = max(100.0, 2 * max_abs_normalized_reward / (1 - 0.99))   # HALT must deter (Chapter 8)
+hm = HybridMOReL(STATE_DIM, ACTION_DIM, units, kappa=kappa, n_ensemble=4)
+hm.train_dynamics(norm_dataset, n_epochs=30)    # coverage diagnosis, training, epsilon
 ```
 
-MOReL's P-MDP construction applies the HALT penalty whenever ensemble uncertainty exceeds `halt_thresh`. With the hybrid ensemble, uncertainty estimates are better calibrated: in OOD regions where the residual network has no training data, the physics term keeps the prediction physically plausible rather than arbitrary. This reduces spurious HALT events caused by the pure black-box ensemble producing nonsensical predictions in physically reachable but data-sparse states.
+**Phase 2 — policy.** SAC is trained on a mix of real and P-MDP transitions, with the coating reward computed from the model's predicted next state. Rewards here are non-positive, so $\kappa$ is set from the data to exceed the value of staying forever in the worst-rewarded state — about 2,300–2,600 in normalized units across seeds. A smaller $\kappa$ could make halting attractive.
+
+```python
+train_morel(agent=hm.morel_agent, dataset=norm_dataset, env=env,
+            n_outer_iters=15, sac_steps_per_iter=300,
+            eval_every=16)    # no evaluation on the real process during training
+```
 
 ---
 
 ## Results
 
-Running the full benchmark:
+`python code/chapter10.py` runs all four algorithms on five seeds and writes `code/results/ch10_benchmark.json`; the numbers below come from that file. Each cell is the mean over seeds with a 95% bootstrap interval over the five per-seed means.
 
-```python
-results = run_industrial_benchmark(
-    device       = 'cpu',
-    n_train_ep   = 400,
-    n_bc_epochs  = 60,
-    n_cql_epochs = 80,
-    n_morel_iters= 15,
-    n_eval_ep    = 20,
-)
-```
+| Metric | BC | CQL | CQL+Physics | HybridMOReL |
+|---|---|---|---|---|
+| Return (200 steps) | −2.7 [−3.0, −2.6] | −1.4 [−1.5, −1.4] | −1.4 [−1.5, −1.3] | −7.0 [−15.3, −2.6] |
+| Temperature IAE | 0.042 [0.039, 0.044] | 0.026 [0.026, 0.027] | 0.027 [0.025, 0.028] | 0.056 [0.033, 0.095] |
+| Filler IAE | 0.024 [0.024, 0.025] | 0.026 [0.025, 0.027] | 0.026 [0.025, 0.027] | 0.028 [0.027, 0.030] |
+| Level IAE | 0.094 [0.082, 0.107] | 0.039 [0.033, 0.045] | 0.032 [0.026, 0.039] | 0.161 [0.095, 0.271] |
+| DA temperature | 57.8% [56.4, 58.8] | 66.1% [65.2, 67.1] | 65.7% [64.0, 67.7] | 58.8% [53.3, 63.1] |
+| DA filler | 67.8% [67.0, 68.5] | 66.2% [65.4, 67.3] | 65.9% [65.1, 66.8] | 65.0% [63.6, 66.2] |
+| Violations, disturbed starts | 0.1% [0.0, 0.2] | 0.0% | 0.0% | 12.3% [0.0, 36.9] |
+| Level IAE, disturbed starts | 0.099 [0.086, 0.112] | 0.041 [0.035, 0.047] | 0.034 [0.027, 0.041] | 0.161 [0.095, 0.269] |
 
-Typical output (exact numbers depend on random seed):
-
-```
-══════════════════════════════════════════════════════════════
-  CHAPTER 10 — INDUSTRIAL BENCHMARK RESULTS
-══════════════════════════════════════════════════════════════
-Metric                BC      CQL   CQL+Phys  HybridMOReL
-──────────────────────────────────────────────────────────────
-Reward (mean)       -18.4   -14.2    -13.8   ▶  -12.1
-DA (mean)            61.3%   71.8%   73.4%  ▶   79.2%
-DA temperature       64.1%   73.5%   75.1%  ▶   81.3%
-DA filler            58.4%   70.1%   71.6%  ▶   77.1%
-T RMSE               0.0921  0.0712  0.0698  ▶  0.0581
-f RMSE               0.1043  0.0834  0.0811  ▶  0.0693
-Level RMSE           0.0874  0.0748  0.0701  ▶  0.0612
-Violation rate       4.2%    2.8%  ▶  1.1%      1.9%
-══════════════════════════════════════════════════════════════
-```
+Overshoot was negligible for every method (at most 0.1% of steps): these first-order processes are slow enough that none of the policies drives a variable through its setpoint.
 
 ### Reading the Results
 
-**BC** performs adequately in normal operation but fails during disturbances. Its DA is just above 60% — better than random, but below the 80% industrial threshold. Constraint violations occur because BC never saw the level variable near its bounds during training.
+**CQL improves clearly on the logging policy and on BC.** It removes the steady-state offsets that the proportional operators left behind: the temperature error falls by about a third, and the level stays more than twice as close to its setpoint, which accounts for most of the difference in return. BC reproduces the operators, offsets included.
 
-**CQL** improves across all metrics. Conservatism in the Q-function prevents the worst extrapolation failures. But violation rate remains at 2.8% — CQL has no mechanism to specifically avoid constraint boundaries.
+**The constraint penalty made no measurable difference here.** CQL+Physics and CQL overlap on every metric, and neither violated a bound even from disturbed starts. The reason lies in the data: the logged operators already kept the plant inside its limits, and the reward already pulls the level toward the middle of its range, so the penalty rarely had anything to correct. That is a legitimate outcome rather than a failure. A penalty earns its keep when the unconstrained policy would actually approach the limits, and the only way to find out is to measure.
 
-**CQL+Physics** reduces violations to 1.1%, the lowest of any model-free method. The reward penalty makes approaching constraint boundaries explicitly costly during training. DA improves modestly — the physics constraints act as a form of implicit regularization that keeps the policy in physically meaningful regions.
-**HybridMOReL** achieves the best reward and the highest DA. Model-based rollouts give the policy more diverse training experience than the real dataset alone. The hybrid ensemble makes those rollouts physically consistent — the agent is not trained on synthetic transitions that violate mass balance or predict temperature falling when heat is applied. Violation rate (1.9%) is higher than CQL+Physics because MOReL focuses on maximizing reward in the P-MDP without the explicit constraint penalty.
+**HybridMOReL did worse than BC, and it was unstable.** On four seeds it landed between BC and CQL; on the fifth it drove the level out of bounds in 62% of steps from disturbed starts. The physics coverage above suggests a reason, although this run does not prove it. The hybrid model is badly wrong on the filler fraction — worse than no model at all — and because every ensemble member shares the same physics, its uncertainty does not flag those errors, so MOReL's KNOWN region extends into places where the model is wrong. The policy then optimizes against a model that misjudges exactly the variable that drives the level.
 
-### The Complementary Structure
+**The calibrated $\lambda$ varied twentyfold across seeds**, from about 2 to 40, because it depends on the single largest violation in each logged dataset. A rule keyed to the worst observation inherits that observation's randomness; in practice, use a robust reference such as a high quantile of the violations, or set the cost of a violation from engineering judgment.
 
-These results reveal a complementary structure worth understanding.
+### What This Case Study Shows
 
-**CQL+Physics** is the violation minimizer: it explicitly penalizes constraint approaches and achieves the lowest violation rate. But it uses only real data — its synthetic experience is zero.
-
-**HybridMOReL** is the performance maximizer: model-based rollouts push the policy to higher reward and DA, but without explicit constraint penalties the violation rate is slightly elevated.
-
-In a real deployment, the natural combination is **HybridMOReL + physics reward shaping** — use the hybrid model for diverse synthetic rollouts AND apply the constraint penalty to all rewards (real and synthetic alike). This is a one-line change to `train_hybrid_morel_agent`: pass the `PhysicsRewardWrapper` into the rollout generator. It is the same wrapper used for CQL+Physics above; only the place where it is applied changes.
+One might expect the model-based method with a physics prior to win on reward and the penalized method to win on safety. Measured over several seeds, with intervals, the picture is less tidy and more useful: the simple conservative method won, and the extra machinery either made no difference (the penalty) or hurt (the hybrid model with a delay-blind physics prior). Before trusting a comparison like this one, check three things: that physical quantities are computed in physical units, that the physics model beats persistence on the variables that matter, and that the result survives more than one seed.
 
 ---
 
@@ -413,27 +354,30 @@ Working through this case study surfaces several decisions that do not appear in
 
 The filler equation has a two-step delay: the agent's flow input at time $t$ affects the filler fraction at time $t+2$, not $t+1$. The physics model ignores this delay — it predicts an immediate first-order response.
 
-This means the hybrid ensemble's residual must learn the delay effect from data. With enough transitions, it can. The tell-tale sign of a delay mismatch is a systematic residual that is positive when flow_input recently increased and negative when it recently decreased. If `diagnose_physics_coverage` shows low coverage for the filler dimension (below 60%), the likely cause is an unmodeled delay.
+The hybrid ensemble's residual must then learn the delay from data. The tell-tale sign of a delay mismatch is a systematic residual that is positive when `flow_input` recently increased and negative when it recently decreased. In this case study the coverage diagnostic shows the problem plainly: the filler dimension scores about −42%, worse than the trivial no-change model. A negative score on a variable whose physics you trust is the signature of a timing error such as an unmodeled delay.
 
 The fix is explicit: augment the state with the last $k$ flow inputs and let the physics model account for them. The engineering knowledge required is only the approximate delay length — the exact value can be learned from the residual.
 
 ### Constraint Calibration
 
-`make_coating_constraints` uses `calibrate_lambda` for the bounds constraint and sets $\lambda = 2.0$ manually for the first-order consistency constraints. The manual values are reasonable starting points but should be verified:
+`make_bounds_penalty` calibrates $\lambda$ with `calibrate_lambda`. Check the result on the training data before training an agent:
 
 ```python
-# Check constraint violation rates on the training dataset
-for g, lam in zip(constraints, lambdas):
-    violations = g(s_train, a_train, s2_train)
-    print(f"  λ={lam:.2f} | violations: {(violations > 0).float().mean():.1%} "
-          f"| mean_magnitude: {violations.mean():.5f}")
+pen = penalty(s_norm, a, s2_norm)                  # normalized-reward units
+active = pen > 0
+print(f"λ={lam:.2f} | penalized transitions: {active.float().mean():.1%} | "
+      f"mean penalty when active: {pen[active].mean():.3f} | mean |r|: {r_norm.abs().mean():.3f}")
 ```
 
-If a constraint is violated on more than 20% of training transitions, either the tolerance is too tight or the physics model is inaccurate for that variable. In both cases, increasing the tolerance or loosening the manual $\lambda$ is better than tightening the constraint — a constraint that fires too often becomes a second reward signal rather than a physics correction.
+If the penalty fires on a large share of transitions, the bounds or the units are wrong — evaluating physical bounds on normalized states produces exactly that. If it is active but tiny compared with the reward, the agent will ignore it. And as the results showed, a $\lambda$ keyed to the single worst logged violation can vary by an order of magnitude between datasets.
 
 ### Normalizing the 5D State
 
 Five variables with different physical scales and variances require per-dimension normalization. The provided `normalize_dataset` normalizes states to zero mean and unit variance per dimension. The reward is scaled by its standard deviation but not centered — the reward is structurally non-positive (a sum of negative squared errors), so zero marks a meaningful "perfect" anchor; with variable episode lengths and terminal flags, a constant offset would also accumulate differently across episodes.
+
+### Physics Lives in Physical Units
+
+Normalization sets a trap that is easy to fall into and silent when it happens. The agents see normalized states, but bounds, physics models and the reward are written in physical units. Any function that encodes physical knowledge must be applied to de-normalized states, and its output re-normalized or rescaled before it reaches the agent. The `Units` helper in `chapter10.py` does this for the bounds penalty, the hybrid model's physics and the model reward.
 
 ---
 
@@ -460,9 +404,9 @@ Neither approach removes the need for the constraint calibration described earli
 
 - **State statistics:** Track mean and covariance of the state (or of a low-dimensional embedding) over a sliding window (e.g. last 24 hours). Compare to the same statistics on the training dataset. If the live mean shifts by more than a few standard deviations, or the Mahalanobis distance from the training distribution exceeds a threshold, flag drift.
 - **Density / OOD score:** Fit a density model (e.g. Gaussian mixture, normalizing flow, or leave-one-out kernel density) on training states. At runtime, compute the log-density of the current state (or a short trajectory). If the score drops below a chosen quantile of the training scores, treat the situation as out-of-distribution.
-- **Ensemble disagreement:** If you use a dynamics ensemble (e.g. HybridMOReL), high prediction variance indicates epistemic uncertainty — the model has not seen similar states. Use the same `halt_thresh` logic: when uncertainty is above threshold, consider the state as drifted relative to what the model was trained on.
+- **Ensemble disagreement:** If you use a dynamics ensemble (e.g. HybridMOReL), high prediction variance indicates epistemic uncertainty — the model has not seen similar states. Use the same rule as MOReL's HALT threshold $\epsilon$: when uncertainty is above it, consider the state as drifted relative to what the model was trained on.
 
-**What to do when drift is detected:** Reduce confidence in the RL policy. Options include: (1) switch to a **fallback policy** (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a **retrain** on historical + recent deployment data. Chapter 13’s roadmap recommends retraining when the fraction of observations outside the training distribution exceeds roughly 5–10%.
+**What to do when drift is detected:** Reduce confidence in the RL policy. Options include: (1) switch to a **fallback policy** (see below); (2) scale down the RL action (blend with a safe baseline); (3) trigger a human review or alert; (4) schedule a **retrain** on historical + recent deployment data. There is no universal trigger for retraining: choose the threshold on the drift score from process risk and from how quickly the plant changes, and revisit it as you learn how drift shows up in your data.
 
 ### Fallback Offline RL
 
@@ -477,7 +421,7 @@ A **fallback policy** is a safe default used when the primary RL policy is deeme
 **Switching logic (example):**
 
 1. Every step: compute drift score and (if available) ensemble uncertainty.
-2. If drift score &lt; threshold **and** uncertainty &lt; threshold: use **primary policy** (e.g. CQL+Physics or HybridMOReL).
+2. If drift score &lt; threshold **and** uncertainty &lt; threshold: use **primary policy** (e.g. CQL or CQL+Physics).
 3. Else: use **fallback policy** (BC or PID).
 4. Optionally: if a constraint violation is observed, force fallback for the next $K$ steps or until the state returns to a safe region.
 
@@ -487,18 +431,16 @@ This way, the system uses the best policy when the distribution matches training
 
 ## Summary
 
-This chapter translated the tools from Chapters 1–9 into a realistic industrial pipeline. The coating process introduced two challenges absent from the toy environment: an integrating level variable and a transport delay in the filler dynamics. Both required engineering knowledge to handle — either in the physics model or in the constraint specification.
+This chapter translated the tools from Chapters 1–9 into an industrial pipeline. The coating process added two challenges absent from the toy environment — an integrating level that shares its actuator with the filler loop, and a transport delay in the filler dynamics — and an evaluation that starts half of its episodes disturbed.
 
-The comparison across four algorithms reveals a clean hierarchy:
+| Algorithm | Relies on | In this case study |
+|---|---|---|
+| BC | Imitating the logs | Reproduces the operators, steady-state offsets included |
+| CQL | Conservative Q-values | Best return; removes the offsets; no violations |
+| CQL+Physics | CQL + bounds penalty | Indistinguishable from CQL: the limits were rarely approached |
+| HybridMOReL | Model-based, hybrid dynamics | Worse than BC on average and unstable across seeds; its physics prior is wrong on the filler loop |
 
-| Algorithm | Relies on | Strength | Weakness |
-|---|---|---|---|
-| BC | Data imitation | Simple, interpretable | Compounding error; constraint-blind |
-| CQL | Conservative Q-values | Better OOD generalization | No physical constraint mechanism |
-| CQL+Physics | CQL + penalty | Lowest violation rate | Uses only real data |
-| HybridMOReL | Model-based + hybrid | Best reward and DA | Higher violation rate without explicit penalty |
-
-The practical recommendation for industrial deployment: **start with CQL+Physics** (low violation rate, simple to configure, no dynamics model needed), and if reward performance is insufficient, **add the hybrid ensemble** as a source of diverse synthetic experience.
+The practical recommendation: **start with a conservative model-free method such as CQL**, measure whether it approaches the operating limits from realistic disturbed starts, and add a constraint penalty if it does. Add a learned or hybrid dynamics model only after the physics prior beats persistence on the variables that matter — and judge every step across several seeds.
 
 Chapter 11 turns to explainability: how to interrogate a trained agent's Q-function, policy, and dynamics model with SHAP so an operator can understand — and an auditor can certify — why the agent chose a given action.
 

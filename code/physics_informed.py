@@ -221,15 +221,20 @@ def calibrate_lambda(
     dataset:        Dict,
     constraint_fn:  Callable,
     base_reward_fn: Callable,
-    target_gap_fraction: float = 0.1,
-    gamma:          float = 0.99,
+    cost_ratio:     float = 10.0,
+    tol:            float = 1e-3,
     device:         str   = 'cpu',
 ) -> float:
     """
-    Calibrate λ with the Chapter 9 scaling heuristic (not a guarantee):
-        λ = 2 * C_max / (target_gap_fraction * mean_return),
-    where C_max is the largest observed violation and
-    mean_return = mean|r| / (1-γ) is a typical discounted return.
+    Calibrate the penalty weight λ from data (Chapter 9 heuristic, not a guarantee):
+
+        λ = cost_ratio * mean|r| / C_ref,   C_ref = max(largest observed violation, tol)
+
+    so that a violation of size C_ref costs as much as `cost_ratio` average
+    steps of reward. The penalty λ·g is then in reward units whatever the units
+    of g: rescaling g by c rescales λ by 1/c, and rescaling rewards by c
+    rescales λ by c. Per-step reward and per-step violation are compared
+    directly; no discounted return enters the formula.
     """
     n  = min(2000, len(dataset['states']))
     s  = torch.FloatTensor(dataset['states'][:n]).to(device)
@@ -237,18 +242,14 @@ def calibrate_lambda(
     s2 = torch.FloatTensor(dataset['next_states'][:n]).to(device)
 
     with torch.no_grad():
-        C_max    = constraint_fn(s, a, s2).max().item()
-        mean_ret = base_reward_fn(s, a, s2).abs().mean().item() / (1 - gamma)
+        c_ref  = max(constraint_fn(s, a, s2).max().item(), tol)
+        r_mean = base_reward_fn(s, a, s2).abs().mean().item()
 
-    target_gap = target_gap_fraction * mean_ret
-    lam = 2.0 * C_max / max(target_gap, 1e-8)
-    print(f"  calibrate_lambda: C_max={C_max:.4f} | "
-          f"mean_return≈{mean_ret:.2f} | "
-          f"λ={lam:.4f}  (gap ≤ {target_gap_fraction:.0%} of return)")
+    lam = cost_ratio * r_mean / c_ref
+    print(f"  calibrate_lambda: C_ref={c_ref:.4f} | mean|r|={r_mean:.4f} | "
+          f"λ={lam:.3f}  (violation of C_ref costs {cost_ratio:g} average steps)")
     return lam
 
-
-# ------------- Concrete constraint functions --------------------------------
 
 def bounds_constraint(state: torch.Tensor,
                       action: torch.Tensor,
@@ -527,7 +528,8 @@ class HybridEnsemble:
 
     def diagnose_physics_coverage(self, dataset: Dict) -> np.ndarray:
         """
-        Print how much variance the physics model explains per state dimension.
+        Print, per state dimension, the fraction of the variance of the increment
+        s' - s that the physics model explains (skill over persistence).
         Run BEFORE training to decide whether physics_fn is adequate.
 
         Interpretation:
@@ -542,12 +544,15 @@ class HybridEnsemble:
 
         with torch.no_grad():
             phys    = self.physics_fn(s, a)
-            res_var = (s2 - phys).var(0).cpu().numpy()
-            tot_var = s2.var(0).cpu().numpy()
+            res_var = (s2 - phys).var(0).cpu().numpy()   # what the residual must learn
+            inc_var = (s2 - s).var(0).cpu().numpy()      # what persistence (s' = s) leaves
 
-        coverage = 1.0 - res_var / (tot_var + 1e-8)
+        # Skill relative to persistence: fraction of the variance of the
+        # *increment* s' - s that the physics model explains. Measuring against
+        # Var(s') instead would credit the physics for the trivial s' ≈ s.
+        coverage = 1.0 - res_var / (inc_var + 1e-8)
 
-        print("Physics model coverage (fraction of variance explained):")
+        print("Physics model coverage (variance of s' - s explained by physics):")
         for j, cov in enumerate(coverage):
             filled = int(max(0.0, cov) * 20)
             bar    = '█' * filled + '░' * (20 - filled)
@@ -558,6 +563,19 @@ class HybridEnsemble:
                   else "")
         print(f"  Overall  : {mc:6.1%}  {status}")
         return coverage
+
+    @torch.no_grad()
+    def calibrate_epsilon(self, dataset: Dict, percentile: float = 80.0,
+                          n_samples: int = 2000) -> float:
+        """MOReL threshold: the given percentile of uncertainty on dataset pairs."""
+        n   = min(n_samples, len(dataset['states']))
+        idx = np.random.choice(len(dataset['states']), n, replace=False)
+        s   = torch.FloatTensor(dataset['states'][idx]).to(self.device)
+        a   = torch.FloatTensor(dataset['actions'][idx]).to(self.device)
+        _, unc = self.predict_with_uncertainty(s, a)
+        eps = float(torch.quantile(unc, percentile / 100.0).item())
+        print(f"  Calibrated epsilon = {eps:.4f}  (p{percentile:.0f} of in-dist uncertainty)")
+        return eps
 
     def compare_to_blackbox(self, dataset: Dict,
                              blackbox_ensemble,
@@ -894,9 +912,9 @@ def run_demo(device: str = 'cpu') -> None:
 
     # Calibrate lambda from data
     lam_bounds = calibrate_lambda(dataset, bounds_fn, base_reward,
-                                   target_gap_fraction=0.1, device=device)
+                                   cost_ratio=10.0, device=device)
     lam_fo     = calibrate_lambda(dataset, fo_fn_0, base_reward,
-                                   target_gap_fraction=0.2, device=device)
+                                   cost_ratio=5.0, device=device)
 
     reward_wrapper = PhysicsRewardWrapper(
         base_reward  = base_reward,
@@ -933,13 +951,15 @@ def run_demo(device: str = 'cpu') -> None:
     )
 
     print("\n  Diagnosing physics coverage before training:")
-    coverage = ensemble.diagnose_physics_coverage(norm_dataset)
+    # process_physics works in raw units (states in [0, 1]), so the hybrid
+    # ensemble is trained on the raw dataset, not on norm_dataset.
+    coverage = ensemble.diagnose_physics_coverage(dataset)
 
     print("\n  Training ensemble...")
-    ensemble.train_ensemble(norm_dataset, n_epochs=30, log_every=10)
+    ensemble.train_ensemble(dataset, n_epochs=30, log_every=10)
 
     print("\n  Post-training visualization:")
-    visualize_hybrid_vs_blackbox(ensemble, norm_dataset, STATE_DIM, device=device)
+    visualize_hybrid_vs_blackbox(ensemble, dataset, STATE_DIM, device=device)
 
     # ── 4. Lagrangian optimizer setup ──────────────────────────────────────
     print("\n[4] Setting up Lagrangian policy optimizer...")

@@ -36,7 +36,7 @@ The caveats are not engineering details. They are structural features of the off
 
 **Physics-informed methods** (Chapter 9) answer it by borrowing structure: replace the unknown parts of the model with known physics, constrain the reward signal to respect physical laws, and enforce hard constraints via Lagrangian duality. This approach is only possible when engineering knowledge exists — but when it does, it can sharply reduce the data needed.
 
-**The industrial case study** (Chapter 10) showed these tools composing in a setting where the stakes are real: a five-variable process with integrating dynamics, transport delay, non-uniform data coverage, and hard equipment constraints. No single algorithm dominated. The practical recommendation — CQL+Physics for minimal constraint violations, HybridMOReL when higher reward is needed — reflects not a winner but a complementary structure between model-free constraint enforcement and model-based diversity.
+**The industrial case study** (Chapter 10) showed these tools composing in a setting where the stakes are real: a five-variable process with integrating dynamics, transport delay, non-uniform data coverage, and hard equipment constraints. Measured over five seeds, the simple conservative method won: CQL removed the logging policy's steady-state offsets without violating a bound, a constraint penalty added nothing because the limits were rarely approached, and the hybrid model-based method was worse and unstable, because its physics prior was wrong on the filler loop and the ensemble's uncertainty could not show it. The lesson is less about any algorithm than about checking units, physics skill and seed-to-seed variation before trusting a comparison.
 
 **Explainability** (Chapter 11) makes these policies auditable: SHAP attributions for the critic, the actor and the dynamics model show what each component relies on, and consistency checks catch physically implausible models before deployment.
 
@@ -258,7 +258,7 @@ Industrial rollout should be treated as a **sequence of admission gates**, not a
 ---
 
 > **Example metrics from the Chapter 10 case study (illustrative only).**  
-> In that coating-process benchmark, mean **Directional Accuracy (DA)** reaches **79.2%** (HybridMOReL) — still **below** the chapter’s ~**80% industrial threshold** (BC sits near 61%), though per-variable temperature DA hits **81.3%**. **Constraint violation rate** is **1.1%** for CQL+Physics and **1.9%** for HybridMOReL (plain CQL stays at **2.8%**). `diagnose_physics_coverage` flags **viscosity at 64.2%** while overall coverage is ~**82%** — a reminder to refine weak physics dimensions before leaning on hybrid rollouts. The narrative compares **CQL+Physics** (fewer violations) with **HybridMOReL** (higher reward and DA) — a **case-specific** tradeoff, not a universal standard.  
+> In that coating-process benchmark (five seeds, 95% bootstrap intervals), CQL reaches a return of **−1.4 [−1.5, −1.4]** against **−2.7** for BC and cuts the level error by more than half, with **no constraint violations** even from disturbed starts; CQL+Physics is indistinguishable from it. HybridMOReL averages **−7.0 [−15.3, −2.6]** and on one seed drives the level out of bounds in **62%** of disturbed steps. `diagnose_physics_coverage` scores the filler fraction at about **−42%** — worse than predicting no change — which is the warning sign to act on before leaning on hybrid rollouts. These are numbers for one simulated process, not a universal ranking.  
 > **Your** stop rules and numeric bars must be set from **process risk**: equipment damage, product quality, regulatory exposure, and reversibility of interventions. Do not import these numbers as industry-wide safety criteria.
 
 ---
@@ -271,7 +271,7 @@ The questions worth sitting with:
 
 *What did the behavior policy never do?* The regions of state-action space absent from the dataset are the regions where every offline RL algorithm is speculating. Knowing them is more valuable than any algorithmic improvement.
 
-*What does the physics model get wrong?* The residual tells you. Run `diagnose_physics_coverage` before every training run. A physics model with 60% coverage on a key variable is providing more noise than signal for that variable.
+*What does the physics model get wrong?* The residual tells you. Run `diagnose_physics_coverage` before every training run. Where the physics explains little of a key variable's increments, the residual network carries that variable, and its predictions are only as trustworthy as the data near them.
 
 *What would violating a constraint actually mean?* The answer determines whether expected-violation methods (e.g. Lagrangian / pessimistic offline RL) or a formal safety layer (hard limits, verified backup controller) is appropriate — and which **gate** must pass before any learned policy receives authority.
 

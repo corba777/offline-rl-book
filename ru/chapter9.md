@@ -68,16 +68,15 @@ $$J(\hat\pi_\lambda) \geq J(\pi^*), \qquad V_+(\hat\pi_\lambda) \leq \frac{J(\ha
 
 **Интерпретация.** По награде штрафная задача не проигрывает ограниченной: всё, что $\hat\pi_\lambda$ получает сверх $J(\pi^*)$, оплачено нарушением ограничения, и это нарушение убывает как $1/\lambda$. Если $\hat\pi_\lambda$ оказалась допустимой ($V_+ = 0$), она оптимальна и для исходной CMDP. Большое $\lambda$ приближает решение к допустимому, но подавляет исходную награду штрафным членом и усложняет оптимизацию.
 
-Практическая калибровка в коде книги — эвристика масштаба, а не гарантия. Функция `calibrate_lambda` измеряет на датасете наибольшее наблюдаемое нарушение $C_{max}$ и типичную дисконтированную отдачу $\bar R = \overline{|r|}/(1-\gamma)$ и полагает $\lambda = 2\,C_{max} / (f \cdot \bar R)$ с $f = 0.1$ по умолчанию: штраф растёт вместе с худшим нарушением в данных и остаётся умеренной долей отдачи. После калибровки проверьте результат напрямую (пример — в главе 10, «Калибровка ограничений»).
+Практическая калибровка в коде книги — эвристика масштаба, а не гарантия. Функция `calibrate_lambda` сравнивает две пошаговые величины, измеренные на датасете: средний модуль награды $\overline{|r|}$ и опорное нарушение $C_{ref}$ — наибольшее нарушение в данных (или небольшой допуск, если нарушений нет), — и полагает $\lambda = k \cdot \overline{|r|} / C_{ref}$ с $k = 10$ по умолчанию. Тогда нарушение величины $C_{ref}$ стоит столько же, сколько $k$ средних шагов награды, а штраф $\lambda g$ измеряется в единицах награды при любых единицах $g$: если изменить масштаб $g$, $\lambda$ изменится обратно пропорционально и штраф останется прежним. Обе величины нужно считать в тех же единицах, в которых применяется штраф (так сделано в главе 10). После калибровки проверьте результат напрямую.
 
 ```python
 def calibrate_lambda(dataset, constraint_fn, base_reward_fn,
-                     target_gap_fraction=0.1, gamma=0.99, device='cpu'):
+                     cost_ratio=10.0, tol=1e-3, device='cpu'):
     """
     Эвристика масштаба (не гарантия):
-        λ = 2*C_max / (target_gap_fraction * mean_return),
-    где C_max — наибольшее наблюдаемое нарушение,
-    mean_return = mean|r| / (1-γ) — типичная дисконтированная отдача.
+        λ = cost_ratio * mean|r| / C_ref,  C_ref = max(наибольшее нарушение, tol),
+    так что нарушение величины C_ref стоит cost_ratio средних шагов награды.
     """
     n  = min(2000, len(dataset['states']))
     s  = torch.FloatTensor(dataset['states'][:n]).to(device)
@@ -85,14 +84,10 @@ def calibrate_lambda(dataset, constraint_fn, base_reward_fn,
     s2 = torch.FloatTensor(dataset['next_states'][:n]).to(device)
 
     with torch.no_grad():
-        C_max    = constraint_fn(s, a, s2).max().item()
-        mean_ret = base_reward_fn(s, a, s2).abs().mean().item() / (1 - gamma)
+        c_ref  = max(constraint_fn(s, a, s2).max().item(), tol)
+        r_mean = base_reward_fn(s, a, s2).abs().mean().item()
 
-    target_gap = target_gap_fraction * mean_ret
-    lam = 2.0 * C_max / max(target_gap, 1e-8)
-    print(f"  C_max={C_max:.4f} | mean_return≈{mean_ret:.2f} "
-          f"| λ={lam:.4f}")
-    return lam
+    return cost_ratio * r_mean / c_ref
 ```
 
 ### Типы физических ограничений
@@ -265,10 +260,9 @@ class HybridEnsemble:
 
     def diagnose_physics_coverage(self, dataset):
         """
-        Выводит, какую долю дисперсии физическая модель объясняет
-        по каждому измерению состояния.
-        > 85%: отлично — достаточно небольшой нейросети остатка.
-        < 50%: ⚠ пересмотрите physics_fn.
+        Выводит по каждому измерению состояния долю дисперсии приращения
+        s' - s, которую объясняет физическая модель (выигрыш над моделью s' = s).
+        Универсального порога нет: смотрите, какие измерения объяснены плохо.
         """
         n  = min(1000, len(dataset['states']))
         s  = torch.FloatTensor(dataset['states'][:n]).to(self.device)
@@ -278,18 +272,17 @@ class HybridEnsemble:
         with torch.no_grad():
             phys    = self.models[0].physics_fn(s, a)
             res_var = (s2 - phys).var(0).cpu().numpy()
-            tot_var = s2.var(0).cpu().numpy()
+            inc_var = (s2 - s).var(0).cpu().numpy()
 
-        coverage = 1.0 - res_var / (tot_var + 1e-8)
-        print("Покрытие физической модели (доля объяснённой дисперсии):")
+        # Доля дисперсии приращения: модель «ничего не меняется» получает 0%,
+        # а не лестные 90%, как было бы при сравнении с дисперсией s'.
+        coverage = 1.0 - res_var / (inc_var + 1e-8)
+        print("Покрытие физической модели (доля дисперсии s' - s):")
         for j, cov in enumerate(coverage):
             bar = '█' * int(max(0,cov)*20) + '░' * int((1-max(0,cov))*20)
             print(f"  измерение {j}: {cov:6.1%}  {bar}")
         mc = coverage.mean()
-        print(f"  В среднем : {mc:6.1%}  "
-              + ("✓ сильное покрытие" if mc > 0.85
-                 else "⚠  рассмотрите доработку physics_fn" if mc < 0.5
-                 else ""))
+        print(f"  В среднем : {mc:6.1%}")
         return coverage
 ```
 
