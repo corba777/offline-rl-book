@@ -206,9 +206,9 @@ This is **distribution shift**, and it compounds over time.
 
 ### The Formal Bound
 
-Ross & Bagnell (2010) proved the following. Suppose BC achieves average per-step imitation error $\epsilon$:
+Ross & Bagnell (2010) proved the following. Suppose BC disagrees with the expert with probability at most $\epsilon$ on the expert's own state distribution (a 0–1 imitation loss):
 
-$$\mathbb{E}_{s \sim d^{\pi_\beta}} \left[ \| \pi_\theta(s) - \pi_\beta(s) \| \right] \leq \epsilon$$
+$$\mathbb{E}_{s \sim d^{\pi_\beta}} \left[ \mathbf{1}\{\pi_\theta(s) \neq \pi_\beta(s)\} \right] \leq \epsilon$$
 
 Then the performance gap between the learned policy and the behavior policy is bounded by:
 
@@ -216,7 +216,7 @@ $$J(\pi_\beta) - J(\pi_\theta) \leq \epsilon H^2 \cdot C$$
 
 where:
 - $H$ is the task horizon (number of steps)
-- $C$ is a constant depending on the Lipschitz constant of the dynamics and reward
+- $C$ is the bound on the per-step cost (costs in $[0, C]$); no smoothness of the dynamics is assumed — a single mistake can lead anywhere, which is exactly why errors compound
 - The bound grows as $\mathcal{O}(H^2)$
 
 **The $H^2$ term is the problem.** For a 30-minute prediction horizon at 10-second intervals, $H = 180$. Even tiny per-step error $\epsilon = 0.01$ produces a bound of $0.01 \times 180^2 = 324$. The bound is loose in practice, but the trend is real.

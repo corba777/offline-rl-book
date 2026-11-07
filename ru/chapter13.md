@@ -34,7 +34,7 @@ permalink: "/offline-rl-book/ru/chapter13/"
 
 **MOPO и MOReL** (глава 8) отвечают расширением данных: обучают модель мира, генерируют синтетический опыт, но штрафуют или жёстко прекращают переходы там, где модель неопределена. Модельные методы обменивают вычисления на разнообразие выборки — когда модель динамики точна, они могут превосходить безмодельные методы, особенно при редких данных.
 
-**Физически-информированные методы** (глава 9) отвечают заимствованием структуры: заменяют неизвестные части модели известной физикой, ограничивают сигнал награды физическими законами и обеспечивают жёсткие ограничения через двойственность Лагранжа. Этот подход возможен только при наличии инженерных знаний — но когда они есть, он наиболее эффективен по данным.
+**Физически-информированные методы** (глава 9) отвечают заимствованием структуры: заменяют неизвестные части модели известной физикой, ограничивают сигнал награды физическими законами и обеспечивают жёсткие ограничения через двойственность Лагранжа. Этот подход возможен только при наличии инженерных знаний — но когда они есть, он может заметно сократить объём необходимых данных.
 
 **Промышленный кейс** (глава 10) показал, как эти инструменты компонуются в условиях, когда ставки реальны: пятипеременный процесс с интегрирующей динамикой, транспортной задержкой, неравномерным покрытием данных и жёсткими ограничениями оборудования. Ни один алгоритм не доминировал. Практическая рекомендация — CQL+Physics для минимальных нарушений ограничений, HybridMOReL когда нужна более высокая награда — отражает не победителя, а комплементарную структуру между безмодельным соблюдением ограничений и разнообразием модельных методов.
 
@@ -104,11 +104,11 @@ $$a_t = \pi_\theta\!\left(R_t,\, s_t,\, a_{t-1},\, \ldots,\, R_1,\, s_1,\, a_1\r
 
 Этот подход концептуально элегантен: весь конвейер offline RL сводится к обучению с учителем на последовательностях. Нет Bellman-бэкапов, нет Q-функций, нет явного пессимизма. Модель просто учится из данных, какие последовательности действий ведут к высоким доходам, и имитирует этот паттерн при обуславливании на высокой цели.
 
-Практические следствия значительны. Трансформеры масштабируются с данными и размером модели способами, недоступными методам на основе Q-функций. Decision Transformer, обученный на большом разнообразном датасете, может обобщаться на новые задачи и среды — а специализированный агент CQL на это не рассчитан. Это связь с большими языковыми моделями: та же архитектура, которая учится предсказывать текст по интернет-данным, может учиться предсказывать действия по данным траекторий.
+Практические следствия значительны. Трансформеры хорошо известным образом масштабируются с ростом данных и размера модели. Масштабируется ли так же Q-обучение, долго вызывало сомнения, но недавние работы показывают, что да (масштабированное offline Q-обучение, Kumar et al., 2023; Q-Transformer, Chebotar et al., 2023). Decision Transformer, обученный на большом разнообразном датасете, может обобщаться на новые задачи и среды — а специализированный агент CQL на это не рассчитан. Это связь с большими языковыми моделями: та же архитектура, которая учится предсказывать текст по интернет-данным, может учиться предсказывать действия по данным траекторий.
 
 **Trajectory Transformer** (Janner et al., NeurIPS 2021) идёт дальше: моделирует всю траекторию $(s_1, a_1, r_1, s_2, a_2, r_2, \ldots)$ как последовательность, затем использует лучевой поиск по этой последовательности для нахождения высоковознаграждаемых траекторий при инференсе.
 
-Ограничение последовательных моделей то же, что у BC: они не экстраполируют за пределы распределения доходов в обучающих данных. Если обучающий датасет имеет максимальный доход $R_{max}$, обуславливание на $R > R_{max}$ создаёт входы со сдвигом распределения, на которых модель никогда не обучалась.
+Ограничение последовательных моделей то же, что у BC: они не экстраполируют за пределы распределения доходов в обучающих данных. Если обучающий датасет имеет максимальный доход $R_{max}$, обуславливание на $R > R_{max}$ создаёт входы со сдвигом распределения, на которых модель никогда не обучалась. В стохастических средах есть и ещё одна проблема: высокий return в логах может объясняться удачей, а не хорошими действиями (глава 7).
 
 ### Imitation Learning и Offline RL: необходимое разграничение
 
@@ -208,7 +208,7 @@ $$\text{траектория} \sim p_\theta(\tau) \cdot \exp(\beta \cdot J(\tau)
 
 Проблема спецификации функции награды — пожалуй, наиболее сложная нерешённая задача в прикладном offline RL — может быть решена с помощью больших языковых моделей. Вместо того чтобы просить инженера написать функцию награды с нуля, можно попросить LLM перевести описание хорошего управления на естественном языке в математическую функцию награды, верифицировать её на примерах траекторий и итеративно уточнять на основе производительности политики.
 
-**EUREKA** (Ma et al., 2023) демонстрирует этот цикл: GPT-4 генерирует функции награды для задач роботизированной манипуляции, оценивает их в rollouts и самосовершенствует итеративно, достигая сверхчеловеческой производительности на задачах, где человеческие награды были неоптимальны.
+**EUREKA** (Ma et al., 2023) демонстрирует этот цикл: GPT-4 генерирует функции награды для задач роботизированной манипуляции, оценивает их в rollouts и самосовершенствует итеративно, превосходя награды, написанные экспертами, на большинстве изученных задач — в статье на 83%, что авторы называют наградами человеческого уровня.
 
 ---
 
@@ -285,15 +285,17 @@ Offline RL — не решённая задача. Алгоритмы этой �
 
 - Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., & Mordatch, I. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
 - Janner, M., Li, Q., & Levine, S. (2021). *Offline Reinforcement Learning as One Big Sequence Modeling Problem.* NeurIPS. [arXiv:2106.02039](https://arxiv.org/abs/2106.02039).
-- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993). *(QDT)*
+- Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993). *(QDT)*
+- Kumar, A., Agarwal, R., Geng, X., Tucker, G., & Levine, S. (2023). *Offline Q-Learning on Diverse Multi-Task Data Both Scales And Generalizes.* ICLR. [arXiv:2211.15144](https://arxiv.org/abs/2211.15144).
+- Chebotar, Y., Vuong, Q., Irpan, A., Hausman, K., Xia, F., Lu, Y., et al. (2023). *Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.* CoRL. [arXiv:2309.10150](https://arxiv.org/abs/2309.10150).
 
-**Диффузионные модели для offline RL**
+**Диффузионные модели для Offline RL**
 
 - Janner, M., Du, Y., Tenenbaum, J., & Levine, S. (2022). *Planning with Diffusion Models.* ICML. [arXiv:2205.09991](https://arxiv.org/abs/2205.09991). *(Diffuser)*
 - Ajay, A., Du, Y., Gupta, A., Tenenbaum, J., Jaakkola, T., & Agrawal, P. (2023). *Is Conditional Generative Modeling all you need for Decision-Making?* ICLR. [arXiv:2211.15657](https://arxiv.org/abs/2211.15657). *(Decision Diffuser)*
 - Chi, C., Feng, S., Du, Y., Xu, Z., Cousineau, E., Burchfiel, B., & Song, S. (2023). *Diffusion Policy: Visuomotor Policy Learning via Action Diffusion.* RSS. [arXiv:2303.04137](https://arxiv.org/abs/2303.04137).
 
-**Диффузионные модели и Transformer'ы для offline RL**
+**Диффузионные модели и Transformer'ы для Offline RL**
 
 - Peebles, W., & Xie, S. (2023). *Scalable Diffusion Models with Transformers.* ICCV. [arXiv:2212.09748](https://arxiv.org/abs/2212.09748). *(архитектура DiT)*
 - Wang, Z., Hunt, J.J., & Zhou, M. (2023). *Diffusion Policies as an Expressive Policy Class for Offline Reinforcement Learning.* ICLR. [arXiv:2208.06193](https://arxiv.org/abs/2208.06193). *(DQL — диффузия как класс политик)*
@@ -308,9 +310,9 @@ Offline RL — не решённая задача. Алгоритмы этой �
 **Offline-to-Online RL**
 
 - Kostrikov, I., Nair, A., & Levine, S. (2021). *Offline Reinforcement Learning with Implicit Q-Learning.* ICLR 2022. [arXiv:2110.06169](https://arxiv.org/abs/2110.06169).
-- Nakamoto, M., Zhai, Y., Singh, A., Mark, M.S., Ma, Y., Finn, C., Kumar, A., & Levine, S. (2023). *Cal-QL: Calibrated offline RL Pre-Training for Efficient Online Fine-Tuning.* NeurIPS. [arXiv:2303.05479](https://arxiv.org/abs/2303.05479).
+- Nakamoto, M., Zhai, Y., Singh, A., Mark, M.S., Ma, Y., Finn, C., Kumar, A., & Levine, S. (2023). *Cal-QL: Calibrated Offline RL Pre-Training for Efficient Online Fine-Tuning.* NeurIPS. [arXiv:2303.05479](https://arxiv.org/abs/2303.05479).
 
-**Безопасный offline RL**
+**Безопасный Offline RL**
 
 - Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., & Zhao, D. (2022). *Constrained Variational Policy Optimization for Safe Reinforcement Learning.* ICML. [arXiv:2201.11927](https://arxiv.org/abs/2201.11927).
 - Bharadhwaj, K., Choudhury, S., & Boots, B. (2021). *Conservative Safety Critics for Exploration.* ICLR. [arXiv:2010.14497](https://arxiv.org/abs/2010.14497).

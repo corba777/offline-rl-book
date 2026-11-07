@@ -92,19 +92,21 @@ Let $\hat{\pi}$ be the greedy policy with respect to a learned Q-function:
 \hat{\pi}(s) = \arg\max_a Q_\theta(s, a)
 ```
 
-Define the **estimated performance** $\hat{J}(\hat{\pi}) = \underset{s,a \sim d^{{\hat{\pi}}}}{\mathbb{E}}\bigl[Q_\theta(s,a)\bigr]$ — what the Q-function *predicts* the policy will achieve — and the **true performance** $J(\hat{\pi})$ — what it actually achieves in the environment.
+Define the **estimated performance** as the return the Q-function promises at the start of an episode, $\hat{J}(\hat{\pi}) = \mathbb{E}_{s_0 \sim \rho_0}\bigl[Q_\theta(s_0, \hat{\pi}(s_0))\bigr]$, and the **true performance** $J(\hat{\pi})$ — what the policy actually achieves in the environment.
 
-The gap between them is bounded (approximately, following Kumar et al., 2020):
+The gap between them is given *exactly* by a standard telescoping identity (a form of the simulation lemma):
 
 ```math
-\hat{J}(\hat{\pi}) - J(\hat{\pi}) \leq \frac{2\gamma}{(1-\gamma)^{2}} \underset{s \sim d^{{\hat{\pi}}}}{\mathbb{E}}\left[\max_a \left| Q_\theta(s,a) - Q^{\ast}(s,a) \right|\right]
+\hat{J}(\hat{\pi}) - J(\hat{\pi}) = \frac{1}{1-\gamma}\, \underset{(s,a) \sim d^{\hat{\pi}}}{\mathbb{E}}\Bigl[ Q_\theta(s,a) - (\mathcal{B}^{\hat{\pi}} Q_\theta)(s,a) \Bigr]
 ```
 
-This is the right way to frame the problem. The left side is what we fear: the **gap between the promised and the real return**. The right side shows what drives it: Q-function error evaluated under $d^{{\hat{\pi}}}$ — the state distribution of the *learned* policy, not the behavior policy.
+Here $d^{\hat{\pi}}$ is the normalized discounted state-action occupancy of $\hat{\pi}$, and $\mathcal{B}^{\hat{\pi}} Q(s,a) = r(s,a) + \gamma\, \mathbb{E}_{s'}\bigl[Q(s', \hat{\pi}(s'))\bigr]$. For the greedy policy $\mathcal{B}^{\hat{\pi}} Q_\theta$ coincides with the optimality backup $\mathcal{B}^{\ast} Q_\theta$, so the right side is simply the Bellman error of the learned Q-function, averaged over the states and actions that the *learned* policy visits.
 
-This is what makes OOD overestimation dangerous. During training, $\hat{J}(\hat{\pi})$ looks high — the Q-function is optimistic. But that optimism is concentrated exactly in the regions the greedy policy seeks out: actions never seen in $\mathcal{D}$, where $\lvert Q_\theta - Q^{\ast} \rvert$ is largest. The bound above can be arbitrarily large, meaning real performance can be arbitrarily worse than estimated.
+This is the right way to frame the problem. The left side is what we fear: the **gap between the promised and the real return**. The right side shows what drives it: Bellman error measured under $d^{\hat{\pi}}$, not under the data distribution.
 
-The crucial asymmetry: **the error is evaluated under $d^{{\hat{\pi}}}$, not $d^{{\pi_{\beta}}}$**. A policy that stays near the behavior policy would keep this term small. The greedy policy actively maximizes it.
+This is what makes OOD overestimation dangerous. TD training drives the Bellman error down only on pairs $(s, a)$ that appear in $\mathcal{D}$. On actions the data never contains nothing constrains it, and those are exactly the actions the greedy policy seeks out, because that is where $Q_\theta$ happens to be highest. Every positive residual along the policy's own path adds to the promised return, so real performance can be arbitrarily worse than estimated.
+
+The crucial asymmetry: **the error that matters is measured under $d^{\hat{\pi}}$, while training controls it only under $d^{\pi_{\beta}}$**. A policy that stays near the behavior policy keeps the two distributions close. The greedy policy actively pushes them apart.
 
 ---
 
@@ -231,9 +233,9 @@ This is the approach of **CQL** (Chapter 4) and **IQL** (Chapter 5).
 
 ### The Offline RL Algorithm Landscape
 
-Beyond value-pessimism, two other families are widely used. This book focuses on **value-based** (CQL, IQL) and **model-based** (Chapter 8) methods for depth; the following map helps place them.
+Beyond value-pessimism, two other families are widely used. Chapters 4–8 cover them in depth — value pessimism (Chapters 4–5), policy constraints (Chapter 6), sequence models (Chapter 7) and model-based methods (Chapter 8); the map below places them side by side.
 
-**Policy-constraint and Actor-Critic methods** keep the learned policy close to the behavior policy, either by explicit constraints or by regularizing the actor toward the data. **TD3+BC** (Fujimoto & Gu, 2021) adds a behavioral cloning term to the actor loss: $\pi$ maximizes $\lambda Q(s, \pi(s)) - (\pi(s) - a)^{2}$ (with $Q$ scaled by mean $\lvert Q \rvert$ over the batch) so it stays near the data while improving on it. **AWAC** (Advantage-Weighted Actor-Critic) and **AWR** (Advantage-Weighted Regression) fit the policy with importance weights derived from the advantage; they avoid querying Q at OOD actions by using only in-dataset $(s, a)$ for the actor. **BEAR** and **BCQ** restrict the policy support (e.g. to actions close to the dataset or generated by a conditional VAE). All of these are *actor-critic* in the sense that they train both a critic (Q or V) and an actor (policy), but the actor is constrained or regularized rather than greedy over an unconstrained Q.
+**Policy-constraint and Actor-Critic methods** keep the learned policy close to the behavior policy, either by explicit constraints or by regularizing the actor toward the data. **TD3+BC** (Fujimoto & Gu, 2021) adds a behavioral cloning term to the actor loss: $\pi$ maximizes $\lambda Q(s, \pi(s)) - (\pi(s) - a)^{2}$ (with $Q$ scaled by mean $\lvert Q \rvert$ over the batch) so it stays near the data while improving on it. **AWAC** (Advantage-Weighted Actor-Critic) and **AWR** (Advantage-Weighted Regression) fit the policy with importance weights derived from the advantage; the actor is fitted only on dataset pairs $(s, a)$, although AWAC's critic still evaluates the current policy and therefore queries Q at its actions; IQL (Chapter 5) removes those queries as well. **BEAR** and **BCQ** restrict the policy support (e.g. to actions close to the dataset or generated by a conditional VAE). All of these are *actor-critic* in the sense that they train both a critic (Q or V) and an actor (policy), but the actor is constrained or regularized rather than greedy over an unconstrained Q.
 
 **Decision Transformers (DT)** (Chen et al., 2021) take a different view: treat offline RL as **sequence modeling**. The model is given a trajectory prefix (states, actions, returns-to-go or rewards) and predicts the next action autoregressively. There is no Bellman backup and no explicit Q-function; the “policy” is implicit in the conditional distribution over actions given past context and desired return. **Offline DT** is trained by supervised learning on $(s, a, R)$ chunks from the dataset, often with return-conditioning so that at test time you can ask for “high return” behavior. This avoids extrapolation error by construction (no $\max_{a'}$ over OOD actions) but shifts the challenge to generalization of the sequence model and the choice of conditioning. Variants include **Q-learning DT** (e.g. QDT) that combine return-conditioning with TD learning for better credit assignment.
 
@@ -273,7 +275,7 @@ This is the motivation for the methods in Chapters 3–9.
 | Distribution shift | Greedy policy visits states/actions not in dataset |
 | Deadly triad | Function approx + bootstrapping + off-policy = unstable |
 
-The two main remedies: **policy constraints** (stay near $\pi_{\beta}$) and **value pessimism** (push OOD Q-values down). CQL implements the second approach with an elegant regularization objective — which is where we go next. Chapter 2 also maps the broader landscape: policy-constraint / Actor-Critic (TD3+BC, AWAC, BEAR, BCQ) and Decision Transformers; the book then focuses on value-pessimism (Chapters 4–5) and model-based methods (Chapter 8).
+The two main remedies: **policy constraints** (stay near $\pi_{\beta}$) and **value pessimism** (push OOD Q-values down). CQL implements the second approach with an elegant regularization objective — which is where we go next. This chapter also mapped the broader landscape — policy-constraint and actor-critic methods (TD3+BC, AWAC, BEAR, BCQ) and Decision Transformers — which Chapters 6 and 7 develop next to value pessimism (Chapters 4–5) and model-based methods (Chapter 8).
 
 ---
 

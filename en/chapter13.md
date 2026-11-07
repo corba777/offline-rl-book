@@ -34,7 +34,7 @@ The caveats are not engineering details. They are structural features of the off
 
 **MOPO and MOReL** (Chapter 8) answer it by expanding the data: learn a model of the world, generate synthetic experience, but penalize or hard-terminate transitions where the model is uncertain. Model-based methods trade compute for sample diversity — when the dynamics model is accurate, they can outperform model-free methods, especially where data are sparse.
 
-**Physics-informed methods** (Chapter 9) answer it by borrowing structure: replace the unknown parts of the model with known physics, constrain the reward signal to respect physical laws, and enforce hard constraints via Lagrangian duality. This approach is only possible when engineering knowledge exists — but when it does, it is the most data-efficient of all.
+**Physics-informed methods** (Chapter 9) answer it by borrowing structure: replace the unknown parts of the model with known physics, constrain the reward signal to respect physical laws, and enforce hard constraints via Lagrangian duality. This approach is only possible when engineering knowledge exists — but when it does, it can sharply reduce the data needed.
 
 **The industrial case study** (Chapter 10) showed these tools composing in a setting where the stakes are real: a five-variable process with integrating dynamics, transport delay, non-uniform data coverage, and hard equipment constraints. No single algorithm dominated. The practical recommendation — CQL+Physics for minimal constraint violations, HybridMOReL when higher reward is needed — reflects not a winner but a complementary structure between model-free constraint enforcement and model-based diversity.
 
@@ -104,11 +104,11 @@ At inference time you condition on a high target return — "I want cumulative r
 
 This approach is conceptually elegant: the entire offline RL pipeline reduces to supervised learning on sequences. No Bellman backups, no Q-functions, no explicit pessimism. The model simply learns from the data what sequences of actions lead to high returns and imitates that pattern conditioned on a high target.
 
-The practical implications are significant. Transformers scale with data and model size in ways that Q-function methods do not. A Decision Transformer trained on a large, diverse dataset can generalize across tasks and environments in ways a task-specific CQL agent is not designed to. This is the connection to large language models: the same architecture that learns to predict text from internet data can learn to predict actions from trajectory data.
+The practical implications are significant. Transformers scale with data and model size in well-documented ways. Whether Q-learning scales as well was long in doubt, but recent work shows it can (scaled offline Q-learning, Kumar et al., 2023; Q-Transformer, Chebotar et al., 2023). A Decision Transformer trained on a large, diverse dataset can generalize across tasks and environments in ways a task-specific CQL agent is not designed to. This is the connection to large language models: the same architecture that learns to predict text from internet data can learn to predict actions from trajectory data.
 
 **Trajectory Transformer** (Janner et al., NeurIPS 2021) pushes this further: model the entire trajectory $(s_1, a_1, r_1, s_2, a_2, r_2, \ldots)$ as a sequence, then use beam search over this sequence to find high-reward trajectories at inference time. This gives planning-like behavior without explicit dynamics learning.
 
-The limitation of sequence models is the same as BC's: they do not extrapolate beyond the return distribution in the training data. If the training dataset has maximum return $R_{max}$, conditioning on $R > R_{max}$ produces distribution-shifted inputs that the model was never trained on. Several papers (including **QDT** — Yamagata et al., 2023) address this by combining sequence modeling with Q-value guidance.
+The limitation of sequence models is the same as BC's: they do not extrapolate beyond the return distribution in the training data. If the training dataset has maximum return $R_{max}$, conditioning on $R > R_{max}$ produces distribution-shifted inputs that the model was never trained on. Several papers (including **QDT** — Yamagata et al., 2023) address this by combining sequence modeling with Q-value guidance. In stochastic environments there is a further problem: a high logged return may reflect luck rather than good actions (Chapter 7).
 
 ### Imitation Learning vs. Offline RL: A Necessary Distinction
 
@@ -208,7 +208,7 @@ Formal verification of neural network policies — proving that a policy satisfi
 
 The reward specification problem — arguably the hardest unsolved problem in applied offline RL — may be approachable through large language models. Rather than asking an engineer to write a reward function from scratch, one can ask an LLM to translate a natural language description of good control behavior into a mathematical reward function, verify it against example trajectories, and iteratively refine it based on policy performance.
 
-**EUREKA** (Ma et al., 2023) demonstrates this loop: GPT-4 generates reward functions for robotic manipulation tasks, evaluates them on rollouts, and self-improves them over iterations, achieving superhuman performance on tasks where human-designed rewards were suboptimal. Adapting this approach to industrial process control — where the desired behavior is articulable but hard to formalize — is a natural and near-term direction.
+**EUREKA** (Ma et al., 2023) demonstrates this loop: GPT-4 generates reward functions for robotic manipulation tasks, evaluates them on rollouts, and self-improves them over iterations, and outperforms expert-written rewards on most of the tasks studied — 83% in the paper, which describes the result as human-level reward design. Adapting this approach to industrial process control — where the desired behavior is articulable but hard to formalize — is a natural and near-term direction.
 
 ---
 
@@ -286,6 +286,8 @@ The field will continue to develop — diffusion transformers will scale, offlin
 - Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., & Mordatch, I. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
 - Janner, M., Li, Q., & Levine, S. (2021). *Offline Reinforcement Learning as One Big Sequence Modeling Problem.* NeurIPS. [arXiv:2106.02039](https://arxiv.org/abs/2106.02039). *(Trajectory Transformer)*
 - Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993). *(QDT)*
+- Kumar, A., Agarwal, R., Geng, X., Tucker, G., & Levine, S. (2023). *Offline Q-Learning on Diverse Multi-Task Data Both Scales And Generalizes.* ICLR. [arXiv:2211.15144](https://arxiv.org/abs/2211.15144).
+- Chebotar, Y., Vuong, Q., Irpan, A., Hausman, K., Xia, F., Lu, Y., et al. (2023). *Q-Transformer: Scalable Offline Reinforcement Learning via Autoregressive Q-Functions.* CoRL. [arXiv:2309.10150](https://arxiv.org/abs/2309.10150).
 
 **Diffusion Models for Offline RL**
 

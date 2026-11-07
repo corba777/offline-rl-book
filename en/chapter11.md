@@ -20,7 +20,7 @@ permalink: "/offline-rl-book/en/chapter11/"
 
 ## Why Explainability Matters in Industrial Offline RL
 
-The algorithms in Chapters 1–10 produce policies that achieve high reward, respect physical constraints, and generalize to unseen operating regimes. What they do not produce is an answer to the question an operator will inevitably ask: *why did the agent command this setpoint at this moment?*
+The algorithms in Chapters 1–10 can produce policies that achieve high reward and, with the constraint machinery of Chapters 9–10, rarely violate physical limits. What they do not produce is an answer to the question an operator will inevitably ask: *why did the agent command this setpoint at this moment?*
 
 This is not merely a regulatory concern, though in many industries it is that too. It is a practical reliability question. A policy whose decisions are opaque cannot be diagnosed when it fails. An operator who does not understand the agent's reasoning cannot override it intelligently. A model that fits data well but for the wrong reasons will fail silently when the process changes.
 

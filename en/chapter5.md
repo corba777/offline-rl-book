@@ -90,6 +90,8 @@ where $A(s,a) = Q(s,a) - V(s)$ is the **advantage** of dataset action $a$ over t
 
 IQL achieves implicit pessimism through $V$. Since $V(s)$ is trained on dataset actions only, it captures the value of those actions — not of arbitrary OOD actions. The Q-update uses $V(s')$ as the next-state target, so the TD backup never extrapolates to unseen actions.
 
+Why fit a separate $V$ instead of taking an expectile of the TD target $r + \gamma V(s')$ directly? Because that target mixes two kinds of randomness: the choice of action and the randomness of the next state. An expectile over targets would also be optimistic about lucky transitions, crediting actions that merely happened to land in good states. Fitting $V(s)$ to an expectile of $Q(s, a)$ over dataset actions, and backing up $Q$ with an ordinary mean-squared TD loss, keeps the optimism over actions and adds none over transition noise (Kostrikov et al., 2022).
+
 The advantage $A(s,a) = Q(s,a) - V(s)$ measures how much better action $a$ is compared to what the behavior policy typically does at $s$. High-advantage actions are the "hidden gems" in the data — moments when the behavior policy happened to do something unusually good.
 
 ---
@@ -310,7 +312,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
 # ============================================================================
 ```
 
-The `adv - adv.max()` normalization is critical — without it, `exp(beta * adv)` overflows for large advantages. After normalization, `weights` form a proper probability distribution over the batch.
+Subtracting `adv.max()` prevents overflow in `exp`. Two consequences are easy to miss, and both depart from the original IQL. After the shift every weight is at most 1, so `clamp(max=clip_exp)` never binds. And dividing by the batch mean makes the weights relative to the batch: they sum to the batch size, not to one, and the same transition receives a different weight in a different batch. The reference implementation instead uses $\exp(\beta A)$ clipped at 100, with no batch normalization.
 
 ### The Full Update Step
 
@@ -405,7 +407,7 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 **$\tau$ (expectile)**: Controls how optimistic $V(s)$ is about in-dataset actions.
 
-- `tau=0.5`: $V \approx$ mean Q — very conservative, similar to BC
+- `tau=0.5`: $V \approx$ the mean of Q under the behavior policy. This is one-step policy improvement — evaluate $\pi_\beta$, then reweight its actions by advantage (Brandfonbrener et al., 2021) — and it is usually still better than BC when advantages are informative
 - `tau=0.7`: Default. Good for medium-quality datasets
 - `tau=0.9`: Aggressive. Use when dataset contains clearly good and bad actions, and you want the policy to strongly prefer the good ones
 - `tau>0.95`: Can cause instability — $V$ approaches $\max Q$, which is hard to fit stably
@@ -437,11 +439,11 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 ## Limitations
 
-**Cannot improve beyond the best actions in the dataset.** IQL's policy is a weighted average of dataset actions. It cannot discover actions better than what the behavior policy ever tried. CQL and model-based methods (Chapter 8) can in principle extrapolate — though this comes with risk.
+**Cannot improve on the best action seen in a state.** At any single state, IQL's policy imitates a weighted set of dataset actions, so it cannot invent a better action there. Across states it can still stitch: Q is learned with TD, so good segments of different trajectories combine. Two caveats remain. The weighted MSE averages the weighted actions, and when several distinct good actions exist, that average may be an action nobody took — an OOD action. CQL and model-based methods (Chapter 8) can in principle extrapolate further, at a corresponding risk.
 
-**Two hyperparameters to tune.** $\tau$ and $\beta$ interact. Higher $\tau$ → higher advantages → higher $\beta$ needed to extract them. Tuning the pair takes more effort than tuning CQL's single $\alpha$.
+**Two hyperparameters to tune.** $\tau$ and $\beta$ interact. A higher $\tau$ raises $V$ and therefore lowers $A = Q - V$, so fewer actions keep a positive advantage; $\beta$ then sets how sharply those few are preferred. Tuning the pair takes more effort than tuning CQL's single $\alpha$.
 
-**Deterministic policy.** The deterministic actor can struggle in multi-modal environments where the optimal action distribution is bimodal. CQL's stochastic Gaussian policy handles this better.
+**Deterministic policy.** The deterministic actor can struggle when the good actions in a state are multimodal. A unimodal Gaussian does not fix this: as Chapter 13 explains, it averages the modes as well. Multimodal behavior needs an expressive policy class, such as a mixture or a diffusion policy.
 
 ---
 
@@ -469,4 +471,5 @@ Chapter 6 completes the model-free picture from the policy side, with policy-con
 - Peng, X., Kumar, A., Zhang, G., & Levine, S. (2019). *Advantage-Weighted Regression: Simple and Scalable Off-Policy RL.* [arXiv:1910.00177](https://arxiv.org/abs/1910.00177). *(AWR policy extraction)*
 - Newey, W., & Powell, J. (1987). *Asymmetric Least Squares Estimation and Testing.* Econometrica. *(expectile regression origin)*
 - Kumar, A. et al. (2020). *Conservative Q-Learning for Offline RL.* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
+- Brandfonbrener, D., Whitney, W., Ranganath, R., & Bruna, J. (2021). *Offline RL Without Off-Policy Evaluation.* NeurIPS. [arXiv:2106.08909](https://arxiv.org/abs/2106.08909). *(one-step policy improvement)*
 - Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).

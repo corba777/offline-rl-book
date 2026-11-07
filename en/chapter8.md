@@ -49,7 +49,7 @@ $$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$
 
 3. **Train a standard RL algorithm** (SAC) on the combined real + synthetic data. The penalty ensures the agent avoids regions where the model is unreliable.
 
-The result: an effective dataset 10–100× larger than the original, with a built-in safeguard against exploiting model errors.
+The result: many more transitions to train on than the original dataset holds — how many depends on rollout length and frequency — with a built-in safeguard against exploiting model errors.
 
 ### Formalization
 
@@ -63,7 +63,7 @@ Key design choices:
 
 - **Residual prediction**: predict $\Delta s = s' - s$ rather than $s'$ directly. This gives the network an identity baseline — predicting "nothing changes" costs zero, and the network only needs to learn the correction.
 - **NLL training**: minimizing negative log-likelihood $-\log \hat{T}_i(s' | s, a)$ trains both the mean (accuracy) and variance (calibrated uncertainty).
-- **Bootstrap sampling**: each model is trained on a random 80% of the data, forcing diversity across ensemble members.
+- **Bootstrap sampling**: each model is trained on its own bootstrap sample — 80% of the dataset size, drawn with replacement — which forces diversity across ensemble members.
 
 #### Uncertainty Estimation
 
@@ -83,11 +83,17 @@ $$\tilde{r}(s, a) = \hat{r}(s, a) - \lambda \cdot u(s, a)$$
 
 $$\pi^* = \arg\max_\pi \; \mathbb{E}_{\tilde{\mathcal{M}}} \left[ \sum_t \gamma^t \tilde{r}(s_t, a_t) \right]$$
 
-The theoretical guarantee from Yu et al. (2020):
+The theory behind MOPO (Yu et al., 2020) rests on one assumption. Call $u$ an **admissible** error estimator if it upper-bounds the model's error at every $(s, a)$ — the distance between the predicted and the true next-state distributions, scaled so that $\lambda u$ bounds the resulting error in value. Under that assumption the penalized MDP is conservative: its return is itself a lower bound on the true return,
 
-$$J(\pi) \geq \hat{J}_{\tilde{\mathcal{M}}}(\pi) - C \cdot \mathbb{E}_{s \sim d^\pi} \left[ \max_a u(s, a) \right]$$
+$$J(\pi) \geq J_{\tilde{\mathcal{M}}}(\pi) \quad \text{for every policy } \pi,$$
 
-where $J(\pi)$ is the true return and $\hat{J}_{\tilde{\mathcal{M}}}(\pi)$ is the return in the pessimistic model. The bound says: optimizing in the penalized model gives a lower bound on real performance, with a gap proportional to the remaining model error. *Note:* the original MOPO paper defines $u(s,a)$ as the max over the ensemble of the learned (aleatoric) standard-deviation norm; this book uses **ensemble disagreement** (std of predicted means) instead — a common reimplementation choice, closer to MOReL's USAD.
+and the policy $\hat\pi$ that MOPO finds is nearly as good as any policy that stays where the model is accurate:
+
+$$J(\hat\pi) \geq \sup_{\pi} \bigl\{ J(\pi) - 2\lambda\, \epsilon_u(\pi) \bigr\}, \qquad \epsilon_u(\pi) = \mathbb{E}_{(s,a) \sim \rho^{\pi}_{\hat T}}\bigl[u(s, a)\bigr],$$
+
+where $\rho^{\pi}_{\hat T}$ is the discounted occupancy of $\pi$ in the learned model. Taking $\pi$ to be the behavior policy, whose model uncertainty should be small, MOPO is expected to do at least about as well as the data it learned from.
+
+The caveat is the assumption itself. Nothing guarantees that an ensemble's spread upper-bounds the true model error: ensemble members can agree and still be wrong, especially far from the data. The guarantee is only as good as the uncertainty estimate. *Note:* the original paper uses as $u$ the maximum over the ensemble of the norm of the learned (aleatoric) standard deviation; this book uses **ensemble disagreement** (the standard deviation of predicted means), a common reimplementation choice closer to MOReL's USAD. Neither is guaranteed to be admissible.
 
 #### Branched Rollouts
 
@@ -226,13 +232,15 @@ where $s_\perp$ is an absorbing failure state and $\kappa > 0$ is a large penalt
 
 ### The Theoretical Guarantee
 
-**Theorem (Kidambi et al., 2020).** Let $\hat{\pi}$ be the optimal policy in the P-MDP $\tilde{\mathcal{M}}$. For any policy $\pi$, let $d^\pi$ denote its state-action occupancy measure. Then:
+**Corollary (Kidambi et al., 2020).** Suppose the planner returns a policy $\pi_{out}$ that is $\epsilon_\pi$-suboptimal in the P-MDP, and let $\alpha$ bound the model's total-variation error on the KNOWN region. Then, for the optimal policy $\pi^*$ of the real MDP,
 
-$$J^*(\pi) - J(\hat{\pi}) \leq \frac{2\gamma \kappa}{(1-\gamma)^2} \cdot \Pr_{d^{\hat{\pi}}}[\text{UNKNOWN}]$$
+$$J(\pi^*) - J(\pi_{out}) \leq \epsilon_\pi + \frac{4 R_{max}}{1-\gamma}\, D_{TV}(\rho_0, \hat\rho_0) + \frac{4\gamma R_{max}}{(1-\gamma)^2}\, \alpha + \frac{2 R_{max}}{1-\gamma}\, \mathbb{E}\bigl[\gamma^{T^{\pi^*}_U}\bigr],$$
 
-The bound says: the gap between the optimal policy and what MOReL finds is bounded by the probability of MOReL's policy entering the unknown region, weighted by the penalty. If the P-MDP is well-constructed (the known region covers $\hat{\pi}$'s trajectory), the gap is small.
+where $T^{\pi^*}_U$ is the time at which the *optimal* policy first enters the UNKNOWN region in the real MDP.
 
-Kidambi et al. state their results as **PAC** bounds (*probably approximately correct*: the bound holds with high probability once the dataset is large enough). This is a stronger guarantee than MOPO's: it is **distribution-free** and does not require assumptions on the dynamics error distribution. The tradeoff is that the known/unknown boundary is hard and requires choosing $\epsilon$ carefully.
+The terms name the sources of suboptimality: imperfect planning, a mismatched start-state distribution, model error inside the KNOWN region, and — the last term — how soon an optimal policy would have to leave the data. If the optimal policy stays within well-covered states, that term vanishes; if it must pass through regions the data never visited, no offline method can find it, and the paper shows the bound is tight in this sense.
+
+Like MOPO's, this guarantee rests on a correct error detector: the KNOWN region must really keep the model's error below $\alpha$. With ensemble disagreement as the detector, that is an assumption, not a fact. The practical difference between the two methods is the shape of the pessimism: MOReL's boundary is hard and requires choosing $\epsilon$ carefully.
 
 ### Implementation
 
@@ -297,6 +305,8 @@ return {
 
 The `ood` mask is the key difference from MOPO. Instead of subtracting a continuous penalty, OOD transitions are terminated immediately with `done=True` and reward $-\kappa$. The Q-learning target then sees zero future value after OOD transitions, which strongly discourages entering the unknown region.
 
+**HALT must actually deter.** When rewards are non-positive, as in the thermal and coating tasks, stopping early can look attractive: HALT cuts off a stream of negative rewards. In the paper's pessimistic MDP the HALT state pays $-R_{max}$ at every step; in the termination form used here, the one-time penalty $\kappa$ must exceed $|r_{min}|/(1-\gamma)$ — the value of staying in the worst-rewarded state forever — or the agent may learn to seek the boundary. With normalized rewards and $\gamma = 0.99$ that is about $100\,|r_{min}|$, which is why the default $\kappa = 100$ in `morel.py` is a lower limit rather than a comfortable margin.
+
 ### Choosing $\epsilon$
 
 The threshold $\epsilon$ controls the known/unknown boundary and is the critical hyperparameter in MOReL:
@@ -330,14 +340,14 @@ print(f"Calibrated epsilon = {epsilon:.4f}")
 | Data augmentation | No | No | Yes | Yes |
 | Pessimism geometry | Soft (Q penalty) | Structural (V design) | Soft (reward penalty) | Hard (absorbing state) |
 | Can extrapolate | Limited | No | Yes (within confidence) | Yes (within known region) |
-| Theoretical guarantee | Lower bound on Q | Implicit via V | Lower bound on $J(\pi)$ | Distribution-free PAC bound |
+| Theoretical guarantee | Lower bound on policy value | None formal; in-sample by design | Lower bound on $J(\pi)$ if $u$ is admissible | Suboptimality bound if the KNOWN/UNKNOWN detector is correct |
 | Key hyperparameters | $\alpha$ | $\tau, \beta$ | $\lambda, h, N$ | $\epsilon, \kappa, h, N$ |
 | Compute cost | Medium | Low | High | High |
-| Best for | Dense datasets | Stable training | Sparse, smooth dynamics | Safety-critical, need hard guarantees |
+| Best for | Dense datasets | Stable training | Sparse, smooth dynamics | A hard boundary on where the model is trusted |
 
 **When to choose MOPO**: the dynamics are smooth and learnable, dataset coverage is uneven but not catastrophically sparse, and you want to maximize performance within a reasonable compute budget.
 
-**When to choose MOReL**: safety constraints are hard (the policy must not enter uncertain regions even transiently), or when you need the stronger distribution-free guarantee and can afford careful calibration of $\epsilon$.
+**When to choose MOReL**: you want a hard boundary on where the model is trusted — at the edge of the data the rollout is stopped rather than merely discouraged — and you can afford careful calibration of $\epsilon$. This is not a safety guarantee in itself: it is only as good as the uncertainty detector.
 
 ---
 
@@ -408,9 +418,9 @@ print(f"Calibrated epsilon = {epsilon:.4f}")
 | Data required | $(s, a, r, s')$ transitions | $(s, a, r, s')$ transitions |
 | Core mechanism | Ensemble uncertainty as soft reward penalty | Hard known/unknown partition via uncertainty threshold |
 | Pessimism | Continuous: $\tilde{r} = r - \lambda u$ | Discrete: absorbing failure state beyond $\epsilon$ |
-| Theoretical guarantee | Lower bound on $J(\pi)$ via penalized model | Distribution-free PAC bound |
+| Theoretical guarantee | Lower bound on $J(\pi)$ if $u$ is admissible | Suboptimality bound if the detector is correct |
 | Key hyperparameters | $\lambda, h, N$ | $\epsilon, \kappa, h, N$ |
-| Best for | Maximizing performance on smooth dynamics | Hard safety requirements, need formal guarantees |
+| Best for | Maximizing performance on smooth dynamics | A strict stop at the edge of the data |
 | Limitation | Soft penalty can be insufficient for very unreliable models | $\epsilon$ calibration critical; hard boundary can be overly conservative |
 
 Both MOPO and MOReL represent a qualitative shift from model-free offline RL: instead of constraining the policy to stay near the data, we expand the data to cover more of the state-action space. The ensemble keeps this expansion in check — the agent trusts the model mainly where the ensemble agrees, which is only as good as the ensemble's calibration.

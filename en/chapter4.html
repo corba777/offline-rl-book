@@ -317,11 +317,11 @@
 <div class="codehilite"><pre><span></span><code><span class="c1"># Automatic alpha tuning via dual gradient descent</span>
 <span class="n">log_alpha_cql</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
 <span class="n">alpha_opt</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">([</span><span class="n">log_alpha_cql</span><span class="p">],</span> <span class="n">lr</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">)</span>
-<span class="n">target_gap</span> <span class="o">=</span> <span class="mf">10.0</span>   <span class="c1"># τ: target CQL penalty (logsumexp gap, ≥ 0)</span>
+<span class="n">target_gap</span> <span class="o">=</span> <span class="mf">5.0</span>    <span class="c1"># τ: allowed CQL gap, chosen on the scale of the observed penalty</span>
 
 <span class="c1"># In the update step:</span>
 <span class="n">alpha_cql</span> <span class="o">=</span> <span class="n">log_alpha_cql</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
-<span class="c1"># ... compute cql_penalty (should be ≥ 0 for the logsumexp form) ...</span>
+<span class="c1"># ... compute cql_penalty ...</span>
 <span class="n">alpha_loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">log_alpha_cql</span> <span class="o">*</span> <span class="p">(</span><span class="n">cql_penalty</span> <span class="o">-</span> <span class="n">target_gap</span><span class="p">)</span>
 <span class="n">alpha_opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
 <span class="n">alpha_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
@@ -355,8 +355,8 @@
 <hr />
 <h2>How to Choose α</h2>
 <p>The right value of $\alpha$ depends on dataset quality, reward scale, and how much you trust the behavior policy.</p>
-<h3>Step 1 — Sanity-check the CQL penalty sign</h3>
-<p>Before tuning $\alpha$, verify that the penalty is correctly positive: $\mathbb{E}_\mu[Q] > \mathbb{E}_D[Q]$ should hold after a few hundred updates. If the penalty is negative from the start, OOD action sampling is broken.</p>
+<h3>Step 1 — Sanity-check the penalty</h3>
+<p>The penalty is the gap between the soft maximum over all actions and $Q$ at dataset actions, and it is exactly what CQL minimizes. So before tuning, check its direction: train a few hundred updates at two values of $\alpha$. The larger $\alpha$ should give the smaller penalty. If it does not, the OOD sampling or the importance weights are broken.</p>
 <h3>Step 2 — Grid search over one log-scale pass</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">for</span> <span class="n">alpha</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">]:</span>
     <span class="n">agent</span> <span class="o">=</span> <span class="n">CQLAgent</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">alpha_cql</span><span class="o">=</span><span class="n">alpha</span><span class="p">)</span>
@@ -387,9 +387,9 @@
 <td>Increase by 2–5×</td>
 </tr>
 <tr>
-<td>CQL penalty goes negative</td>
-<td>$\alpha$ too small</td>
-<td>Increase $\alpha$</td>
+<td>CQL penalty near zero or negative</td>
+<td>Conservatism saturated: out-of-data values already sit below the data</td>
+<td>Do not raise $\alpha$; if the policy ≈ BC, lower it</td>
 </tr>
 <tr>
 <td>CQL penalty &gt;&gt; TD loss</td>
@@ -431,7 +431,7 @@
 </tbody>
 </table>
 <h3>When to use automatic tuning</h3>
-<p>Use <code>auto_alpha=True</code> when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set <code>target_gap</code> to a positive value on the logsumexp-gap scale (e.g. <code>10.0</code>).</p>
+<p>Use <code>auto_alpha=True</code> when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Choose <code>target_gap</code> ($\tau$) on the scale of the penalty you observe: $\alpha$ grows while the penalty exceeds $\tau$ and shrinks once it falls below. A positive $\tau$ tolerates some optimism outside the data; a negative $\tau$, like the default <code>target_cql=-2.0</code> in <code>cql.py</code>, keeps raising $\alpha$ until out-of-data values sit below the data by that margin.</p>
 <p>Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible experiments, or you have already found a good value via grid search.</p>
 <hr />
 <h2>CQL vs TD3+BC: A Comparison</h2>
@@ -485,7 +485,7 @@
 <p><strong>Normalize observations.</strong> CQL is sensitive to scale. Always normalize states to zero mean and unit variance using statistics from the dataset.</p>
 <p><strong>Start with $\alpha = 1.0$.</strong> This is a safe default. If the policy is too conservative (performance similar to BC), reduce $\alpha$. If Q-values diverge, increase it.</p>
 <p><strong>Use Double-Q.</strong> Always use two Q-networks and take the minimum. This reduces overestimation independent of CQL — they complement each other.</p>
-<p><strong>Monitor the CQL penalty.</strong> Log <code>E_μ[Q] - E_D[Q]</code> during training. It should be positive (OOD values are lower than dataset values) and stable. If it goes negative, $\alpha$ is too small.</p>
+<p><strong>Monitor the CQL penalty.</strong> Log the gap between the soft maximum over actions and $Q$ at dataset actions. A large or growing gap means some actions outside the data still look better than the data, and $\alpha$ may be too small. A gap near zero or below means out-of-data values are already pushed under the data; raising $\alpha$ further mostly makes the policy more BC-like.</p>
 <p><strong>Industrial data tip.</strong> If your dataset has multiple operating regimes (e.g., stopped/slow/fast in a coating process), consider training separate CQL agents per regime or adding regime as a state feature. A single CQL agent averaging over regimes will be conservative in all of them and may underperform in each.</p>
 <hr />
 <h2>Limitations</h2>

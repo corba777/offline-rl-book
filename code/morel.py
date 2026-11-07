@@ -15,8 +15,8 @@ unattractive to leave the data support.
 
 Contrast with MOPO: MOPO subtracts a *continuous* reward penalty proportional to
 uncertainty. MOReL uses a *hard* boundary: below epsilon -> normal MDP; above
-epsilon -> immediate HALT with -kappa. This gives a distribution-free guarantee
-on the suboptimality gap (Theorem 1, Kidambi et al. 2020).
+epsilon -> immediate HALT with -kappa. Kidambi et al. (2020, Corollary 2) bound the
+suboptimality gap, provided the KNOWN region really keeps model error small.
 
 Contents:
     1.  ThermalProcessEnv        — toy industrial environment (same as mopo.py)
@@ -423,7 +423,8 @@ class MOReeLAgent:
         Repeat phases 3-4 for each outer training iteration.
 
     The P-MDP guarantee (Theorem 1, Kidambi et al. 2020):
-        J*(pi*) - J(pi_hat) ≤ 2*gamma*kappa/(1-gamma)^2 * Pr[UNKNOWN under pi_hat]
+        J(pi*) - J(pi_out) ≤ eps_pi + 4Rmax/(1-g) TV(rho0) + 4 g Rmax/(1-g)^2 alpha
+                              + 2Rmax/(1-g) E[g^T_U(pi*)]   (Kidambi et al., Cor. 2)
 
     i.e., suboptimality is bounded by the probability of the learned policy
     entering the UNKNOWN region, weighted by the HALT penalty.  If epsilon is

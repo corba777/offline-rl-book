@@ -153,6 +153,8 @@ Training loop: sample a batch from `ChunkDataset`; forward pass; loss = MSE(pred
 
 **No theoretical guarantee.** DT does not provide a lower bound or safety guarantee. It is a powerful and flexible sequence model that avoids extrapolation by construction but does not have the same formal guarantees as CQL or MOPO.
 
+**Stochastic environments.** Return-conditioning has a deeper problem when outcomes are noisy, as in most industrial processes. A high return in the logs may reflect luck — a favorable disturbance — rather than good actions, so conditioning on a high return teaches the model to imitate whatever happened to precede lucky outcomes (Paster et al., 2022). Brandfonbrener et al. (2022) characterize when return-conditioned supervised learning can work at all, and Dichotomy of Control (Yang et al., 2023) conditions on a latent that separates what the agent controls from what it does not.
+
 ---
 
 ## Summary
@@ -177,3 +179,6 @@ Chapter 8 turns to **model-based** offline RL: learning a dynamics model and usi
 - Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., & Laskin, M. (2021). *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS. [arXiv:2106.01345](https://arxiv.org/abs/2106.01345).
 - Yamagata, T., Ahmed, A., & Santos-Rodriguez, R. (2023). *Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.* ICML. [arXiv:2209.03993](https://arxiv.org/abs/2209.03993).
 - Zheng, Q., Zhang, A., & Grover, A. (2022). *Online Decision Transformer.* ICML. [arXiv:2202.05607](https://arxiv.org/abs/2202.05607).
+- Paster, K., McIlraith, S., & Ba, J. (2022). *You Can't Count on Luck: Why Decision Transformers and RvS Fail in Stochastic Environments.* NeurIPS. [arXiv:2205.15967](https://arxiv.org/abs/2205.15967).
+- Brandfonbrener, D., Bietti, A., Buckman, J., Laroche, R., & Bruna, J. (2022). *When does return-conditioned supervised learning work for offline reinforcement learning?* NeurIPS. [arXiv:2206.01079](https://arxiv.org/abs/2206.01079).
+- Yang, S., Schuurmans, D., Abbeel, P., & Nachum, O. (2023). *Dichotomy of Control: Separating What You Can Control from What You Cannot.* ICLR. [arXiv:2210.13435](https://arxiv.org/abs/2210.13435).

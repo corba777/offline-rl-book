@@ -179,9 +179,9 @@
 <p><div class="math-display">$$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{known physics}} + \underbrace{f_{NN}(s, a; \theta)}_{\text{learned residual}}$$</div></p>
 <p>The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong.</p>
 <h3>Why This Helps Offline RL</h3>
-<p><strong>Better extrapolation.</strong> The physics component provides a principled prediction even where data is sparse. The neural residual is near zero where data is sparse (prior to training, and by regularization), so the hybrid model degrades gracefully to the physics model in OOD regions rather than making wild predictions.</p>
-<p><strong>Smaller residuals = easier learning.</strong> If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model converges faster and generalizes better.</p>
-<p><strong>Improved uncertainty calibration.</strong> Ensemble disagreement now measures uncertainty about the <em>residual</em>, not the total dynamics. In OOD regions, the physics term is still active; only the residual is uncertain. This gives more meaningful uncertainty estimates.</p>
+<p><strong>Better extrapolation — if the residual is kept small.</strong> The physics component provides a principled prediction even where data is sparse. A plain MLP residual, however, does not shrink to zero away from the data: like any neural network with SiLU or ReLU units, it extrapolates in whatever direction its weights happen to point. To get the intended fallback to physics, make the residual distance-aware — penalize its magnitude, or scale it down as inputs move away from the training data.</p>
+<p><strong>Smaller residuals = easier learning.</strong> If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model tends to converge faster and generalize better — provided the physics is structurally right.</p>
+<p><strong>Uncertainty: a caveat rather than a gain.</strong> Ensemble disagreement now measures uncertainty about the residual only. Every member shares the same <code>physics_fn</code>, so where the physics itself is wrong the members agree, and the ensemble reports low uncertainty exactly where it should report high. Combined with MOReL's HALT threshold, this can extend the KNOWN region into places where the model is wrong. Ensembling over physics parameters (for example, sampling $\tau$ and $K$ from plausible ranges) or distance-aware residuals reduce the problem.</p>
 <h3>Formalization</h3>
 <p>Let $f_{phys}(s, a)$ be the known physics model (deterministic, no parameters). The residual network predicts a Gaussian over the residual:</p>
 <p><div class="math-display">$$\hat{f}_{NN}(s, a; \theta) = \bigl(\mu_\theta(s, a),\ \sigma^2_\theta(s, a)\bigr)$$</div></p>
@@ -361,7 +361,7 @@
 <p><strong>Lagrangian relaxation.</strong> Augment the objective with constraint multipliers and optimize jointly:</p>
 <p><div class="math-display">$$\max_{\pi} \min_{\lambda \geq 0}\ \mathbb{E}\bigl[R(\pi)\bigr] - \lambda \cdot \mathbb{E}\bigl[g(s, \pi(s))\bigr]$$</div></p>
 <p>The multiplier $\lambda$ is updated to increase whenever the constraint is violated, making violations increasingly costly. In offline RL this is applied to the offline dataset, not through environment interaction.</p>
-<p>For most industrial applications, <strong>soft constraints via reward shaping</strong> (Part I) combined with the KNOWN/UNKNOWN boundary from MOReL (Chapter 8) provide sufficient safety. The hard constraint machinery is warranted when:
+<p><strong>Soft constraints via reward shaping</strong> (Part I) combined with MOReL's KNOWN/UNKNOWN boundary (Chapter 8) are a reasonable starting point, but they make violations unlikely, not impossible; whether that is enough depends on what a violation costs. The hard-constraint machinery is warranted when:
 - A constraint violation is irreversible (equipment damage, safety incident)
 - The constraint boundary is precisely known
 - Online projection is computationally feasible</p>
@@ -370,7 +370,7 @@
 <p>Not every offline RL problem benefits equally from physics. The value of physical knowledge depends on three factors:</p>
 <p><strong>Data coverage.</strong> The sparser the dataset, the more physics helps. A dataset covering 20% of the operating envelope leaves 80% where only physics can guide the model.</p>
 <p><strong>Physics accuracy.</strong> A first-principles model that captures 90% of the dynamics is highly valuable. An analytical model that captures only 30% may still cause problems if its errors are systematic (i.e., confidently wrong in a predictable way). Validate the physics model on a held-out subset before trusting it.</p>
-<p><strong>Constraint hardness.</strong> Mass balance and energy conservation are exact (up to measurement error). Empirical correlations (viscosity-temperature-composition) are approximate. Use the former as hard constraints; use the latter as soft penalties or initial guesses for the neural residual.</p>
+<p><strong>Which constraints are about what.</strong> Mass and energy conservation are exact (up to measurement error), but they constrain the <em>model</em>, not the policy: no action can make mass disappear, so they belong in the structure of the dynamics model or in checks on its predictions. Hard constraints on the <em>policy</em> are operating limits — temperature bounds, equipment ratings, tank levels. Empirical correlations (viscosity–temperature–composition) are approximate; use them as soft penalties or as initial guesses for the neural residual.</p>
 <div class="codehilite"><pre><span></span><code>                    Physics Knowledge Available
                     None         Partial       Strong
                    ┌────────────┬─────────────┬──────────────┐

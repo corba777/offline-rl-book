@@ -163,6 +163,7 @@
 <p><strong>Stitching.</strong> Standard DT does not explicitly "stitch" sub-optimal trajectory segments. Value-based methods can combine a good prefix from one trajectory with a good suffix from another via the value function; DT generates autoregressively from a single context. Variants like <strong>Q-learning DT (QDT)</strong> add TD learning to improve credit assignment.</p>
 <p><strong>Conditioning sensitivity.</strong> Performance depends on the choice of $R^*$ at test time. If $R^*$ is too low, the model behaves conservatively; if too high, it may hallucinate. Return normalization and percentile-based $R^*$ help but are hyperparameters.</p>
 <p><strong>No theoretical guarantee.</strong> DT does not provide a lower bound or safety guarantee. It is a powerful and flexible sequence model that avoids extrapolation by construction but does not have the same formal guarantees as CQL or MOPO.</p>
+<p><strong>Stochastic environments.</strong> Return-conditioning has a deeper problem when outcomes are noisy, as in most industrial processes. A high return in the logs may reflect luck — a favorable disturbance — rather than good actions, so conditioning on a high return teaches the model to imitate whatever happened to precede lucky outcomes (Paster et al., 2022). Brandfonbrener et al. (2022) characterize when return-conditioned supervised learning can work at all, and Dichotomy of Control (Yang et al., 2023) conditions on a latent that separates what the agent controls from what it does not.</p>
 <hr />
 <h2>Summary</h2>
 <table>
@@ -207,6 +208,9 @@
 <li>Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., &amp; Laskin, M. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
 <li>Yamagata, T., Ahmed, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.</em> ICML. <a href="https://arxiv.org/abs/2209.03993">arXiv:2209.03993</a>.</li>
 <li>Zheng, Q., Zhang, A., &amp; Grover, A. (2022). <em>Online Decision Transformer.</em> ICML. <a href="https://arxiv.org/abs/2202.05607">arXiv:2202.05607</a>.</li>
+<li>Paster, K., McIlraith, S., &amp; Ba, J. (2022). <em>You Can't Count on Luck: Why Decision Transformers and RvS Fail in Stochastic Environments.</em> NeurIPS. <a href="https://arxiv.org/abs/2205.15967">arXiv:2205.15967</a>.</li>
+<li>Brandfonbrener, D., Bietti, A., Buckman, J., Laroche, R., &amp; Bruna, J. (2022). <em>When does return-conditioned supervised learning work for offline reinforcement learning?</em> NeurIPS. <a href="https://arxiv.org/abs/2206.01079">arXiv:2206.01079</a>.</li>
+<li>Yang, S., Schuurmans, D., Abbeel, P., &amp; Nachum, O. (2023). <em>Dichotomy of Control: Separating What You Can Control from What You Cannot.</em> ICLR. <a href="https://arxiv.org/abs/2210.13435">arXiv:2210.13435</a>.</li>
 </ul></main>
 <nav class="chapter-nav">
 <a href="/offline-rl-book/en/chapter6.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Policy-Constraint and Actor-Critic (TD3+BC, AWAC)</span></a>

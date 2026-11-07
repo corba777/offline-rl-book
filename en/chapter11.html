@@ -65,7 +65,7 @@
 </blockquote>
 <hr />
 <h2>Why Explainability Matters in Industrial Offline RL</h2>
-<p>The algorithms in Chapters 1–10 produce policies that achieve high reward, respect physical constraints, and generalize to unseen operating regimes. What they do not produce is an answer to the question an operator will inevitably ask: <em>why did the agent command this setpoint at this moment?</em></p>
+<p>The algorithms in Chapters 1–10 can produce policies that achieve high reward and, with the constraint machinery of Chapters 9–10, rarely violate physical limits. What they do not produce is an answer to the question an operator will inevitably ask: <em>why did the agent command this setpoint at this moment?</em></p>
 <p>This is not merely a regulatory concern, though in many industries it is that too. It is a practical reliability question. A policy whose decisions are opaque cannot be diagnosed when it fails. An operator who does not understand the agent's reasoning cannot override it intelligently. A model that fits data well but for the wrong reasons will fail silently when the process changes.</p>
 <p>Explainability in Offline RL is harder than in standard supervised learning for three reasons specific to the offline setting.</p>
 <p><strong>There are three separate models to explain.</strong> A trained Offline RL agent contains a Q-function (the critic), a policy (the actor), and optionally a dynamics model. Each answers a different question, and their explanations do not always agree. The Q-function might rate an action highly because temperature is near its setpoint; the policy might choose that action because level is near its lower bound. Understanding the discrepancy is as important as understanding the agreement.</p>

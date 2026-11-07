@@ -32,7 +32,7 @@ OPE is the sibling of offline RL: offline RL *learns* a policy from $\mathcal{D}
 
 ## Why Not Just Use the Learned Q-Function?
 
-Chapter 2 already introduced $\hat{J}(\hat\pi) = \mathbb{E}\_{s,a \sim d^{\hat\pi}}[Q\_\theta(s,a)]$ — the return *predicted* by the learned Q-function under the greedy policy. We argued that $\hat{J}$ can be wildly optimistic when $Q_\theta$ overestimates OOD actions. So **using the training Q-network as an evaluator** is biased and unreliable for the very policies we care about (policies that may choose OOD actions).
+Chapter 2 introduced $\hat{J}(\hat\pi) = \mathbb{E}\_{s\_0}[Q\_\theta(s\_0, \hat\pi(s\_0))]$ — the return *predicted* by the learned Q-function under the greedy policy — and showed that its error equals the Bellman error under the learned policy's own distribution. We argued that $\hat{J}$ can be wildly optimistic when $Q_\theta$ overestimates OOD actions. So **using the training Q-network as an evaluator** is biased and unreliable for the very policies we care about (policies that may choose OOD actions).
 
 OPE provides **dedicated estimators** of $J(\pi)$ that do not assume the Q-function is correct. They use the dataset directly, with explicit treatment of the distribution shift between $\pi_\beta$ and $\pi$.
 
@@ -101,11 +101,11 @@ def estimate_J_FQE(Q, policy_fn, states):
 
 ### 3. Doubly Robust (DR)
 
-Combines IS and DM so that the estimator is **unbiased** if either (a) the importance weights are correct, or (b) the value model $\hat{Q}$ is correct:
+Combines IS and DM. Its defining property, double robustness, holds under precise conditions: the estimate is **unbiased** if either (a) the importance weights use the true behavior probabilities $\pi_\beta(a \mid s)$ and $\pi_\beta$ has support wherever $\pi$ does, or (b) the value model is exactly $\hat{Q} = Q^\pi$ and was fitted on data independent of the evaluation sample:
 
 $$\hat{J}_{DR} = \frac{1}{n}\sum_{i=1}^n \left[ \hat{Q}(s_0^{(i)}, \pi(s_0^{(i)})) + \sum_{t\ge 0} \gamma^t \rho_{0:t}^{(i)} \left( r_t^{(i)} + \gamma \hat{Q}(s_{t+1}^{(i)}, \pi(s_{t+1}^{(i)})) - \hat{Q}(s_t^{(i)}, a_t^{(i)}) \right) \right]$$
 
-where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^\pi$, the trailing terms have expectation zero. If $\pi_\beta = \pi$, the importance weights are 1, but DR does **not** reduce sample-wise to DM: the TD-residual correction terms remain. Under a correct value model those terms have zero expectation; with on-policy data they can telescope toward a Monte Carlo return-style estimate. DR thus interpolates between model-based evaluation and trajectory correction, rather than simply becoming DM. In practice DR often has lower variance than IS and lower bias than DM alone. **Caveat:** on long horizons the cumulative weight $\rho_{0:t}$ can still explode or vanish as $t$ grows, so classical DR still suffers from high variance on long trajectories; variants such as **Marginalized IS** (state-marginal importance weights) are used to mitigate this.
+where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^\pi$, the trailing terms have expectation zero. If $\pi_\beta = \pi$, the importance weights are 1, but DR does **not** reduce sample-wise to DM: the TD-residual correction terms remain. Under a correct value model those terms have zero expectation; with on-policy data they can telescope toward a Monte Carlo return-style estimate. DR thus interpolates between model-based evaluation and trajectory correction, rather than simply becoming DM. When both ingredients are only approximately right — the usual case — DR's bias behaves like the *product* of the weight error and the value-model error (exactly so in the one-step, contextual-bandit case), which is why it often beats both IS and DM. That is a tendency, not a guarantee: clipping or self-normalizing the weights, estimating $\pi_\beta$ from the same data, or fitting $\hat{Q}$ on the evaluation trajectories all reintroduce bias, and the guarantees concern expectations, not a finite sample. **Caveat:** on long horizons the cumulative weight $\rho_{0:t}$ can still explode or vanish as $t$ grows, so classical DR still suffers from high variance on long trajectories; variants such as **Marginalized IS** (state-marginal importance weights) are used to mitigate this.
 
 ---
 
@@ -130,6 +130,20 @@ where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^\pi$
 - **Model misspecification:** DM and DR rely on $\hat{Q}$ or a dynamics model. In offline RL these models are biased (optimistic or pessimistic). OPE estimates can be misleading if the model is badly wrong.
 - **Industrial use:** In this book, evaluation in Chapters 5–11 often uses **on-policy rollouts in a simulator** (e.g. `evaluate(agent, env, ...)`). That is valid when a simulator is available. OPE is for the situation where you do **not** have a simulator or cannot run the new policy at all. For many industrial processes, a high-fidelity simulator may not exist, so OPE (or at least reporting OPE alongside any simulated metrics) is the right tool.
 
+### When OPE Estimators Fail
+
+Bias and variance are only part of the story. Before trusting an estimate, check these failure modes:
+
+| Failure mode | What goes wrong | Estimators affected | What to check |
+|---|---|---|---|
+| **Support mismatch** | $\pi$ takes actions where $\pi_\beta(a \mid s) \approx 0$ | IS and DR weights explode; DM/FQE extrapolate | Fraction of target actions in low-density regions of the data |
+| **Long horizons** | A product of $H$ ratios has variance that grows roughly exponentially in $H$ | IS, per-decision IS, DR | Effective sample size of the weights, $(\sum_i w_i)^2 / \sum_i w_i^2$ |
+| **Estimated $\pi_\beta$** | The weights use a fitted $\hat\pi_\beta$, and its error enters every ratio | IS, DR | Calibration of $\hat\pi_\beta$ on held-out data |
+| **Deterministic target policy** | For continuous actions $\pi(a \mid s) / \pi_\beta(a \mid s)$ is undefined when $\pi$ is deterministic (a Dirac) | IS, DR | Evaluate a smoothed (stochastic) version of $\pi$, or use FQE |
+| **Identifiability** | Unlogged confounders drive both actions and outcomes, so no estimator can recover $J(\pi)$ from the data | All | Domain knowledge of how the logged actions were chosen |
+
+The deterministic case matters for this book: every policy here is evaluated deterministically, which makes FQE the natural estimator and requires deliberate smoothing before IS or DR can be applied. For selecting among many candidates, the DOPE benchmark (Fu et al., 2021) and Paine et al. (2020) show how reliably FQE-style estimates rank policies in practice.
+
 ---
 
 ## Summary
@@ -138,7 +152,7 @@ where $\rho_{0:t}$ is the importance weight up to step $t$. If $\hat{Q} = Q^\pi$
 |-----------|------|----------|-------------|
 | IS | Low (if support) | High | $\pi \approx \pi_\beta$ |
 | DM / FQE | High (model error) | Low | Fast ranking, accept bias |
-| DR | Low if Q or weights correct | Medium | Default choice when feasible |
+| DR | Low if Q or weights are exactly right; otherwise ≈ product of their errors | Medium, growing with horizon | Short-to-medium horizons with known $\pi_\beta$ |
 
 Off-Policy Evaluation answers: *from offline data only, how good is this policy?* It does not replace careful deployment and monitoring, but it allows you to compare and select policies before any real-world rollout. The next chapter starts the algorithmic pipeline: **Conservative Q-Learning (CQL)** — the first method we use to *train* a policy from $\mathcal{D}$.
 
@@ -153,3 +167,5 @@ Off-Policy Evaluation answers: *from offline data only, how good is this policy?
 - Jiang, N., & Li, L. (2016). *Doubly Robust Off-policy Value Evaluation for Reinforcement Learning.* ICML.
 - Voloshin, C., Le, H. M., Jiang, N., & Yue, Y. (2019). *Empirical Study of Off-Policy Policy Evaluation for Reinforcement Learning.* NeurIPS Workshop.
 - Levine, S., Kumar, A., Tucker, G., & Fu, J. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643). *(Section on OPE)*
+- Fu, J., Norouzi, M., Nachum, O., Tucker, G., Wang, Z., Novikov, A., et al. (2021). *Benchmarks for Deep Off-Policy Evaluation (DOPE).* ICLR. [arXiv:2103.16596](https://arxiv.org/abs/2103.16596).
+- Paine, T. L., Paduraru, C., Michi, A., Gulcehre, C., Zolna, K., Novikov, A., Wang, Z., & de Freitas, N. (2020). *Hyperparameter Selection for Offline Reinforcement Learning.* [arXiv:2007.09055](https://arxiv.org/abs/2007.09055).

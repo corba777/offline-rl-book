@@ -220,7 +220,7 @@
 <div class="codehilite"><pre><span></span><code><span class="c1"># Настройка alpha через двойственный градиентный спуск</span>
 <span class="n">log_alpha_cql</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
 <span class="n">alpha_opt</span>     <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">([</span><span class="n">log_alpha_cql</span><span class="p">],</span> <span class="n">lr</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">)</span>
-<span class="n">target_gap</span> <span class="o">=</span> <span class="mf">10.0</span>   <span class="c1"># τ: целевой CQL-штраф (разрыв logsumexp, ≥ 0)</span>
+<span class="n">target_gap</span> <span class="o">=</span> <span class="mf">5.0</span>    <span class="c1"># τ: допустимый CQL-разрыв, в масштабе наблюдаемого штрафа</span>
 
 <span class="c1"># В шаге обновления:</span>
 <span class="n">alpha_cql</span>  <span class="o">=</span> <span class="n">log_alpha_cql</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
@@ -284,8 +284,8 @@
 <hr />
 <h2>Как выбрать α</h2>
 <p>Правильное значение $\alpha$ зависит от качества датасета, масштаба наград и доверия к поведенческой политике.</p>
-<h3>Шаг 1 — Проверьте знак CQL-штрафа</h3>
-<p>Перед настройкой убедитесь, что штраф положителен: $\mathbb{E}_\mu[Q] > \mathbb{E}_D[Q]$ должно выполняться после нескольких сотен обновлений. Если штраф отрицателен с самого начала — сэмплирование OOD-действий сломано.</p>
+<h3>Шаг 1 — Проверьте штраф</h3>
+<p>Штраф — это разрыв между мягким максимумом по всем действиям и $Q$ на действиях датасета, и именно его CQL минимизирует. Поэтому до настройки проверьте направление: обучите несколько сотен шагов при двух значениях $\alpha$. При большем $\alpha$ штраф должен быть меньше. Если это не так, сломано сэмплирование OOD-действий или importance weights.</p>
 <h3>Шаг 2 — Грид-поиск по логарифмической шкале</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">for</span> <span class="n">alpha</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">]:</span>
     <span class="n">agent</span> <span class="o">=</span> <span class="n">CQLAgent</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">alpha_cql</span><span class="o">=</span><span class="n">alpha</span><span class="p">)</span>
@@ -316,9 +316,9 @@
 <td>Увеличить в 2–5×</td>
 </tr>
 <tr>
-<td>CQL-штраф уходит в минус</td>
-<td>$\alpha$ слишком мал</td>
-<td>Увеличить $\alpha$</td>
+<td>CQL-штраф около нуля или отрицателен</td>
+<td>Консерватизм насыщен: значения вне данных уже ниже данных</td>
+<td>Не увеличивать $\alpha$; если политика ≈ BC — уменьшить</td>
 </tr>
 <tr>
 <td>CQL-штраф &gt;&gt; TD-потеря</td>
@@ -360,7 +360,7 @@
 </tbody>
 </table>
 <h3>Когда использовать автонастройку</h3>
-<p>Используйте <code>auto_alpha=True</code> если: (а) политика будет развёрнута в реальной системе и безопасность важнее производительности, или (б) датасет охватывает несколько режимов работы с разными масштабами наград. Задайте <code>target_gap</code> положительным значением в шкале logsumexp-разрыва (например, <code>10.0</code>).</p>
+<p>Используйте <code>auto_alpha=True</code> если: (а) политика будет развёрнута в реальной системе и безопасность важнее производительности, или (б) датасет охватывает несколько режимов работы с разными масштабами наград. Выбирайте <code>target_gap</code> ($\tau$) в масштабе того штрафа, который вы наблюдаете: $\alpha$ растёт, пока штраф выше $\tau$, и уменьшается, когда он опускается ниже. Положительное $\tau$ допускает некоторый оптимизм вне данных; отрицательное, как <code>target_cql=-2.0</code> по умолчанию в <code>cql.py</code>, продолжает поднимать $\alpha$, пока значения вне данных не окажутся ниже данных на эту величину.</p>
 <p>Используйте фиксированный $\alpha$ если: проводите воспроизводимые офлайн-эксперименты, или уже нашли хорошее значение грид-поиском.</p>
 <hr />
 <h2>CQL vs TD3+BC</h2>
@@ -408,7 +408,7 @@
 <p><strong>Нормализуйте наблюдения.</strong> CQL чувствителен к масштабу. Всегда нормализуйте состояния по статистикам датасета.</p>
 <p><strong>Начинайте с $\alpha = 1.0$.</strong> Безопасное значение по умолчанию. Если политика слишком консервативна — уменьшайте. Если Q-значения расходятся — увеличивайте.</p>
 <p><strong>Используйте Double-Q.</strong> Всегда используйте две Q-сети и берите минимум. Это снижает переоценку независимо от CQL — два механизма дополняют друг друга.</p>
-<p><strong>Мониторьте CQL-штраф.</strong> Логируйте <code>E_μ[Q] - E_D[Q]</code> во время обучения. Он должен быть положительным и стабильным. Если уходит в минус — $\alpha$ слишком мало.</p>
+<p><strong>Следите за CQL-штрафом.</strong> Логируйте разрыв между мягким максимумом по действиям и $Q$ на действиях датасета. Большой или растущий разрыв значит, что некоторые действия вне данных всё ещё выглядят лучше данных, и $\alpha$, возможно, мало. Разрыв около нуля или ниже значит, что значения вне данных уже опущены под данные; дальнейший рост $\alpha$ в основном делает политику похожей на BC.</p>
 <p><strong>Совет для промышленных данных.</strong> Если датасет содержит несколько режимов работы (остановленный/медленный/быстрый), рассмотрите обучение отдельных агентов CQL для каждого режима или добавление режима как признака состояния.</p>
 <hr />
 <h2>Ограничения</h2>
@@ -454,7 +454,7 @@
 <h2>Литература</h2>
 <ul>
 <li>Kumar, A., Zhou, A., Tucker, G., &amp; Levine, S. (2020). <em>Conservative Q-Learning for Offline Reinforcement Learning.</em> NeurIPS. <a href="https://arxiv.org/abs/2006.04779">arXiv:2006.04779</a>.</li>
-<li>Fujimoto, S., &amp; Gu, S. (2021). <em>A Minimalist Approach to offline RL (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
+<li>Fujimoto, S., &amp; Gu, S. (2021). <em>A Minimalist Approach to Offline RL (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
 <li>Haarnoja, T. et al. (2018). <em>Soft Actor-Critic.</em> ICML. <a href="https://arxiv.org/abs/1801.01290">arXiv:1801.01290</a>.</li>
 <li>Levine, S. et al. (2020). <em>Offline Reinforcement Learning: Tutorial, Review, and Perspectives.</em> <a href="https://arxiv.org/abs/2005.01643">arXiv:2005.01643</a>.</li>
 </ul></main>

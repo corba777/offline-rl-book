@@ -180,11 +180,11 @@ The physics component $f_{phys}$ is an analytical function derived from domain k
 
 ### Why This Helps Offline RL
 
-**Better extrapolation.** The physics component provides a principled prediction even where data is sparse. The neural residual is near zero where data is sparse (prior to training, and by regularization), so the hybrid model degrades gracefully to the physics model in OOD regions rather than making wild predictions.
+**Better extrapolation — if the residual is kept small.** The physics component provides a principled prediction even where data is sparse. A plain MLP residual, however, does not shrink to zero away from the data: like any neural network with SiLU or ReLU units, it extrapolates in whatever direction its weights happen to point. To get the intended fallback to physics, make the residual distance-aware — penalize its magnitude, or scale it down as inputs move away from the training data.
 
-**Smaller residuals = easier learning.** If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model converges faster and generalizes better.
+**Smaller residuals = easier learning.** If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model tends to converge faster and generalize better — provided the physics is structurally right.
 
-**Improved uncertainty calibration.** Ensemble disagreement now measures uncertainty about the *residual*, not the total dynamics. In OOD regions, the physics term is still active; only the residual is uncertain. This gives more meaningful uncertainty estimates.
+**Uncertainty: a caveat rather than a gain.** Ensemble disagreement now measures uncertainty about the residual only. Every member shares the same `physics_fn`, so where the physics itself is wrong the members agree, and the ensemble reports low uncertainty exactly where it should report high. Combined with MOReL's HALT threshold, this can extend the KNOWN region into places where the model is wrong. Ensembling over physics parameters (for example, sampling $\tau$ and $K$ from plausible ranges) or distance-aware residuals reduce the problem.
 
 ### Formalization
 
@@ -395,7 +395,7 @@ $$\max_{\pi} \min_{\lambda \geq 0}\ \mathbb{E}\bigl[R(\pi)\bigr] - \lambda \cdot
 
 The multiplier $\lambda$ is updated to increase whenever the constraint is violated, making violations increasingly costly. In offline RL this is applied to the offline dataset, not through environment interaction.
 
-For most industrial applications, **soft constraints via reward shaping** (Part I) combined with the KNOWN/UNKNOWN boundary from MOReL (Chapter 8) provide sufficient safety. The hard constraint machinery is warranted when:
+**Soft constraints via reward shaping** (Part I) combined with MOReL's KNOWN/UNKNOWN boundary (Chapter 8) are a reasonable starting point, but they make violations unlikely, not impossible; whether that is enough depends on what a violation costs. The hard-constraint machinery is warranted when:
 - A constraint violation is irreversible (equipment damage, safety incident)
 - The constraint boundary is precisely known
 - Online projection is computationally feasible
@@ -410,7 +410,7 @@ Not every offline RL problem benefits equally from physics. The value of physica
 
 **Physics accuracy.** A first-principles model that captures 90% of the dynamics is highly valuable. An analytical model that captures only 30% may still cause problems if its errors are systematic (i.e., confidently wrong in a predictable way). Validate the physics model on a held-out subset before trusting it.
 
-**Constraint hardness.** Mass balance and energy conservation are exact (up to measurement error). Empirical correlations (viscosity-temperature-composition) are approximate. Use the former as hard constraints; use the latter as soft penalties or initial guesses for the neural residual.
+**Which constraints are about what.** Mass and energy conservation are exact (up to measurement error), but they constrain the *model*, not the policy: no action can make mass disappear, so they belong in the structure of the dynamics model or in checks on its predictions. Hard constraints on the *policy* are operating limits — temperature bounds, equipment ratings, tank levels. Empirical correlations (viscosity–temperature–composition) are approximate; use them as soft penalties or as initial guesses for the neural residual.
 
 ```
                     Physics Knowledge Available

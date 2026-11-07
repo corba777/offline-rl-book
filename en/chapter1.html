@@ -215,13 +215,13 @@
 <p>Even if BC learns $\pi_\theta \approx \pi_\beta$ at every training state, small errors in action selection cause the trajectory to drift into <strong>states not seen in the dataset</strong>. At these new states, BC has no reliable predictions — and its errors there cause further drift.</p>
 <p>This is <strong>distribution shift</strong>, and it compounds over time.</p>
 <h3>The Formal Bound</h3>
-<p>Ross &amp; Bagnell (2010) proved the following. Suppose BC achieves average per-step imitation error $\epsilon$:</p>
-<p><div class="math-display">$$\mathbb{E}_{s \sim d^{\pi_\beta}} \left[ \| \pi_\theta(s) - \pi_\beta(s) \| \right] \leq \epsilon$$</div></p>
+<p>Ross &amp; Bagnell (2010) proved the following. Suppose BC disagrees with the expert with probability at most $\epsilon$ on the expert's own state distribution (a 0–1 imitation loss):</p>
+<p><div class="math-display">$$\mathbb{E}_{s \sim d^{\pi_\beta}} \left[ \mathbf{1}\{\pi_\theta(s) \neq \pi_\beta(s)\} \right] \leq \epsilon$$</div></p>
 <p>Then the performance gap between the learned policy and the behavior policy is bounded by:</p>
 <p><div class="math-display">$$J(\pi_\beta) - J(\pi_\theta) \leq \epsilon H^2 \cdot C$$</div></p>
 <p>where:
 - $H$ is the task horizon (number of steps)
-- $C$ is a constant depending on the Lipschitz constant of the dynamics and reward
+- $C$ is the bound on the per-step cost (costs in $[0, C]$); no smoothness of the dynamics is assumed — a single mistake can lead anywhere, which is exactly why errors compound
 - The bound grows as $\mathcal{O}(H^2)$</p>
 <p><strong>The $H^2$ term is the problem.</strong> For a 30-minute prediction horizon at 10-second intervals, $H = 180$. Even tiny per-step error $\epsilon = 0.01$ produces a bound of $0.01 \times 180^2 = 324$. The bound is loose in practice, but the trend is real.</p>
 <h3>Intuition: The Snowball</h3>

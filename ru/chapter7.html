@@ -163,6 +163,7 @@
 <p><strong>Сшивание траекторий.</strong> Стандартный DT явно не «сшивает» фрагменты субоптимальных траекторий. Value-based методы через функцию ценности умеют соединить удачное начало одной траектории с удачным окончанием другой, а DT генерирует действия авторегрессионно из одного контекста. Варианты вроде <strong>Q-learning DT (QDT)</strong> добавляют TD-обучение, чтобы улучшить credit assignment.</p>
 <p><strong>Чувствительность к обусловливанию.</strong> Качество зависит от выбора $R^*$ на тесте. При слишком низком $R^*$ модель ведёт себя консервативно, при слишком высоком может «галлюцинировать». Нормировка return и выбор $R^*$ по перцентилю помогают, но сами становятся гиперпараметрами.</p>
 <p><strong>Нет теоретических гарантий.</strong> DT не даёт ни нижней оценки, ни гарантии безопасности. Это мощная и гибкая модель последовательностей, которая по построению избегает экстраполяции по действиям, но формальных гарантий уровня CQL или MOPO у неё нет.</p>
+<p><strong>Стохастические среды.</strong> Когда исходы зашумлены, как в большинстве промышленных процессов, у обусловливания на return появляется более глубокая проблема. Высокий return в логах может объясняться удачей — благоприятным возмущением, — а не хорошими действиями, и обусловливание на высоком return учит модель подражать тому, что случайно предшествовало удачным исходам (Paster et al., 2022). Brandfonbrener et al. (2022) описывают, когда обучение с учителем, обусловленное на return, вообще может работать, а Dichotomy of Control (Yang et al., 2023) обусловливает модель на латентную переменную, отделяющую то, что агент контролирует, от того, что ему неподвластно.</p>
 <hr />
 <h2>Итоги</h2>
 <table>
@@ -205,8 +206,11 @@
 <h2>Литература</h2>
 <ul>
 <li>Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., &amp; Laskin, M. (2021). <em>Decision Transformer: Reinforcement Learning via Sequence Modeling.</em> NeurIPS. <a href="https://arxiv.org/abs/2106.01345">arXiv:2106.01345</a>.</li>
-<li>Yamagata, T., Ahmed, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in offline RL.</em> ICML. <a href="https://arxiv.org/abs/2209.03993">arXiv:2209.03993</a>.</li>
+<li>Yamagata, T., Ahmed, A., &amp; Santos-Rodriguez, R. (2023). <em>Q-learning Decision Transformer: Leveraging Dynamic Programming for Conditional Sequence Modelling in Offline RL.</em> ICML. <a href="https://arxiv.org/abs/2209.03993">arXiv:2209.03993</a>.</li>
 <li>Zheng, Q., Zhang, A., &amp; Grover, A. (2022). <em>Online Decision Transformer.</em> ICML. <a href="https://arxiv.org/abs/2202.05607">arXiv:2202.05607</a>.</li>
+<li>Paster, K., McIlraith, S., &amp; Ba, J. (2022). <em>You Can't Count on Luck: Why Decision Transformers and RvS Fail in Stochastic Environments.</em> NeurIPS. <a href="https://arxiv.org/abs/2205.15967">arXiv:2205.15967</a>.</li>
+<li>Brandfonbrener, D., Bietti, A., Buckman, J., Laroche, R., &amp; Bruna, J. (2022). <em>When does return-conditioned supervised learning work for offline reinforcement learning?</em> NeurIPS. <a href="https://arxiv.org/abs/2206.01079">arXiv:2206.01079</a>.</li>
+<li>Yang, S., Schuurmans, D., Abbeel, P., &amp; Nachum, O. (2023). <em>Dichotomy of Control: Separating What You Can Control from What You Cannot.</em> ICLR. <a href="https://arxiv.org/abs/2210.13435">arXiv:2210.13435</a>.</li>
 </ul></main>
 <nav class="chapter-nav">
 <a href="/offline-rl-book/ru/chapter6.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Ограничение политики и Actor-Critic (TD3+BC, AWAC)</span></a>

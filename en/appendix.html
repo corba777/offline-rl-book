@@ -93,8 +93,8 @@
 </tr>
 <tr>
 <td><strong>AWAC</strong></td>
-<td>In-sample advantage-weighted policy</td>
-<td>Stochastic policy; avoid OOD actor queries</td>
+<td>Advantage-weighted actor fitted on dataset actions</td>
+<td>Stochastic policy; in-sample actor update (the critic still evaluates π)</td>
 <td>$\beta$ sensitivity; critic quality</td>
 <td>Deterministic control with tight latency budget</td>
 </tr>

@@ -71,7 +71,7 @@ Written out with the batch mean $|Q|$: minimize $-\lambda \, Q(s,\pi_\phi(s)) / 
 
 ## AWAC: Advantage-Weighted Actor-Critic
 
-**AWAC** (Advantage-Weighted Actor-Critic) — Nair et al., 2020 — keeps the policy update **fully in-sample**: the actor is improved by reweighting dataset actions by their advantage, without sampling from the current policy.
+**AWAC** (Advantage-Weighted Actor-Critic) — Nair et al., 2020 — keeps the **actor update in-sample**: the actor is fitted only on dataset actions, reweighted by their advantage. The critic is a different matter. Its TD target and the value $V(s) = \mathbb{E}_{a \sim \pi}[Q(s,a)]$ are evaluated at actions of the current policy, so AWAC still queries Q outside the data; IQL (Chapter 5) removes those queries as well.
 
 ### The Idea
 
@@ -79,9 +79,9 @@ Instead of training the actor to maximize $Q(s, \pi(s))$ (which requires evaluat
 
 $$\mathcal{L}_\pi(\phi) = -\mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \exp\!\left( \frac{1}{\beta} \bigl( Q(s,a) - V(s) \bigr) \right) \cdot \log \pi_\phi(a | s) \right]$$
 
-Here $V(s)$ is the state value function (e.g. $\mathbb{E}_{a \sim \pi_\beta}[Q(s,a)]$ or a learned V-network). The **advantage** $A(s,a) = Q(s,a) - V(s)$ measures how much better action $a$ is than the average at state $s$. The exponential weight $\exp(A(s,a)/\beta)$ upweights good actions and downweights bad ones; $\beta$ is a temperature that controls how sharply we focus on the best actions.
+Here $V(s)$ is the state value under the current policy, $\mathbb{E}_{a \sim \pi}[Q(s,a)]$; IQL instead learns $V$ from dataset actions. Note the convention: in this chapter $\beta$ is a temperature, so the weight is $\exp(A/\beta)$ and a smaller $\beta$ means a sharper focus, whereas IQL in Chapter 5 writes $\exp(\beta A)$, with the opposite meaning. The **advantage** $A(s,a) = Q(s,a) - V(s)$ measures how much better action $a$ is than the average at state $s$. The exponential weight $\exp(A(s,a)/\beta)$ upweights good actions and downweights bad ones; $\beta$ is a temperature that controls how sharply we focus on the best actions.
 
-So: **no OOD actor queries**. The critic (Q, and optionally V) is trained with standard TD; the actor is trained with weighted maximum likelihood on the dataset. This is similar in spirit to IQL's policy extraction, but AWAC was proposed earlier and uses a different critic setup (e.g. on-policy or off-policy TD with optional V).
+So the **actor** makes no OOD queries: it is trained with weighted maximum likelihood on the dataset, while the critic (Q, and optionally V) is trained with standard TD on targets that use the current policy. This is similar in spirit to IQL's policy extraction, but AWAC was proposed earlier and uses a different critic setup (e.g. on-policy or off-policy TD with optional V).
 
 ### Relation to IQL
 
@@ -174,7 +174,7 @@ Start with the paper's $\lambda = 2.5$ on standard benchmarks, or with our more 
 **When to use which**
 
 - **TD3+BC**: Simplest policy-constraint method; good first baseline; deterministic policy; no theoretical guarantee.
-- **AWAC**: In-sample actor; good when you want to avoid any OOD policy sampling; similar to IQL's policy extraction.
+- **AWAC**: In-sample actor update with an advantage-weighted loss, close to IQL's policy extraction; the critic still evaluates the current policy. If you need no OOD queries at all, use IQL.
 - **CQL / IQL**: CQL comes with a formal lower bound and IQL is fully in-sample; both are often stronger on hard benchmarks; use when you need maximum robustness.
 
 ---
@@ -185,7 +185,7 @@ Start with the paper's $\lambda = 2.5$ on standard benchmarks, or with our more 
 
 **Sensitive to $\lambda$ / $\beta$.** The balance between exploiting the critic and staying close to the data is task-dependent. Poor tuning can yield either a near-BC policy (no improvement) or an overconfident one (OOD failure).
 
-**Deterministic policy (TD3+BC).** A deterministic policy cannot represent multimodal behavior. For highly multi-modal behavior policies, a method with a stochastic actor (AWAC, CQL, or IQL with a Gaussian policy head instead of the deterministic one used in Chapter 5) may be better.
+**Deterministic policy (TD3+BC).** A deterministic policy cannot represent multimodal behavior. A unimodal Gaussian actor, as in AWAC or CQL, does not solve this either, because it averages the modes; highly multimodal behavior needs an expressive policy class such as a mixture or a diffusion policy (Chapter 13).
 
 ---
 
@@ -194,11 +194,11 @@ Start with the paper's $\lambda = 2.5$ on standard benchmarks, or with our more 
 | Method | Where constraint lives | OOD actor? | Theory |
 |---|---|---|---|
 | TD3+BC | Actor loss (BC penalty) | Yes (actor outputs fed to Q) | No |
-| AWAC | Actor loss (advantage weights) | No | No |
+| AWAC | Actor loss (advantage weights) | Actor: no; critic evaluates π | No |
 | CQL (Ch4) | Q-function | Yes (penalized) | Lower bound |
 | IQL (Ch5) | V + policy extraction | No | Implicit pessimism |
 
-Policy-constraint and actor-critic methods offer a simple way to improve over the behavior policy while staying close to the data. TD3+BC is the lightest to implement; AWAC (and IQL) avoid OOD actor queries entirely. For industrial applications where simplicity matters, TD3+BC is a good first try; for maximum safety and performance, CQL and IQL remain the preferred choice.
+Policy-constraint and actor-critic methods offer a simple way to improve over the behavior policy while staying close to the data. TD3+BC is the lightest to implement; AWAC keeps the actor update in-sample, and IQL avoids OOD queries entirely. For industrial applications where simplicity matters, TD3+BC is a good first try; for maximum safety and performance, CQL and IQL remain the preferred choice.
 
 Chapter 7 turns to a different paradigm entirely: **Decision Transformers**, which treat offline RL as sequence modeling and dispense with the Bellman backup.
 

@@ -24,7 +24,7 @@ This appendix is a **decision aid**, not a ranking. Use it with OPE (Chapter 3),
 |--------|-----------|----------|-------------------|-----------|
 | **BC** | Trust the data | Behavior is good enough; short horizon; strong coverage | Compounding error; no improvement beyond logs | You need to combine good parts of trajectories or exploit reward signal |
 | **TD3+BC** | Improve Q but stay near data | Continuous control; want a simple actor-critic baseline | $\lambda$ tuning; OOD actor queries to Q | Multimodal behavior; need strong theory |
-| **AWAC** | In-sample advantage-weighted policy | Stochastic policy; avoid OOD actor queries | $\beta$ sensitivity; critic quality | Deterministic control with tight latency budget |
+| **AWAC** | Advantage-weighted actor fitted on dataset actions | Stochastic policy; in-sample actor update (the critic still evaluates π) | $\beta$ sensitivity; critic quality | Deterministic control with tight latency budget |
 | **CQL** | Pessimistic Q for OOD actions | Continuous control; need value-pessimism default | Too conservative; unstable Q / $\alpha$ tuning | BC already sufficient; reward poorly specified |
 | **IQL** | Expectile V + AWR policy | In-sample updates; avoid explicit OOD Q max | $\tau$, $\beta$ sensitivity; sparse good actions | Dataset has no better-than-behavior actions |
 | **Decision Transformer** | Sequence modeling on trajectories | Long horizons; multi-task logs; seq-model tooling | Return conditioning OOD; no Bellman credit | Small narrow dataset; need explicit constraints |

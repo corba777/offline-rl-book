@@ -308,11 +308,11 @@ This is a constrained optimization: minimize the Bellman error subject to keepin
 # Automatic alpha tuning via dual gradient descent
 log_alpha_cql = torch.zeros(1, requires_grad=True, device=device)
 alpha_opt = optim.Adam([log_alpha_cql], lr=1e-4)
-target_gap = 10.0   # τ: target CQL penalty (logsumexp gap, ≥ 0)
+target_gap = 5.0    # τ: allowed CQL gap, chosen on the scale of the observed penalty
 
 # In the update step:
 alpha_cql = log_alpha_cql.exp().item()
-# ... compute cql_penalty (should be ≥ 0 for the logsumexp form) ...
+# ... compute cql_penalty ...
 alpha_loss = -log_alpha_cql * (cql_penalty - target_gap)
 alpha_opt.zero_grad()
 alpha_loss.backward()
@@ -359,9 +359,9 @@ The figure below shows this on the toy problem of Chapter 2, produced by `code/c
 
 The right value of $\alpha$ depends on dataset quality, reward scale, and how much you trust the behavior policy.
 
-### Step 1 — Sanity-check the CQL penalty sign
+### Step 1 — Sanity-check the penalty
 
-Before tuning $\alpha$, verify that the penalty is correctly positive: $\mathbb{E}_\mu[Q] > \mathbb{E}_D[Q]$ should hold after a few hundred updates. If the penalty is negative from the start, OOD action sampling is broken.
+The penalty is the gap between the soft maximum over all actions and $Q$ at dataset actions, and it is exactly what CQL minimizes. So before tuning, check its direction: train a few hundred updates at two values of $\alpha$. The larger $\alpha$ should give the smaller penalty. If it does not, the OOD sampling or the importance weights are broken.
 
 ### Step 2 — Grid search over one log-scale pass
 
@@ -381,7 +381,7 @@ Five runs give a coarse map of the reward–conservatism tradeoff.
 |---|---|---|
 | Policy ≈ BC, no improvement | $\alpha$ too large — Q suppressed everywhere | Reduce by 5–10× |
 | Q-values diverge | $\alpha$ too small — OOD not controlled | Increase by 2–5× |
-| CQL penalty goes negative | $\alpha$ too small | Increase $\alpha$ |
+| CQL penalty near zero or negative | Conservatism saturated: out-of-data values already sit below the data | Do not raise $\alpha$; if the policy ≈ BC, lower it |
 | CQL penalty >> TD loss | $\alpha$ too large or reward scale issue | Normalize rewards; reduce $\alpha$ |
 
 ### Typical values by data type
@@ -395,7 +395,7 @@ Five runs give a coarse map of the reward–conservatism tradeoff.
 
 ### When to use automatic tuning
 
-Use `auto_alpha=True` when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Set `target_gap` to a positive value on the logsumexp-gap scale (e.g. `10.0`).
+Use `auto_alpha=True` when: (a) the policy will be deployed in a real system and safety matters more than performance, or (b) the dataset covers multiple operating regimes with different reward scales. Choose `target_gap` ($\tau$) on the scale of the penalty you observe: $\alpha$ grows while the penalty exceeds $\tau$ and shrinks once it falls below. A positive $\tau$ tolerates some optimism outside the data; a negative $\tau$, like the default `target_cql=-2.0` in `cql.py`, keeps raising $\alpha$ until out-of-data values sit below the data by that margin.
 
 Keep fixed $\alpha$ when: you are doing offline evaluation and want reproducible experiments, or you have already found a good value via grid search.
 
@@ -430,7 +430,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 
 **Use Double-Q.** Always use two Q-networks and take the minimum. This reduces overestimation independent of CQL — they complement each other.
 
-**Monitor the CQL penalty.** Log `E_μ[Q] - E_D[Q]` during training. It should be positive (OOD values are lower than dataset values) and stable. If it goes negative, $\alpha$ is too small.
+**Monitor the CQL penalty.** Log the gap between the soft maximum over actions and $Q$ at dataset actions. A large or growing gap means some actions outside the data still look better than the data, and $\alpha$ may be too small. A gap near zero or below means out-of-data values are already pushed under the data; raising $\alpha$ further mostly makes the policy more BC-like.
 
 **Industrial data tip.** If your dataset has multiple operating regimes (e.g., stopped/slow/fast in a coating process), consider training separate CQL agents per regime or adding regime as a state feature. A single CQL agent averaging over regimes will be conservative in all of them and may underperform in each.
 
