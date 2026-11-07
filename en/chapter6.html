@@ -261,7 +261,7 @@
 </tr>
 </tbody>
 </table>
-<p>Policy-constraint and actor-critic methods offer a simple way to improve over the behavior policy while staying close to the data. TD3+BC is the lightest to implement; AWAC keeps the actor update in-sample, and IQL avoids OOD queries entirely. For industrial applications where simplicity matters, TD3+BC is a good first try; for maximum safety and performance, CQL and IQL remain the preferred choice.</p>
+<p>Policy-constraint and actor-critic methods offer a simple way to improve over the behavior policy while staying close to the data. TD3+BC is the lightest to implement; AWAC keeps the actor update in-sample, and IQL avoids OOD queries entirely. For industrial applications where simplicity matters, TD3+BC is a good first try; CQL and IQL are stronger default baselines when the data are noisy or the policy must stay well inside the data. None of them guarantees safety: which works best depends on coverage, reward design and dynamics, and any of them needs independent safety validation before deployment (Chapters 3 and 13).</p>
 <p>Chapter 7 turns to a different paradigm entirely: <strong>Decision Transformers</strong>, which treat offline RL as sequence modeling and dispense with the Bellman backup.</p>
 <hr />
 <h2>References</h2>

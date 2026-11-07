@@ -158,11 +158,11 @@ class StochasticBCPolicy(nn.Module):
         dist = torch.distributions.Normal(mean, std)
         return dist.log_prob(action).sum(-1)  # суммируем по размерностям действия
 
-    def act(self, state, deterministic=True):
+    def act(self, state, deterministic=True, low=-1.0, high=1.0):
+        # Гауссиана без сжатия может выдать действие за пределами диапазона механизма
         mean, log_std = self.forward(state)
-        if deterministic:
-            return mean
-        return torch.distributions.Normal(mean, log_std.exp()).sample()
+        a = mean if deterministic else torch.distributions.Normal(mean, log_std.exp()).sample()
+        return a.clamp(low, high)
 ```
 
 Ни одна из сетей не ограничивает свой выход: линейная голова или гауссиана без сжатия могут вернуть действие за пределами диапазона исполнительного механизма. Код обрезает действия в `act()`; альтернатива — гауссиана со сжатием через tanh и поправкой к log-плотности на замену переменных, как в агентах на основе SAC в следующих главах.

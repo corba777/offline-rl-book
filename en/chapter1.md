@@ -158,11 +158,11 @@ class StochasticBCPolicy(nn.Module):
         dist = torch.distributions.Normal(mean, std)
         return dist.log_prob(action).sum(-1)  # sum over action dims
 
-    def act(self, state, deterministic=True):
+    def act(self, state, deterministic=True, low=-1.0, high=1.0):
+        # An unsquashed Gaussian can return actions outside the actuator range
         mean, log_std = self.forward(state)
-        if deterministic:
-            return mean
-        return torch.distributions.Normal(mean, log_std.exp()).sample()
+        a = mean if deterministic else torch.distributions.Normal(mean, log_std.exp()).sample()
+        return a.clamp(low, high)
 
 
 def train_stochastic_bc(states, actions, state_dim, action_dim, n_epochs=100):
