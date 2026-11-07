@@ -89,7 +89,7 @@ def build_dataset(n: int = 10_000) -> Transition:
 
 def train_q_network(
     dataset: Transition,
-    epochs: int = 200,
+    epochs: int = 3000,
     batch_size: int = 256,
     lr: float = 3e-4,
     target_update_freq: int = 10,
@@ -138,7 +138,7 @@ def train_q_network(
         if (epoch + 1) % target_update_freq == 0:
             Q_target.load_state_dict(Q.state_dict())
 
-        if (epoch + 1) % 50 == 0:
+        if (epoch + 1) % 500 == 0:
             print(f"  Epoch {epoch+1:3d}/{epochs} | TD loss: {loss.item():.4f}")
 
     return Q
@@ -190,7 +190,9 @@ def main() -> None:
 
     # 2. train vanilla Q-learning (max over full action space)
     print("\n[2] Training vanilla Q-network (offline TD) …")
-    Q = train_q_network(dataset, epochs=200)
+    # 3000 TD steps: with only a few hundred, the network has not yet
+    # propagated OOD optimism and the gap can still be negative.
+    Q = train_q_network(dataset, epochs=3000)
 
     # 3. measure OOD overestimation
     print("\n[3] Measuring OOD overestimation …")

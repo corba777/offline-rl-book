@@ -2,7 +2,7 @@
 #
 # Chapter → script map (from repo root: python code/<script>):
 #   Ch1:  behavioral_cloning.py
-#   Ch2:  extrapolation_error.py
+#   Ch2:  extrapolation_error.py, chapter2_4_figures.py (figures for Ch.2 and Ch.4)
 #   Ch3:  fqe.py
 #   Ch4:  cql.py
 #   Ch5:  iql.py
