@@ -60,16 +60,16 @@
 <main>
 <h1>Глава 12: Offline RL для tool-using LLM-агентов</h1>
 <blockquote>
-<p><em>Agentic AI превращает использование языковых моделей в последовательное принятие решений; offline RL превращает залогированные agent traces в субстрат для более безопасного улучшения политики.</em></p>
+<p><em>Agentic AI превращает работу языковой модели в последовательное принятие решений, а offline RL превращает залогированные agent traces в материал для более безопасного улучшения политики.</em></p>
 </blockquote>
 <hr />
 <h2>Зачем эта глава</h2>
-<p>Большинство текущих пайплайнов обучения LLM-агентов ближе к <strong>SFT</strong>, <strong>DPO</strong>, <strong>rejection sampling</strong> или <strong>online RL</strong>, чем к классическому offline RL. Это не упрек — эти методы работают, когда есть pairwise-предпочтения, живая обратная связь или дешёвые rollouts.</p>
-<p>Но как только execution traces агента логируются как <strong>траектории state–action–reward</strong>, задача естественно ложится на framing из глав 1–3:</p>
+<p>Сегодня LLM-агентов чаще всего обучают через <strong>SFT</strong>, <strong>DPO</strong>, <strong>rejection sampling</strong> или <strong>online RL</strong>, а не через классический offline RL. Это не упрёк: такие методы хорошо работают, когда есть попарные предпочтения, живая обратная связь или дешёвые rollouts.</p>
+<p>Но как только траектории исполнения агента начинают логироваться как <strong>последовательности state–action–reward</strong>, задача естественно укладывается в постановку из глав 1–3:</p>
 <div class="codehilite"><pre><span></span><code>task → context/observation → thought/plan → tool call/action → tool result → next state → reward/outcome
 </code></pre></div>
 
-<p>Отличие от классических бенчмарков управления вроде MuJoCo или офлайн-датасетов D4RL не концептуальное, а прикладное:</p>
+<p>От классических бенчмарков управления вроде MuJoCo или офлайн-датасетов D4RL эта постановка отличается не по сути, а по практическим деталям:</p>
 <table>
 <thead>
 <tr>
@@ -82,63 +82,63 @@
 <tr>
 <td><strong>State</strong></td>
 <td>Низкоразмерный вектор</td>
-<td>Контекст, история, память, наблюдения инструментов</td>
+<td>Контекст, история, память, наблюдения от инструментов</td>
 </tr>
 <tr>
 <td><strong>Action</strong></td>
-<td>Непрерывное / дискретное управление</td>
+<td>Непрерывное или дискретное управление</td>
 <td>Текст, tool call, API-запрос, шаг плана</td>
 </tr>
 <tr>
 <td><strong>Reward</strong></td>
 <td>Return среды</td>
-<td>Успех задачи, verifier, human rating, штраф за cost/safety</td>
+<td>Успех задачи, оценка verifier, оценка человека, штраф за стоимость или нарушения</td>
 </tr>
 <tr>
 <td><strong>Episode</strong></td>
 <td>Rollout фиксированной длины</td>
-<td>Multi-turn взаимодействие</td>
+<td>Многошаговое взаимодействие</td>
 </tr>
 <tr>
 <td><strong>Policy</strong></td>
-<td>MLP / actor</td>
-<td>LLM или LLM-router по инструментам</td>
+<td>MLP или actor-сеть</td>
+<td>LLM или LLM-router, выбирающий инструменты</td>
 </tr>
 </tbody>
 </table>
-<p>Состояния высокоразмерны и частично наблюдаемы; пространство действий огромно и структурировано; награды часто <strong>разрежены</strong> и <strong>задержаны</strong>; credit assignment тянется через множество шагов рассуждения и вызовов tools. Это те же failure modes, что в offline deep RL — экстраполяция, distribution shift, переоптимистичные value estimates — но с более «грязными» наблюдениями и слабыми симуляторами.</p>
-<p>Эта глава переносит <strong>идеи</strong> книги на agentic AI. Она <strong>не</strong> утверждает, что CQL, IQL или TD3+BC вставляются в LangChain без адаптации. Она объясняет, что переносится, что нужно менять и какая инфраструктура (логирование, verifiers, replay) должна быть на месте.</p>
+<p>Состояния здесь высокоразмерны и наблюдаются лишь частично; пространство действий огромно и структурировано; награды часто <strong>редкие</strong> и <strong>запаздывающие</strong>; credit assignment растягивается на множество шагов рассуждения и вызовов инструментов. Это те же трудности, что и в offline deep RL, — экстраполяция, distribution shift, чрезмерно оптимистичные оценки ценности, — только наблюдения «грязнее», а симуляторы слабее.</p>
+<p>Эта глава переносит на agentic AI <strong>идеи</strong> книги. Она не утверждает, что CQL, IQL или TD3+BC встраиваются в LangChain без изменений. Она объясняет, что переносится как есть, что приходится адаптировать и какая инфраструктура — логирование, verifiers, replay — должна появиться раньше алгоритмов.</p>
 <hr />
-<h2>Agent traces как offline RL data</h2>
-<p>Agent trace — траектория $\tau = (s_0, a_0, r_0, s_1, \ldots, s_T)$, где на каждом шаге могут быть:</p>
+<h2>Agent traces как данные для offline RL</h2>
+<p>Agent trace — это траектория $\tau = (s_0, a_0, r_0, s_1, \ldots, s_T)$, каждый шаг которой может включать:</p>
 <ul>
-<li>цель пользователя и история диалога,</li>
-<li>retrieved documents или memory,</li>
-<li>explicit plan, rationale summary или structured scratchpad, если это часть дизайна агента; <strong>hidden chain-of-thought обычно не следует требовать или хранить</strong> в RL dataset,</li>
-<li>structured tool call или свободная генерация,</li>
-<li>feedback среды / инструмента,</li>
-<li>скалярная или программная награда.</li>
+<li>цель пользователя и историю диалога,</li>
+<li>найденные документы или содержимое памяти,</li>
+<li>явный план, краткое обоснование или структурированный черновик (scratchpad), если они предусмотрены дизайном агента; <strong>скрытый chain-of-thought, как правило, не стоит ни требовать, ни хранить</strong> в RL-датасете,</li>
+<li>структурированный tool call или свободно сгенерированный текст,</li>
+<li>ответ среды или инструмента,</li>
+<li>скалярный или программно вычисленный сигнал награды.</li>
 </ul>
-<p><strong>BC по успешным траекториям</strong> (SFT на ReAct-style демонстрациях) — baseline по умолчанию, аналог главы 1. Фреймворки вроде <a href="https://agentgym.github.io/">AgentGym</a> (<a href="https://arxiv.org/abs/2406.04151">Xi et al., 2024</a>) собирают multi-turn trajectories для web, embodied и tool-using задач. AgentTraj-style datasets — топливо для BC, ещё не offline RL — но <strong>субстрат</strong>, без которого offline RL невозможен.</p>
-<p>Прикладной prerequisite — <strong>replayable trace schema</strong>: без согласованного логирования state snapshots, actions, observations, rewards и metadata behavior policy позже невозможны OPE, reward relabeling и conservative policy improvement.</p>
+<p><strong>BC на успешных траекториях</strong> (SFT на демонстрациях в стиле ReAct) — baseline по умолчанию, аналог главы 1. Фреймворки вроде <a href="https://agentgym.github.io/">AgentGym</a> (<a href="https://arxiv.org/abs/2406.04151">Xi et al., 2024</a>) собирают многошаговые траектории в веб-задачах, embodied-средах и задачах с инструментами и используют их, чтобы вырастить универсальных агентов. Датасеты в духе AgentTraj — это пока топливо для BC, а не для offline RL, но именно на таком материале offline RL и строится.</p>
+<p>Прикладное предварительное условие — <strong>схема trace, пригодная для replay</strong>. Если состояния, действия, наблюдения, награды и метаданные behavior policy не логируются согласованно, то позже не получится ни OPE, ни перемаркировка наград, ни консервативное улучшение политики.</p>
 <hr />
 <h2>Формулировка MDP / POMDP</h2>
-<p>Каждый LLM-вызов (или tool step) — одно решение в MDP:</p>
+<p>Каждый вызов LLM (или каждый шаг с инструментом) можно считать одним решением в MDP:</p>
 <ul>
-<li><strong>State</strong> $s_t$: всё, на чём политика условится — system prompt, цель, диалог, tool outputs, memory, retrieved context. Обычно <strong>POMDP</strong>: истинное состояние скрыто; агент видит context window.</li>
-<li><strong>Action</strong> $a_t$: выход модели — JSON tool call, SQL, browser action или text plan.</li>
-<li><strong>Transition</strong> $s_{t+1}$: обновление контекста часто детерминировано при $(s_t, a_t, o_t)$, но observation $o_t$ может приходить от <strong>stochastic, non-stationary или versioned</strong> tools и environments.</li>
-<li><strong>Reward</strong> $r_t$: часто <strong>0</strong> до конца эпизода; затем success/failure, verifier score, human rating или shaped process reward.</li>
+<li><strong>State</strong> $s_t$ — всё, от чего зависит политика на шаге $t$: system prompt, цель пользователя, диалог, ответы инструментов, память, найденный контекст. Обычно это <strong>POMDP</strong>: истинное состояние среды скрыто, агент видит только окно контекста.</li>
+<li><strong>Action</strong> $a_t$ — выход модели: JSON с tool call, SQL-запрос, действие в браузере или текстовый план.</li>
+<li><strong>Transition</strong> $s_{t+1}$ — обновление контекста. При известных $(s_t, a_t, o_t)$ оно часто детерминировано, но само наблюдение $o_t$ может приходить от <strong>стохастических, нестационарных или меняющихся от версии к версии</strong> инструментов и сред.</li>
+<li><strong>Reward</strong> $r_t$ — часто <strong>0</strong> до завершения задачи, а затем успех или неудача, оценка verifier, оценка человека или shaped process reward (корректный формат, успешный вызов инструмента, штраф за стоимость).</li>
 </ul>
-<p><a href="https://microsoft.github.io/agent-lightning/latest/">Agent Lightning</a> (<a href="https://arxiv.org/abs/2508.03680">Luo et al., 2025</a>) формулирует это явно: execution — MDP, trajectories раскладываются на <code>(state, action, reward)</code>. Agent Lightning <strong>не</strong> offline RL method в узком смысле CQL/IQL; это <strong>infrastructure</strong>, превращающая execution в RL-compatible transitions для online, off-policy или потенциально offline training.</p>
+<p><a href="https://microsoft.github.io/agent-lightning/latest/">Agent Lightning</a> (<a href="https://arxiv.org/abs/2508.03680">Luo et al., 2025</a>) делает эту связь явной: исполнение агента — это MDP, где состояние — снимок исполнения, а действие — выход LLM, и траектории раскладываются на переходы <code>(state, action, reward)</code>. При этом Agent Lightning — не метод offline RL в узком смысле CQL или IQL. Его лучше понимать как <strong>инфраструктуру</strong>, которая превращает исполнение агента в переходы, пригодные для RL, — online, off-policy или, потенциально, offline.</p>
 <p>Мост для практиков:</p>
 <div class="codehilite"><pre><span></span><code>Agent observability / tracing → trajectories → offline or off-policy RL dataset
 </code></pre></div>
 
-<p>Логи LangChain-, AutoGen- или OpenAI Agents-style — потенциальные <strong>RL training data</strong>, если заданы rewards и границы state.</p>
+<p>Логи LangChain, AutoGen или OpenAI Agents — не просто материал для отладки. Как только определены награды и границы состояний, они становятся потенциальными <strong>данными для обучения RL</strong>.</p>
 <hr />
 <h2>Интерфейс политики определяет метод обучения</h2>
-<p>До выбора функции потерь определите, какую политику обновляете. Классификатор действий остаётся политикой $\pi(a\mid s)$, даже если использует энкодер LLM; генерация текста для этого не обязательна.</p>
+<p>Прежде чем выбирать функцию потерь, решите, какую именно политику вы обновляете. Классификатор действий остаётся политикой $\pi(a\mid s)$, даже если внутри у него энкодер LLM: генерировать текст для этого не обязательно.</p>
 <table>
 <thead>
 <tr>
@@ -157,32 +157,38 @@
 </tr>
 <tr>
 <td>Классификатор действий</td>
-<td>Конечный набор tools / action labels</td>
-<td>Cross-entropy BC на action logits</td>
+<td>Конечный набор инструментов / меток действий</td>
+<td>BC с cross-entropy на action logits</td>
 <td>Discrete CQL, IQL с categorical actor, support-constrained value learning</td>
 </tr>
 <tr>
 <td>Router / orchestrator</td>
-<td>Выбор агента, tool, handoff или расписания</td>
-<td>BC на routing decisions</td>
-<td>Offline RL для процесса маршрутизации со своими observations, rewards и support constraints</td>
+<td>Выбор агента, инструмента, передачи управления или расписания</td>
+<td>BC на решениях маршрутизации</td>
+<td>Offline RL для самого процесса маршрутизации, со своими наблюдениями, наградами и support constraints</td>
 </tr>
 </tbody>
 </table>
-<p>DPO оптимизирует предпочтения и не заменяет trajectory-level credit assignment. Token-level ILQL и language-model SFT требуют token policy и LM head; classifier обучается через action logits. Текстовая retrospection может дать annotations или features, но loss генерации текста нельзя напрямую перенести на classifier без совместимой выходной головы и targets.</p>
+<p>DPO оптимизирует предпочтения и не заменяет credit assignment на уровне траекторий. Token-level ILQL и SFT языковой модели требуют политики над токенами и LM head; классификатор же обучается через action logits. Текстовая ретроспекция может дать разметку или признаки, но функцию потерь генерации текста нельзя напрямую применить к классификатору без совместимой выходной головы и целевых меток.</p>
 <p>Для строки router / orchestrator уже есть пример в реалистичном масштабе. HarnessMDP (<a href="https://arxiv.org/abs/2607.05458">Yi &amp; Song, 2026</a>) оставляет LLM-исполнителя замороженным и обучает лишь небольшой контроллер, который выбирает одну из семи структурных операций: observe, retrieve, call tool, draft, check, revise и submit. Контроллер обучается с помощью advantage-weighted regression на траекториях существующих harnesses и улучшает результат на задачах программирования, τ-bench и AgentBench. Авторы прямо называют предел метода: контроллер усиливает паттерны, которые уже есть в буфере, но не может выучить стратегии вне его support, а выигрыш зависит от качества и покрытия логов. Калькулятор ниже приводит к тому же выводу, только в куда меньшем масштабе.</p>
-<p>Пример калькулятора ниже реализует <strong>табличную политику</strong>; классификатор и LLM предложены как дальнейшие расширения. Замена модели не устраняет необходимость определить action support; замена интерфейса может потребовать другого objective.</p>
+<p>Пример с калькулятором реализует <strong>табличную</strong> политику; классификатор и LLM — естественные следующие шаги. Замена модели не отменяет необходимости определить action support, а смена интерфейса может потребовать другой функции потерь.</p>
 <hr />
 <h2>BC / SFT как baseline</h2>
-<p><strong>SFT</strong> на expert или отфильтрованных успешных траекториях — behavioral cloning. Силён, когда behavior policy хорош, horizon короткий, failure modes редки.</p>
-<p>Проваливается как BC (глава 1): <strong>compounding error</strong>, награда только для фильтрации, нет комбинирования хороших сегментов смешанных эпизодов.</p>
-<p>Для multi-step tool use SFT <strong>не распределяет credit</strong> по шагам. Offline RL и advantage-weighted methods нужны, когда rewards и coverage это поддерживают.</p>
+<p><strong>Supervised fine-tuning (SFT)</strong> на экспертных или отфильтрованных успешных траекториях — это поведенческое клонирование под другим именем. Он силён, когда:</p>
+<ul>
+<li>поведенческая политика уже хороша,</li>
+<li>задачи одношаговые или с коротким горизонтом,</li>
+<li>сбои в логах редки.</li>
+</ul>
+<p>Ломается SFT так же, как BC (глава 1): ошибки накапливаются на длинном горизонте, награда используется лишь для фильтрации, а хорошие фрагменты из эпизодов смешанного качества нельзя соединить.</p>
+<p>Для многошаговой работы с инструментами у SFT есть и ещё одна слабость: он <strong>не умеет распределять credit</strong> между шагами. Траектория может провалиться на восьмом шаге, хотя первые семь были верными. Offline RL и advantage-weighted методы существуют именно для того, чтобы использовать такой частичный прогресс, — если награды и покрытие данных это позволяют.</p>
 <hr />
-<h2>Offline RL beyond SFT</h2>
-<h3>DPO vs trajectory-level offline RL</h3>
-<p><strong>DPO</strong> оптимизирует <strong>sequence-level</strong> log-likelihood ratio (сумму потокенных log-prob относительно reference-модели) под supervision pairwise-предпочтения. Поэтому <strong>step-level credit assignment</strong> слаб для multi-turn reasoning и tool use.</p>
-<p><a href="https://github.com/jwhj/OREO">OREO</a> (<a href="https://arxiv.org/abs/2412.16145">Wang et al., 2024/2025</a>, <a href="https://aclanthology.org/2025.findings-acl.464/">ACL Findings 2025</a>) — якорь: policy + <strong>value function</strong> через soft Bellman-style objective, мотивирован sparse rewards и credit assignment по шагам reasoning. Эмпирически лучше DPO-style baselines на GSM8K, MATH и ALFWorld.</p>
-<p>Прямой предшественник — <strong>ILQL</strong> (Implicit Language Q-Learning; <a href="https://arxiv.org/abs/2206.11871">Snell et al., 2023</a>): IQL (глава 5), адаптированный к генерации языка — expectile value-функция плюс неявное ограничение на support датасета, политика реализуется advantage-перевзвешиванием логитов базовой модели. Самый прямой мост от глав про value-пессимизм к LLM-политикам.</p>
+<h2>Offline RL за пределами SFT</h2>
+<h3>DPO и offline RL на уровне траекторий</h3>
+<p><strong>DPO</strong> оптимизирует отношение правдоподобий <strong>на уровне всей последовательности</strong> — сумму потокенных log-probabilities относительно reference-модели — под контролем попарной метки предпочтения. Поэтому для многошаговых рассуждений и работы с инструментами он даёт лишь <strong>слабый credit assignment на уровне шагов</strong>.</p>
+<p>Хорошая опорная точка здесь — <a href="https://github.com/jwhj/OREO">OREO</a>, <em>Offline Reinforcement Learning for LLM Multi-Step Reasoning</em> (<a href="https://arxiv.org/abs/2412.16145">Wang et al., 2024/2025</a>, <a href="https://aclanthology.org/2025.findings-acl.464/">ACL Findings 2025</a>). Метод совместно обучает политику LLM и <strong>value function</strong> через soft Bellman-style objective; мотивация — редкие награды и credit assignment между шагами рассуждения. Эмпирически OREO превосходит baselines в стиле DPO на математических задачах (GSM8K, MATH) и в embodied-управлении (ALFWorld).</p>
+<p>Прямой предшественник — <strong>ILQL</strong> (Implicit Language Q-Learning; <a href="https://arxiv.org/abs/2206.11871">Snell et al., 2023</a>), то есть IQL из главы 5, адаптированный к генерации языка: экспектильная value function плюс неявное ограничение на support датасета, а политика получается перевзвешиванием токенных логитов базовой модели по advantage. Это самый прямой мост от глав про пессимизм функции ценности к политикам-LLM.</p>
+<p>Концептуальное различие:</p>
 <table>
 <thead>
 <tr>
@@ -194,24 +200,25 @@
 <tbody>
 <tr>
 <td><strong>DPO / preference learning</strong></td>
-<td>Pairwise chosen vs rejected</td>
-<td>Sequence-level preference signal</td>
+<td>Пары «выбранный — отвергнутый»</td>
+<td>Сигнал предпочтения на уровне последовательности</td>
 </tr>
 <tr>
-<td><strong>Offline RL (OREO-style)</strong></td>
-<td>Полные trajectories + rewards</td>
-<td>Value function + Bellman backup по шагам</td>
+<td><strong>Offline RL (в стиле OREO)</strong></td>
+<td>Полные траектории с наградами</td>
+<td>Value function и Bellman-бэкап по шагам</td>
 </tr>
 </tbody>
 </table>
 <h3>Соответствие классическим идеям offline RL</h3>
-<p>Обозначим политику сбора логов как $\pi_b$, а frozen reference model как $\pi_{\mathrm{ref}}$. Ниже встречаются две аббревиатуры. RLHF (reinforcement learning from human feedback) дообучает модель по обученной функции награды, обычно с KL-штрафом к reference. GRPO (Group Relative Policy Optimization) — online policy-gradient метод, который оценивает каждый сгенерированный ответ относительно других ответов на тот же prompt. TD3+BC приближает действия из датасета; <a href="https://arxiv.org/abs/2305.18290">DPO</a> сравнивает sequence probabilities относительно $\pi_{\mathrm{ref}}$. Они могут быть близки, если данные собирал тот же SFT checkpoint при одинаковых prompts и sampling, но смесь checkpoints, фильтрация и другое декодирование нарушают это соответствие. Reference penalty сам по себе не обеспечивает dataset support. DPO задаёт reference regularization через preference objective; наличие, коэффициент и роль явного KL-штрафа в GRPO зависят от реализации.</p>
-<p><strong>Не</strong> читайте как «вставь CQL как есть». Это <strong>design vocabulary</strong>:</p>
+<p>Обозначим политику сбора логов как $\pi_b$, а замороженную reference-модель как $\pi_{\mathrm{ref}}$. Ниже встречаются две аббревиатуры. RLHF (reinforcement learning from human feedback) дообучает модель по обученной функции награды, обычно с KL-штрафом к reference. GRPO (Group Relative Policy Optimization) — online policy-gradient метод, который оценивает каждый сгенерированный ответ относительно других ответов на тот же prompt.</p>
+<p>TD3+BC приближает действия, реально наблюдавшиеся в датасете; <a href="https://arxiv.org/abs/2305.18290">DPO</a> сравнивает вероятности последовательностей относительно $\pi_{\mathrm{ref}}$. Эти две вещи близки, если данные собирал тот же SFT checkpoint с теми же prompts и настройками sampling; смесь checkpoints, фильтрация и другое декодирование это соответствие разрушают. Сам по себе штраф к reference не гарантирует support датасета. DPO встраивает регуляризацию к reference в свою функцию предпочтений, а есть ли в GRPO явный KL-штраф, какой у него коэффициент и роль — зависит от реализации.</p>
+<p>Таблицу ниже не стоит читать как «вставьте CQL как есть». Это словарь для проектирования:</p>
 <table>
 <thead>
 <tr>
-<th>Классический offline RL</th>
-<th>Agentic AI analogue</th>
+<th>Классический offline RL (эта книга)</th>
+<th>Аналог в agentic AI</th>
 </tr>
 </thead>
 <tbody>
@@ -221,125 +228,132 @@
 </tr>
 <tr>
 <td><strong>Ограничение по действиям датасета (TD3+BC, гл. 6)</strong></td>
-<td>Штраф за расстояние до logged actions ограничивает отклонение от поведения в датасете</td>
+<td>Штраф за расстояние до залогированных действий ограничивает отклонение от поведения в датасете</td>
 </tr>
 <tr>
 <td><strong>Регуляризация к reference policy</strong></td>
-<td>KL к frozen reference в KL-regularized RLHF; DPO использует отношения policy/reference probabilities; варианты GRPO различаются</td>
+<td>KL к замороженной reference в KL-regularized RLHF; DPO использует отношения вероятностей policy/reference; варианты GRPO различаются</td>
 </tr>
 <tr>
-<td><strong>AWR / AWAC / IQL</strong></td>
-<td>Веса по advantage, verifier score, process reward (<strong>ILQL</strong> = IQL прямо для токенной генерации)</td>
+<td><strong>AWR / AWAC / извлечение в стиле IQL</strong></td>
+<td>Взвешивание шагов или траекторий по advantage, оценке verifier или process reward (<strong>ILQL</strong> применяет IQL прямо к генерации токенов)</td>
 </tr>
 <tr>
-<td><strong>CQL / pessimism</strong></td>
-<td>Штраф unsupported tool calls / plans</td>
+<td><strong>CQL / пессимизм</strong></td>
+<td>Штраф за unsupported tool calls, планы или вызовы API</td>
 </tr>
 <tr>
-<td><strong>FQE / learned Q</strong></td>
-<td>Critic по agent states и actions</td>
+<td><strong>FQE / обученная Q</strong></td>
+<td>Critic над состояниями и действиями агента (текстовыми или структурированными)</td>
 </tr>
 <tr>
 <td><strong>Decision Transformer</strong></td>
-<td>Conditioning на desired return / success</td>
+<td>Обусловливание генерации на желаемом return или метке успеха</td>
 </tr>
 <tr>
 <td><strong>Model-based offline RL</strong></td>
-<td>Simulator, verifier, world model</td>
+<td>Симулятор, verifier или world model для результатов инструментов</td>
 </tr>
 <tr>
 <td><strong>OPE (гл. 3)</strong></td>
-<td>Повторное исполнение в среде / action-conditioned simulation / learned value model; отличайте прямую оценку от OPE по фиксированным данным</td>
+<td>Повторное исполнение в среде / action-conditioned simulation / обученная value model; отличайте прямую оценку от OPE по фиксированным данным</td>
 </tr>
 </tbody>
 </table>
-<p><strong>LightningRL</strong> — hierarchical credit assignment + single-turn RL updates. Это <strong>off-policy RL bridge</strong>, не замена CQL/IQL на fixed logs.</p>
+<p><strong>LightningRL</strong> из Agent Lightning добавляет иерархический credit assignment: return траектории распределяется по отдельным вызовам LLM, после чего применяются обычные одношаговые RL-обновления. Это удобно, когда эпизоды длинные, а каждый вызов можно обучать отдельно. Но это <strong>мост к off-policy RL</strong>, а не замена CQL или IQL на фиксированных логах.</p>
 <hr />
-<h2>Credit assignment в reasoning и tool use</h2>
-<p><a href="https://arxiv.org/abs/2504.20073">RAGEN</a> (<a href="https://arxiv.org/abs/2504.20073">Wang et al., 2025</a>) — multi-turn agent RL (StarPO): нестабильность, <strong>Echo Trap</strong>, shallow reasoning без fine-grained rewards. <a href="https://arxiv.org/abs/2604.06268">RAGEN-2</a> (<a href="https://arxiv.org/abs/2604.06268">Wang et al., 2026</a>) — <strong>template collapse</strong>, SNR-aware filtering. Caveats переносятся на offline: сильнее зависимость от <strong>data coverage</strong>, <strong>reward quality</strong>, <strong>evaluator fidelity</strong>.</p>
-<p>Для offline: process rewards, step-level value targets, verifier-backed labels.</p>
+<h2>Credit assignment в рассуждениях и работе с инструментами</h2>
+<p>Многошаговые агенты сочетают <strong>генерацию языка</strong> с <strong>внешними действиями</strong>. Награда часто приходит только в конце эпизода: задача решена или нет. Методы offline RL, поддерживающие <strong>value function</strong>, — OREO, goal-conditioned critics, модели в стиле FQE — решают ту же задачу, что и TD-обучение в управлении: какой промежуточный шаг внёс вклад?</p>
+<p>Насколько это трудно, хорошо видно по <strong>online agentic RL</strong>. <a href="https://arxiv.org/abs/2504.20073">RAGEN</a> (<a href="https://arxiv.org/abs/2504.20073">Wang et al., 2025</a>) изучает многошаговое RL для LLM-агентов (StarPO) и сообщает о нестабильности: обрывах дисперсии награды, динамике <strong>Echo Trap</strong>, поверхностных или галлюцинированных рассуждениях при отсутствии детальных наград. <a href="https://arxiv.org/abs/2604.06268">RAGEN-2</a> (<a href="https://arxiv.org/abs/2604.06268">Wang et al., 2026</a>) разбирает <strong>template collapse</strong> — гладкие, но не зависящие от входа рассуждения — и предлагает фильтрацию с учётом отношения сигнал/шум. Это результаты <strong>online</strong>-обучения, но выводы прямо переносятся на offline: если даже online agentic RL нестабилен, то offline-варианту тем более нужны <strong>хорошее покрытие данных</strong>, <strong>качественные награды</strong> и <strong>точные оценщики</strong>.</p>
+<p>Для offline-постановки предпочтительны:</p>
+<ul>
+<li><strong>process rewards</strong> (инструмент сработал, формат корректен, ограничение соблюдено) там, где итоговая награда редкая,</li>
+<li><strong>пошаговые цели для value function</strong>, если в траекториях есть и успехи, и неудачи,</li>
+<li><strong>метки, подкреплённые verifier</strong>, а не только LLM-as-judge, где это возможно.</li>
+</ul>
 <p>У редкой терминальной награды есть и статистический предел. Ren и Xie (<a href="https://arxiv.org/abs/2606.18531">2026</a>) изучают offline RL в ситуации, когда у каждой траектории есть лишь одна итоговая метка, и предлагают OPAC — пессимистичный actor-critic, который обучает скрытую пошаговую награду вместе с value function. Их нижняя оценка объясняет, почему выбор метки так важен: для all-success objective, где эпизод засчитывается, только если успешен каждый шаг, исход несёт информацию лишь об экспоненциально малой доле траекторий, и любому алгоритму нужно порядка $2^H$ эпизодов, чтобы приблизиться к оптимальной политике. Process rewards возвращают в данные ту информацию, которую теряет единственный итоговый бит. Недавний обзор credit assignment для LLM-агентов (<a href="https://arxiv.org/abs/2604.09459">Zhang, 2026</a>) добавляет второе предостережение: если в логе есть только текстовые истории, а прежнее состояние нельзя восстановить, может оставаться неопределённым даже знак credit отдельного шага.</p>
 <hr />
 <h2>OPE для агентов</h2>
+<p>Инструменты OPE из главы 3 здесь применимы, но среды агентов редко дают точный симулятор в замкнутой форме.</p>
+<p>Практически оценку строят в несколько слоёв:</p>
 <ol>
-<li><strong>Повторное исполнение / action-conditioned simulation</strong> — выполняйте действия кандидата в сбрасываемом sandbox либо симулируйте их последствия с явными предположениями; cached responses требуют совпадения действий и snapshot среды.</li>
-<li><strong>Verifiers</strong> — unit tests, SQL, retrieval, code execution.</li>
-<li><strong>Learned critics</strong> — FQE-style или goal-conditioned values. <em>Planning without Search</em> (<a href="https://arxiv.org/abs/2505.18098">Hong et al., 2025</a>) — natural-language critic без fine-tuning base LLM.</li>
-<li><strong>Human / A/B review</strong> — при высоком deploy risk.</li>
+<li><strong>Повторное исполнение в среде или action-conditioned simulation.</strong> Действия кандидата выполняются в сбрасываемом sandbox или их последствия симулируются при явных предположениях о модели; cached responses годятся, только если совпадают действия и снимок среды.</li>
+<li><strong>Verifiers</strong> — unit-тесты, проверка результатов SQL, точность поиска, результаты исполнения кода.</li>
+<li><strong>Обученные critics</strong> — $Q(s,a)$ в стиле FQE или goal-conditioned value models, обученные на логах. <em>Planning without Search</em> (<a href="https://arxiv.org/abs/2505.18098">Hong et al., 2025</a>) использует офлайн-обученные goal-conditioned values как <strong>critic на естественном языке</strong> во время инференса, не дообучая базовую LLM.</li>
+<li><strong>Оценка людьми или A/B-тест</strong> — дорого, но необходимо при высоком риске внедрения.</li>
 </ol>
-<p>Offline RL для агентов тихо проваливается, когда OPE меряет <strong>format quality</strong> вместо <strong>task success</strong>. Метрики должны соответствовать deployment risk (предупреждения главы 3 о coverage).</p>
+<p>Offline RL для агентов проваливается незаметно, когда OPE измеряет <strong>качество формата</strong> вместо <strong>успеха задачи</strong>. Метрики должны отражать риск внедрения — это те же предупреждения о покрытии, что и в главе 3.</p>
 <h3>Replay — не контрфактуальная оценка</h3>
-<p>Перед интерпретацией метрик различайте три операции:</p>
+<p>Прежде чем интерпретировать метрику, различайте три операции:</p>
 <ol>
-<li><strong>Точное воспроизведение trace</strong> подаёт в pipeline прежние действия и observations. Оно проверяет parsing, восстановление state и регрессии, но не return политики, выбирающей другие действия.</li>
-<li><strong>Повторное исполнение в среде</strong> выполняет реальные действия кандидата в сбрасываемом sandbox. Это оценка в тестовой среде, а не только по фиксированному датасету; перенос зависит от fidelity sandbox, версий tools и репрезентативности начальных задач.</li>
-<li><strong>Rollout в симуляторе</strong> создаёт observations с учётом нового действия и текущего simulated state. Обученный simulator добавляет model bias, особенно вне support логов; его нужно отдельно валидировать и сообщать неопределённость.</li>
+<li><strong>Точное воспроизведение trace</strong> подаёт в pipeline прежние действия и наблюдения. Оно проверяет разбор, восстановление состояния и регрессии, но не может измерить return политики, которая выбирает другие действия.</li>
+<li><strong>Повторное исполнение в среде</strong> выполняет реальные действия кандидата в сбрасываемом sandbox. Это оценка в тестовой среде, а не по одному лишь фиксированному датасету; перенос результата зависит от точности sandbox, версий инструментов и того, насколько репрезентативны начальные задачи.</li>
+<li><strong>Rollout в симуляторе</strong> порождает наблюдения с учётом каждого нового действия и текущего смоделированного состояния. Обученный симулятор добавляет model bias, особенно вне support логов, поэтому его нужно отдельно валидировать и сообщать неопределённость.</li>
 </ol>
-<p>Cached response можно переиспользовать, только если совпадают полный запрос и релевантное состояние среды: arguments, права доступа, snapshot документа/базы, версия tool и случайные входы, влияющие на результат. Одной детерминированности недостаточно, если snapshot изменился. Cache miss должен приводить к исполнению в sandbox, проверенной симуляции или явному unsupported outcome; подставлять ответ другого действия нельзя.</p>
-<p>Например, результат <code>open_pdf(page=42)</code> нельзя выдавать после <code>open_pdf(page=43)</code>. Даже одинакового номера страницы недостаточно, если изменился исходный документ. Старая observation скрывает последствия решения кандидата и создаёт недействительный контрфактуал.</p>
-<p>Для каждой метрики указывайте, какая операция её породила. Exact replay подтверждает воспроизводимость прежнего запуска, но не улучшение success новой политики. Если среда недоступна, используйте статистическую OPE или learned value estimates с явными предположениями и ограничениями покрытия, а не выдавайте cached transcript за новый rollout.</p>
+<p>Cached response можно переиспользовать, только если совпадают и полный запрос, и значимое состояние среды: аргументы, права доступа, снимок документа или базы, версия инструмента и любые случайные входы, влияющие на результат. Одной детерминированности недостаточно, если снимок изменился. Промах кэша должен вести к исполнению в sandbox, проверенной симуляции или явному исходу «unsupported»; молча подставлять ответ на другое действие нельзя.</p>
+<p>Например, записанный результат <code>open_pdf(page=42)</code> не может стать наблюдением после <code>open_pdf(page=43)</code>. Даже совпадения номера страницы мало, если изменился сам документ. Старое наблюдение скрывает последствия решения кандидата и создаёт недействительный контрфактуал.</p>
+<p>Для каждой метрики указывайте, какая операция её породила. Точное воспроизведение подтверждает, что pipeline повторяет прежний запуск, но не доказывает, что новая политика чаще решает задачу. Если среда недоступна, используйте статистическую OPE или обученные оценки ценности с явными предположениями и ограничениями покрытия, а не выдавайте закэшированный transcript за новый rollout.</p>
 <p>Недавние работы подкрепляют это предупреждение измерениями. В <em>The Replay Gap</em> (<a href="https://arxiv.org/abs/2608.08239">Gonuguntla, 2026</a>), workshop-исследовании на SWE-bench Verified, траектории агента разветвляют посередине и продолжают другой моделью. Смена модели переписывает от 61 до 94% последующих действий, а оценщик, склеивающий записанные ответы, ошибается во всех пяти случаях, где успех действительно изменился. Выборка мала, но направление однозначно: склеенный лог оценивает мир, в который новая политика никогда бы не попала. Конструктивная альтернатива — обученный simulator. ADWM (<a href="https://arxiv.org/abs/2606.05558">Liu et al., 2026</a>) моделирует каждый transition multi-turn агента латентной диффузионной world model, обученной на логах, и на HotpotQA, ScienceWorld, ALFWorld и WebShop ранжирует политики надёжнее, чем direct method, FQE, importance sampling и doubly robust оценки. Авторы аккуратно очерчивают границы: эксперименты не покрывают политики полностью вне support, а ранговая корреляция ничего не говорит о калибровке абсолютных значений.</p>
 <h3>Контракт оценки политики агента</h3>
-<p>OPE объясняет <em>как</em> оценить return, но не <em>что считать улучшением</em>. У tool-using agent success rate может расти вместе с cost, latency, лишними tool calls или safety violations. До сравнения offline-кандидатов зафиксируйте короткий <strong>контракт оценки</strong> — спецификацию, которую команда может исполнять без повторных споров о метриках после каждого training run.</p>
-<p><strong>Базовые политики (всегда сравнивать с обеими):</strong></p>
+<p>Методы OPE отвечают на вопрос, <em>как</em> оценить return, но не определяют, <em>что считать улучшением</em>. Политика tool-using агента может решать больше задач и при этом дороже стоить, дольше отвечать, делать лишние вызовы инструментов или чаще нарушать правила. Поэтому до сравнения офлайн-кандидатов стоит записать короткий <strong>контракт оценки</strong> — спецификацию, по которой команда сможет принимать решения, не споря о метриках заново после каждого обучения.</p>
+<p><strong>С чем сравнивать (всегда с обоими):</strong></p>
 <ol>
-<li><strong>Текущий deployed agent</strong> — behavior policy в production (или лучшая доступная shadow-копия).</li>
-<li><strong>SFT / BC на успешных traces</strong> — imitation по отфильтрованным wins; честный «без RL» baseline, когда логи хорошие, но reward structure бедная.</li>
+<li><strong>С текущим агентом в эксплуатации</strong> — behavior policy в production или её лучшей доступной shadow-копией.</li>
+<li><strong>С SFT / BC на успешных traces</strong> — имитацией отфильтрованных удачных эпизодов. Это честный потолок «без RL», когда логи хороши, но структура наград бедна.</li>
 </ol>
-<p><strong>Группы метрик (не сводить в одно число):</strong></p>
+<p><strong>Группы метрик (не сводить к одному числу):</strong></p>
 <table>
 <thead>
 <tr>
 <th>Группа</th>
-<th>Что мерить</th>
+<th>Что измерять</th>
 <th>Роль</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Task success</strong></td>
-<td>Verifier pass rate, completion, human accept</td>
-<td><strong>Primary</strong> — метрика, которую хотим улучшить</td>
+<td><strong>Успех задачи</strong></td>
+<td>Доля прохождения verifier, завершённые задачи, доля принятых человеком</td>
+<td><strong>Основная</strong> — метрика, которую хотим улучшить</td>
 </tr>
 <tr>
-<td><strong>Cost / latency</strong></td>
-<td>USD/episode, tokens, p95 wall-clock</td>
-<td><strong>Guardrail</strong></td>
+<td><strong>Стоимость и задержка</strong></td>
+<td>Доллары на эпизод, токены, p95 времени на задачу</td>
+<td><strong>Ограничитель</strong> (guardrail)</td>
 </tr>
 <tr>
-<td><strong>Tool-call efficiency</strong></td>
-<td>Calls/episode, duplicate lookups, пустые retries</td>
-<td><strong>Guardrail</strong></td>
+<td><strong>Эффективность вызовов</strong></td>
+<td>Вызовы на эпизод, повторные поиски, пустые повторы</td>
+<td><strong>Ограничитель</strong></td>
 </tr>
 <tr>
-<td><strong>Safety / constraints</strong></td>
-<td>Forbidden tools, PII, policy violations, API allowlist</td>
-<td><strong>Guardrail</strong></td>
+<td><strong>Безопасность и ограничения</strong></td>
+<td>Запрещённые инструменты, утечки PII, нарушения правил, API вне allowlist</td>
+<td><strong>Ограничитель</strong></td>
 </tr>
 </tbody>
 </table>
-<p><strong>Набор для оценки:</strong> <strong>held-out</strong> suite — задачи, не участвовавшие в train/tuning. Стратификация по <strong>типу задачи</strong> и <strong>сложности</strong>. Отчёт по stratum, не только global average. OPE на логах не заменяет held-out eval, если deploy states расходятся с log (предупреждения главы 3 о coverage).</p>
-<p><strong>Правило принятия (шаблон):</strong></p>
-<p>Принять кандидата $\pi$ над baseline $b$, только если:</p>
+<p><strong>Набор для оценки.</strong> Используйте <strong>отложенный</strong> набор задач, ни одна из которых не участвовала в обучении или настройке prompts. Стратифицируйте его по <strong>типу задачи</strong> (поиск, код, CRM и т. д.) и <strong>сложности</strong> (одношаговые и многошаговые) и приводите таблицы по каждой группе, а не только общее среднее. Предупреждения главы 3 о покрытии в силе: OPE по логам не заменяет оценку на отложенных задачах, если состояния при внедрении отличаются от залогированных.</p>
+<p><strong>Правило принятия (шаблон).</strong> Кандидата $\pi$ принимают вместо baseline $b$, только если выполнены оба условия:</p>
 <ul>
-<li><strong>Primary:</strong> $\text{success}(\pi) \geq \text{success}(b) + \Delta_{\min}$ на held-out suite, с <strong>доверительным интервалом</strong> (bootstrap по задачам или A/B в shadow), исключающим нулевой uplift.</li>
-<li><strong>Guardrails:</strong> для каждой guardrail-метрики $g$: $\; g(\pi) \leq g(b) + \tau_g\;$, где $\tau_g$ — <strong>заранее заданный tolerance</strong> (например cost +5%, p95 latency +10%, нулевой tolerance на hard safety).</li>
+<li><strong>Основная метрика:</strong> $\text{success}(\pi) \geq \text{success}(b) + \Delta_{\min}$ на отложенном наборе, причём <strong>доверительный интервал</strong> (bootstrap по задачам или A/B-тест в shadow-режиме) исключает нулевой прирост.</li>
+<li><strong>Ограничители:</strong> для каждой ограничивающей метрики $g$ выполнено $\; g(\pi) \leq g(b) + \tau_g\;$, где $\tau_g$ — <strong>заранее зафиксированный допуск</strong> (например, стоимость +5%, p95 задержки +10%, нулевой допуск для жёстких нарушений безопасности).</li>
 </ul>
-<p>Если primary улучшился, а guardrail нарушен — по умолчанию <strong>не</strong> внедрять «с оговорками»: доработать reward, constraints или support filtering, либо отклонить кандидата.</p>
+<p>Если основная метрика выросла, а ограничитель вышел за допуск, по умолчанию кандидата <strong>не</strong> внедряют «с оговорками». Вместо этого дорабатывают reward shaping, ограничения или support filtering — до тех пор, пока контракт не выполнится, — либо отклоняют кандидата.</p>
 <p><strong>Иллюстративное сравнение (вымышленные числа):</strong></p>
 <table>
 <thead>
 <tr>
-<th>Policy</th>
-<th>Success (held-out)</th>
-<th>Cost / task</th>
-<th>Tool calls / task</th>
-<th>Safety violations</th>
+<th>Политика</th>
+<th>Успех (отложенный набор)</th>
+<th>Стоимость / задача</th>
+<th>Вызовы / задача</th>
+<th>Нарушения безопасности</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Deployed agent</td>
+<td>Агент в эксплуатации</td>
 <td>62%</td>
 <td>$0.041</td>
 <td>4.2</td>
@@ -353,7 +367,7 @@
 <td>0.2%</td>
 </tr>
 <tr>
-<td>Offline RL candidate</td>
+<td>Кандидат offline RL</td>
 <td><strong>71% ± 2%</strong></td>
 <td>$0.044</td>
 <td>4.0</td>
@@ -361,11 +375,11 @@
 </tr>
 </tbody>
 </table>
-<p>При $\tau_{\text{cost}} = +5\%$, $\tau_{\text{calls}} = +10\%$ кандидат <strong>проходит</strong> success и safety, но <strong>не проходит</strong> cost ($0.044 > 1.05 \times 0.041$). Контракт отклоняет внедрение, пока cost не снижен — даже если success выше обоих baselines.</p>
-<p>Это agentic-аналог раздела главы 13 <strong>«Промышленное внедрение: этапы допуска (gates)»</strong>: OPE питает Gate 2; контракт оценки — то, что Gate 3 (shadow) и Gate 4 (limited rollout) проверяют на live tasks.</p>
+<p>При допусках $\tau_{\text{cost}} = +5\%$ и $\tau_{\text{calls}} = +10\%$ кандидат <strong>проходит</strong> по успеху и безопасности, но <strong>не проходит</strong> по стоимости ($0.044 > 1.05 \times 0.041$). Контракт откладывает внедрение, пока стоимость не снижена, — хотя по успеху кандидат обошёл оба baseline.</p>
+<p>Этот контракт — agentic-аналог раздела главы 13 «Промышленное внедрение: этапы допуска (gates)»: офлайн-метрики и OPE служат материалом для Gate 2, а контракт оценки — то, что Gate 3 (shadow-режим) и Gate 4 (ограниченный rollout) должны подтвердить на живых задачах.</p>
 <hr />
-<h2>LLM как annotators, generators и critics</h2>
-<p>KALM и TEDUO — <strong>LLM-assisted offline RL</strong>, не всегда узкие «tool-using chat agents», но data-layer pattern переносится:</p>
+<h2>LLM в роли генератора, разметчика и критика</h2>
+<p>В офлайн-пайплайнах для агентов LLM выступает не только политикой. KALM и TEDUO — это <strong>LLM-assisted offline RL</strong>, относящийся скорее к управлению с языковыми целями или к дополнению данных rollouts, чем к узкому классу «чат-агентов с инструментами», но сам паттерн работы с данными переносится:</p>
 <table>
 <thead>
 <tr>
@@ -376,48 +390,173 @@
 </thead>
 <tbody>
 <tr>
-<td><strong>Trajectory generator</strong></td>
-<td><a href="https://arxiv.org/abs/2404.09248">KALM</a></td>
-<td>Imaginary rollouts + offline RL</td>
+<td><strong>Генератор траекторий</strong></td>
+<td><a href="https://arxiv.org/abs/2404.09248">KALM</a> (<a href="https://arxiv.org/abs/2404.09248">Pang et al., NeurIPS 2024</a>) — воображаемые rollouts LLM смешиваются с реальными данными, затем обычный offline RL</td>
+<td>Расширяет покрытие; следите за семантическим разрывом между текстом и низкоуровневыми действиями</td>
 </tr>
 <tr>
-<td><strong>Dataset labeler</strong></td>
-<td><a href="https://arxiv.org/abs/2412.06877">TEDUO</a></td>
-<td>LLM annotator до RL</td>
+<td><strong>Разметчик датасета</strong></td>
+<td><a href="https://arxiv.org/abs/2412.06877">TEDUO</a> — ретроспективная разметка и абстракция состояний на неразмеченных логах, затем offline RL и SFT</td>
+<td>LLM размечает данные до RL</td>
 </tr>
 <tr>
-<td><strong>Inference-time critic</strong></td>
-<td><em>Planning without Search</em> (<a href="https://arxiv.org/abs/2505.18098">2505.18098</a>)</td>
-<td>Offline RL обучает critic</td>
+<td><strong>Critic во время инференса</strong></td>
+<td><em>Planning without Search</em> (<a href="https://arxiv.org/abs/2505.18098">arXiv:2505.18098</a>) — goal-conditioned value function направляет уточнение плана</td>
+<td>Offline RL обучает critic; базовая LLM может оставаться замороженной</td>
 </tr>
 <tr>
-<td><strong>Reward model</strong></td>
-<td>LLM-as-judge</td>
-<td>Комбинируйте с verifiers</td>
+<td><strong>Модель награды</strong></td>
+<td>Оценки LLM-as-judge</td>
+<td>Дёшево, но легко обмануть; сочетайте с verifiers</td>
 </tr>
 </tbody>
 </table>
+<p>KALM сначала «заземляет» LLM на динамике среды и лишь затем генерирует rollouts — так он сокращает <strong>семантический разрыв</strong> между токенами и числовым состоянием. TEDUO показывает, что LLM способна обогатить <strong>неразмеченные</strong> логи взаимодействия так, чтобы у offline RL появились цели и абстрактные состояния для обусловливания.</p>
 <hr />
-<h2>Failure modes</h2>
-<p>Reward hacking, spurious tool use, template collapse (RAGEN-2), unsupported tool calls (OOD), overconfident critics, non-stationary APIs, cost/safety в reward.</p>
-<hr />
-<h2>Toy example: calculator agent</h2>
-<p>Пример <strong>намеренно без language modeling</strong>: политика выбирает structured tool calls, не генерирует free text. Так изолируется offline RL: улучшение над logged behavior через value learning и support constraints.</p>
-<blockquote>
-<p>📄 Код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/agentic_offline_rl_toy.py"><code>agentic_offline_rl_toy.py</code></a></p>
-</blockquote>
-<p><strong>Среда:</strong> задачи <code>x+y</code>, <code>x-y</code>, <code>x*y</code>; tools <code>lookup_x</code>, <code>lookup_y</code>, <code>add</code>, <code>sub</code>, <code>mul</code>, <code>final</code>. Награды: +1 / −1 / −0.02 за шаг.</p>
-<p><strong>Четыре политики:</strong> Behavior (logger), BC (majority action), naive FQI (tabular Q), support-constrained FQI (argmax только по actions из dataset на state — support mask, а не функция потерь CQL).</p>
-<p><strong>Два режима данных:</strong> (1) <code>mul</code> есть в логах; (2) на mul-задачах behavior никогда не вызывает <code>mul</code>.</p>
-<p>В неизвестном состоянии или при пустом наборе допустимых действий из support constrained policy отказывается от действия (<code>None</code>); оценка учитывает это как неуспешное завершение. Операция из support иногда случайно даёт правильный ответ на mul-задаче, поэтому успех может быть ненулевым даже без <code>mul</code>.</p>
-<p>Запуск: <code>python code/agentic_offline_rl_toy.py</code></p>
-<p>Типичный qualitative результат:</p>
+<h2>Типичные сбои (failure modes)</h2>
+<p>Agentic offline RL наследует сбои классического offline RL и добавляет свои:</p>
 <ul>
-<li><strong>Good coverage:</strong> FQI ≈ 1.0, улучшение над behavior (~0.7).</li>
-<li><strong>No mul support:</strong> BC ~0.67; <strong>naive FQI на mul-only ≈ 1.0</strong> (extrapolation — выбирает <code>mul</code> без support); <strong>support-constrained на mul ≈ 0</strong> (отказывается от unsupported op).</li>
+<li><strong>Reward hacking</strong> — оптимизация обходных путей verifier вместо настоящей цели задачи.</li>
+<li><strong>Ложное использование инструментов</strong> — вызовы ради видимости работы, без прироста информации.</li>
+<li><strong>Template collapse</strong> — разнообразный на вид текст, который не зависит от входа (см. RAGEN-2).</li>
+<li><strong>Unsupported tool calls</strong> — аналог OOD-действий: API или аргументы, которых в логах не было.</li>
+<li><strong>Самоуверенные critics</strong> — модели в стиле FQE экстраполируют на длинных контекстах так же, как Q-функции экстраполируют на OOD-действиях.</li>
+<li><strong>Нестационарные инструменты и API</strong> — логи, собранные на инструментах эпохи GPT-4.1, могут не совпадать с поведением инструментов при внедрении.</li>
+<li><strong>Стоимость и безопасность</strong> — награда должна учитывать задержку, расходы и нарушения правил, а не только долю успеха.</li>
 </ul>
-<p>Ключ состояния — <code>(task, x, y, result)</code>, где <code>None</code> означает ещё не наблюдавшееся значение. Наблюдаемые операнды вместе с результатом позволяют различать правильные и неправильные исходы. До вызова lookup политика не получает скрытые операнды.</p>
-<p><strong>Тезис:</strong> offline RL улучшает <strong>внутри support</strong>; conservative methods отказываются от unsupported improvement; unconstrained Q может «галлюцинировать» OOD actions. Начинайте с tabular toy, затем classifier / LLM + support filter.</p>
+<p>Консервативные методы — пессимизм в духе CQL, support constraints, отказ от слабо покрытых ветвей вызовов — здесь концептуально уместны, но требуют определить <strong>action support</strong> в структурированных пространствах действий, а это пока открытая инженерная задача.</p>
+<hr />
+<h2>Игрушечный пример: агент-калькулятор</h2>
+<p>Этот пример <strong>намеренно убирает сложность языкового моделирования</strong>. Политика не генерирует свободный текст, а выбирает один из структурированных tool calls. Так остаётся в чистом виде вопрос offline RL: можно ли улучшить залогированное поведение с помощью value learning и support constraints?</p>
+<blockquote>
+<p>📄 Полный код: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/agentic_offline_rl_toy.py"><code>agentic_offline_rl_toy.py</code></a></p>
+</blockquote>
+<h3>Среда</h3>
+<p>Агент решает <code>x + y</code>, <code>x - y</code> или <code>x * y</code>, но не видит <code>x</code> и <code>y</code> напрямую — их нужно получить через инструменты:</p>
+<table>
+<thead>
+<tr>
+<th>Действие</th>
+<th>Эффект</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lookup_x</code></td>
+<td>узнать скрытое $x$</td>
+</tr>
+<tr>
+<td><code>lookup_y</code></td>
+<td>узнать скрытое $y$</td>
+</tr>
+<tr>
+<td><code>add</code> / <code>sub</code> / <code>mul</code></td>
+<td>вычислить по известным значениям</td>
+</tr>
+<tr>
+<td><code>final</code></td>
+<td>отправить ответ (verifier сверяет его с истинной задачей)</td>
+</tr>
+</tbody>
+</table>
+<p>Награды: <strong>+1</strong> за правильный итоговый ответ, <strong>−1</strong> за неправильный ответ или недопустимый инструмент, <strong>−0.02</strong> за каждый шаг (как прокси задержки и стоимости).</p>
+<p>Пример повторяет устройство trace настоящего LLM-агента:</p>
+<table>
+<thead>
+<tr>
+<th>Настоящий агент</th>
+<th>Игрушечный аналог</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Окно контекста</td>
+<td>Дискретный кортеж состояния</td>
+</tr>
+<tr>
+<td>JSON с tool call</td>
+<td>Дискретное действие</td>
+</tr>
+<tr>
+<td>Ответ инструмента</td>
+<td>Обновление наблюдения</td>
+</tr>
+<tr>
+<td>Итоговый ответ</td>
+<td>Действие <code>final</code></td>
+</tr>
+<tr>
+<td>Verifier</td>
+<td>Точная проверка арифметики</td>
+</tr>
+<tr>
+<td>Agent trace</td>
+<td>Переход offline RL</td>
+</tr>
+</tbody>
+</table>
+<p>Ключ состояния в таблице — <code>(task, x, y, result)</code>, где <code>None</code> означает ещё не наблюдавшееся значение. Наблюдаемые операнды вместе с результатом позволяют различать правильные и неправильные исходы. До вызова lookup политика не получает скрытые операнды.</p>
+<h3>Четыре политики на двух датасетах</h3>
+<table>
+<thead>
+<tr>
+<th>Политика</th>
+<th>Роль</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Behavior</strong></td>
+<td>Стохастический логгер (иногда выбирает не ту операцию)</td>
+</tr>
+<tr>
+<td><strong>BC</strong></td>
+<td>Самое частое действие в каждом состоянии логов (SFT на traces)</td>
+</tr>
+<tr>
+<td><strong>Naive FQI</strong></td>
+<td>Табличный fitted Q с жадным улучшением по <strong>допустимым</strong> действиям</td>
+</tr>
+<tr>
+<td><strong>Support-constrained FQI</strong></td>
+<td>То же, но argmax только по залогированным в этом состоянии действиям; если таких нет, политика воздерживается (это support mask, а не функция потерь CQL)</td>
+</tr>
+</tbody>
+</table>
+<p>Два режима данных:</p>
+<ol>
+<li><strong>Хорошее покрытие</strong> — на задачах умножения <code>mul</code> встречается в логах.</li>
+<li><strong>Пробел в покрытии</strong> — на задачах умножения behavior логирует только <code>add</code> и <code>sub</code>, но никогда <code>mul</code>.</li>
+</ol>
+<p>В неизвестном состоянии или при пустом наборе допустимых действий из support constrained policy воздерживается (<code>None</code>); при оценке это считается неуспешным завершением.</p>
+<p>Запуск: <code>python code/agentic_offline_rl_toy.py</code></p>
+<p>Вывод для seed по умолчанию детерминирован; с другим seed числа будут немного другими:</p>
+<div class="codehilite"><pre><span></span><code>Dataset: good coverage (mul in logs)
+  mul-task op support (x,y known): ['add', 'mul', 'sub']
+  Behavior success (all tasks):    0.72
+  BC success:                    0.99
+  Naive FQI success:             1.00
+  Support-constrained FQI:       1.00
+
+Dataset: no multiplication support
+  mul-task op support (x,y known): ['add', 'sub']
+  Behavior success (all tasks):    0.52
+  BC success:                    0.67
+  Naive FQI success:             1.00
+  Support-constrained FQI:       0.72
+  --- mul tasks only ---
+  BC / naive FQI / constrained:  0.01 / 1.00 / 0.02
+</code></pre></div>
+
+<h3>Что показывает пример</h3>
+<ol>
+<li><strong>BC</strong> клонирует поведенческую политику. Он улучшает сырой лог, когда самое частое действие в состоянии хорошее, но не может придумать инструмент, которого в данных нет.</li>
+<li><strong>Naive FQI</strong> при достаточном покрытии сшивает успешные фрагменты траекторий: <code>lookup_x → lookup_y → нужная операция → final</code>.</li>
+<li><strong>Если <code>mul</code> нет в логах</strong>, support-constrained FQI никогда не выбирает умножение. Иногда он всё же решает задачу, когда разрешённая операция случайно даёт тот же ответ. Именно такого консервативного поведения и хочется в офлайн-режиме.</li>
+<li><strong>Naive FQI на задачах умножения</strong> всё равно может выбрать <code>mul</code>, хотя в этом состоянии его в логах не было: Q-значения невиданных действий по умолчанию равны 0 и потому могут оказаться выше отрицательных Q у залогированных неверных операций. Это эффект <strong>экстраполяции на OOD-действие</strong>. В игрушечном симуляторе <code>mul</code> срабатывает, но при реальном внедрении это была бы политика без всяких подтверждений в данных.</li>
+</ol>
+<p><strong>Главный вывод (тот же, что в классическом offline RL):</strong> улучшение возможно <strong>внутри</strong> support датасета по действиям и состояниям; консервативные методы отказываются от неподтверждённого выигрыша; неограниченное value learning может переоценить действия, которых не было в данных.</p>
+<p>Начинайте с такого табличного агента, прежде чем добавлять трудности, характерные для LLM: стохастическое декодирование, дрейф prompts, отсутствующие log-probabilities, дорогую OPE. Естественный следующий шаг — заменить табличную политику небольшим классификатором над состояниями traces, а затем LLM, которая предлагает tool calls, отфильтрованные моделью support или critic.</p>
 <hr />
 <h2>От agentic offline RL к offline MARL</h2>
 <p>До сих пор мы рассматривали одного агента. Когда в эпизоде действуют несколько агентов, эта постановка перестаёт работать. Пока политики остальных агентов зафиксированы, для каждого отдельного агента задача остаётся (PO)MDP: партнёры просто входят в среду. Но offline-обучение меняет сразу несколько политик, и динамика, которую видит агент, меняется вместе с поведением партнёров. Логи, собранные при старых политиках партнёров, перестают описывать новую среду. Правильная модель здесь — Markov game (stochastic game), а при локальных наблюдениях и общей награде — Dec-POMDP. Если склеить реплики всех агентов в один transcript, теряется, кто что наблюдал и кто какое действие выбрал, то есть именно те сведения, которые нужны для оценки support и credit assignment.</p>
@@ -455,9 +594,10 @@
 <p>Дообучение shared LLM на traces с ролями (DPO, SFT или single-agent offline RL) обновляет другую политику, чем orchestration policy, которая выбирает joint actions. Указывайте, какую из двух обновляет метод; иначе multi-agent проблемы попадают в систему под видом обычного дообучения агента.</p>
 <p><strong>Пример.</strong> Агент 1 отправляет агенту 2 сообщение $m \in \{A, B\}$, затем агент 2 вызывает инструмент $u \in \{a, b\}$. Команда получает $r = 1$ только за пары $(A, a)$ и $(B, b)$. При равномерно случайной behavior policy каждое отдельное сообщение и каждый отдельный инструмент успешны в половине эпизодов, поэтому ценности действий отдельных агентов равны и ничего не сообщают; хорошее поведение от плохого отличает только ценность пары. Single-agent обновление по склеенному transcript оценивает каждое действие по его частоте успеха и может прийти к несогласованной паре, например $(A, b)$. Поэтому offline MARL методы явно моделируют joint action.</p>
 <p>В классическом offline MARL для этого уже есть инструменты. MACCA (<a href="https://arxiv.org/abs/2312.03644">Wang et al., 2025</a>) представляет offline-данные как динамическую байесовскую сеть и выделяет причинный вклад каждого агента в награду. Для LLM-агентов ближайшие работы пока online. LangMARL (<a href="https://aclanthology.org/2026.emnlp-main.1837/">Yao et al., 2026</a>) с помощью централизованного языкового critic назначает credit каждому агенту и переписывает его политику на естественном языке — инструкции и примеры, а не веса модели, — собирая новые rollouts на каждой итерации. Перенести такой agent-level credit assignment на фиксированные логи — пока открытая задача.</p>
-<p>Эта глава сознательно ограничивается одним агентом. Если ваш продукт multi-agent, описанные выше практики оценки и приведённая ниже schema логирования подойдут и ему; в schema есть multi-agent extension. А вот single-agent conservative RL напрямую не переносится: support constraints и credit assignment сначала нужно переопределить для joint actions и team rewards.</p>
+<p>Эта глава сознательно ограничивается одним агентом. Если ваш продукт multi-agent, описанные выше практики оценки и приведённая ниже схема логирования подойдут и ему; в схеме есть расширение для нескольких агентов. А вот single-agent conservative RL напрямую не переносится: support constraints и credit assignment сначала нужно переопределить для joint actions и team rewards.</p>
 <hr />
-<h2>Практическая schema логирования</h2>
+<h2>Практическая схема логирования</h2>
+<p>В прикладной работе согласованная схема JSON (или parquet) важна не меньше, чем выбор алгоритма:</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"episode_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"task_001"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"t"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
@@ -506,16 +646,16 @@
 <span class="p">}</span>
 </code></pre></div>
 
-<p>Рекомендации:</p>
+<p>Что важно в этой схеме:</p>
 <ul>
-<li><strong><code>state</code></strong> восстанавливаем на train/eval — версионируйте <code>prompt_version</code>, <code>tool_schema_version</code>, <code>environment_version</code>.</li>
-<li><strong><code>action</code></strong> — structured (JSON schema), где возможно.</li>
-<li><strong><code>reward</code></strong> — храните <code>reward_components</code>, <code>reward_source</code>, <code>verifier_version</code> отдельно от scalar <code>reward</code>.</li>
-<li><strong><code>action_logprobs</code></strong> — для off-policy evaluation; логируйте, если behavior policy их отдаёт.</li>
-<li><strong><code>metadata.behavior_policy</code></strong> — <strong>provenance</strong>. Importance-weighted OPE дополнительно требует comparable actions и behavior/target probabilities — для free-form LLM actions часто <strong>недоступно</strong> без log-probs при сборе.</li>
+<li><strong><code>state</code></strong> должен восстанавливаться и при обучении, и при оценке, поэтому версионируйте prompts (<code>prompt_version</code>), схемы инструментов (<code>tool_schema_version</code>) и sandbox (<code>environment_version</code>).</li>
+<li><strong><code>action</code></strong> по возможности должен быть структурированным (со своей JSON-схемой): для такого действия support оценить проще, чем для свободного текста.</li>
+<li><strong><code>reward</code></strong> можно перемаркировать офлайн — с помощью verifier, человека или LLM-critic, — поэтому храните <code>reward_components</code>, <code>reward_source</code> и <code>verifier_version</code> отдельно от скалярного <code>reward</code>.</li>
+<li><strong><code>action_logprobs</code></strong> (или log-probabilities токенов и tool calls) очень полезны для off-policy evaluation и фильтрации; логируйте их, если behavior policy их отдаёт.</li>
+<li><strong><code>metadata.behavior_policy</code></strong> необходим для <strong>происхождения данных</strong> (provenance). Для OPE с importance weights нужны ещё сопоставимые представления действий и вероятности действий под behavior и target policy, а для свободных действий LLM их часто <strong>нет</strong>, если log-probabilities не записали в момент сбора.</li>
 </ul>
-<h3>Multi-agent extension</h3>
-<p>Добавляйте запись к transition каждого действующего агента; action и episode identifier находятся в основной записи.</p>
+<h3>Расширение для нескольких агентов</h3>
+<p>Добавляйте эту запись к переходу каждого действующего агента; действие и идентификатор эпизода хранятся в основной записи.</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"multi_agent_extension"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"joint_step_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"task_001:3"</span><span class="p">,</span>
@@ -544,35 +684,42 @@
 <span class="p">}</span>
 </code></pre></div>
 
-<p>Через <code>joint_step_id</code> связывайте действия и сообщения одного решения среды; <code>turn_id</code> сохраняет порядок внутри него. Для каждого агента храните здесь local observation, recipients и checkpoint; вероятность фактически выбранного действия под политикой сбора, включая sampling settings, записывается в <code>action_logprobs</code> основной записи, чтобы не дублировать её. Null означает неизвестную вероятность, а не нулевую.</p>
-<p>Плоский transcript не сохраняет private observations, одновременные решения и provenance политик. Team reward, individual reward и поздние credit annotations имеют разные значения и источники; credit label не является наблюдаемым контрфактуалом. Такая запись позволяет восстановить trajectory, но не идентифицирует контрфактуальный вклад без дополнительных предположений или вмешательств.</p>
+<p>Через <code>joint_step_id</code> связывайте действия и сообщения, относящиеся к одному решению среды, а <code>turn_id</code> сохраняет их порядок. Для каждого агента храните здесь локальное наблюдение, получателей и checkpoint; вероятность фактически выбранного действия под политикой сбора, вместе с настройками sampling, записывается в <code>action_logprobs</code> основной записи, чтобы не дублировать её. Null означает, что вероятность неизвестна, а не что она равна нулю.</p>
+<p>Плоский transcript не сохраняет ни приватных наблюдений, ни одновременности решений, ни происхождения политик. Командная награда, индивидуальная награда и поздняя разметка credit различаются и по смыслу, и по источнику; метка credit — не наблюдаемый контрфактуал. Такая запись позволяет восстановить траекторию, но сама по себе не определяет контрфактуальный вклад агента без дополнительных предположений или вмешательств.</p>
 <h3>Разбиение данных и утечки</h3>
-<p>Назначайте split <strong>до извлечения transitions</strong>, сохраняя эпизоды целиком. Группируйте связанные эпизоды по task family и исходному документу: варианты задач, общие cached outputs и близкие дубликаты не должны попадать в разные splits. Храните <code>task_family_id</code>, <code>source_hash</code> (хеш snapshot источника) и <code>collection_window</code>; сам хеш не выявляет смысловые дубликаты.</p>
-<p>Сначала определите гранулярность группировки: <code>task_family_id</code> объединяет базовую задачу и её варианты, а не всю категорию вроде извлечения выручки. Отложите независимые группы задач и исходные документы внутри целевых категорий для проверки новых примеров. Удержание целых категорий проверяет перенос на незнакомые семейства задач; сообщайте этот результат отдельно. Добавьте temporal/version holdout, собранный позже либо при новых prompts, tools или environments: он проверяет также устойчивость к изменениям среды.</p>
-<p>Проверка утечек:</p>
+<p>Назначайте split <strong>до извлечения переходов</strong>, сохраняя эпизоды целиком. Группируйте связанные эпизоды по семейству задач и исходному документу: варианты одной задачи, общие закэшированные ответы и близкие дубликаты не должны оказаться в разных splits. Храните <code>task_family_id</code>, <code>source_hash</code> (хеш снимка источника) и <code>collection_window</code>; сам по себе хеш не выявляет смысловых дубликатов.</p>
+<p>Сначала определите гранулярность группировки: <code>task_family_id</code> объединяет базовую задачу и её варианты, а не целую категорию вроде всех задач на извлечение выручки. Чтобы проверить работу на новых примерах, откладывайте независимые группы задач и исходных документов внутри целевых категорий. Если же отложить целые категории, проверяется перенос на незнакомые семейства задач — такой результат приводите отдельно. Добавьте и отложенный набор по времени или версии — собранный позже либо при новых prompts, инструментах или средах — и тоже отчитывайтесь по нему отдельно, потому что смена версий проверяет ещё и устойчивость.</p>
+<p>Проверка на утечки:</p>
 <ul>
-<li>Все шаги и multi-agent turns эпизода находятся в одном split.</li>
+<li>Все шаги и все реплики агентов одного эпизода находятся в одном split.</li>
 <li>Варианты задач и дублирующиеся или пересекающиеся источники сгруппированы до разбиения.</li>
-<li>Reward model, normalization и verifier calibration обучаются на train; prompts и кандидаты выбираются по validation.</li>
-<li>Test set и протокол оценки зафиксированы; по test outcomes ничего не настраивается.</li>
-<li>Provenance cache и collection windows проверены; вместе с числом transitions указано число task families.</li>
+<li>Модели награды, нормализация и калибровка verifier обучаются на train; prompts настраиваются и кандидаты выбираются по validation.</li>
+<li>Тестовый набор и протокол оценки зафиксированы; ничего не настраивается по результатам на test.</li>
+<li>Происхождение кэша и окна сбора проверены, а рядом с числом переходов указано число семейств задач.</li>
 </ul>
 <hr />
-<h2>Ограничения и честный scope</h2>
-<p>Большинство deployed agents — SFT + online RLHF/GRPO. Offline RL для agents силён при abundant replayable traces, reliable verifiers, нетolerance к exploratory online learning.</p>
-<p>См. <a href="/offline-rl-book/ru/appendix.html">Приложение</a>. <a href="/offline-rl-book/ru/chapter13.html">Глава 13</a> завершает книгу.</p>
+<h2>Ограничения и честные рамки</h2>
+<p>Это <strong>быстро развивающаяся</strong> область исследований, а не устоявшийся производственный стек. Большинство агентов в эксплуатации по-прежнему обучают циклами SFT и online RLHF/GRPO. Offline RL для агентов сильнее всего, когда:</p>
+<ul>
+<li>traces много и их можно воспроизвести,</li>
+<li>награды (или verifiers) надёжны,</li>
+<li>внедрение не допускает исследовательского online-обучения,</li>
+<li>нужно улучшить фиксированную behavior policy, не собирая данные заново.</li>
+</ul>
+<p>Если эти условия не выполняются, вкладывайтесь сначала в <strong>логирование</strong>, <strong>BC baselines</strong> и <strong>OPE</strong>, а уже потом в value-based offline RL.</p>
+<p>Классические методы и ориентиры по их выбору собраны в <a href="/offline-rl-book/ru/appendix.html">Приложении</a>. <a href="/offline-rl-book/ru/chapter13.html">Глава 13</a> завершает книгу.</p>
 <hr />
 <h2>Литература</h2>
 <ul>
-<li>Wang, H., Hao, S., Dong, H., et al. (2024). <em>Offline RL for LLM Multi-Step Reasoning (OREO).</em> <a href="https://arxiv.org/abs/2412.16145">arXiv:2412.16145</a>, <a href="https://aclanthology.org/2025.findings-acl.464/">ACL 2025</a>, <a href="https://github.com/jwhj/OREO">code</a>.</li>
+<li>Wang, H., Hao, S., Dong, H., et al. (2024). <em>Offline Reinforcement Learning for LLM Multi-Step Reasoning (OREO).</em> <a href="https://arxiv.org/abs/2412.16145">arXiv:2412.16145</a>, <a href="https://aclanthology.org/2025.findings-acl.464/">ACL Findings 2025</a>, <a href="https://github.com/jwhj/OREO">code</a>.</li>
 <li>Snell, C., Kostrikov, I., Su, Y., Yang, M., &amp; Levine, S. (2023). <em>Offline RL for Natural Language Generation with Implicit Language Q-Learning (ILQL).</em> ICLR. <a href="https://arxiv.org/abs/2206.11871">arXiv:2206.11871</a>.</li>
-<li>Xi et al. (2024). <em>AgentGym.</em> <a href="https://arxiv.org/abs/2406.04151">arXiv:2406.04151</a>, <a href="https://agentgym.github.io/">project</a>.</li>
-<li>Luo et al. (2025). <em>Agent Lightning.</em> <a href="https://arxiv.org/abs/2508.03680">arXiv:2508.03680</a>, <a href="https://microsoft.github.io/agent-lightning/latest/">docs</a>.</li>
-<li>Pang et al. (2024). <em>KALM.</em> <a href="https://arxiv.org/abs/2404.09248">arXiv:2404.09248</a>, <a href="https://kalmneurips2024.github.io/">project</a>.</li>
-<li>Pouplin et al. (2024). <em>The Synergy of LLMs &amp; RL (TEDUO).</em> ICML 2025. <a href="https://arxiv.org/abs/2412.06877">arXiv:2412.06877</a>.</li>
+<li>Xi et al. (2024). <em>AgentGym: Evolving LLM-based Agents across Diverse Environments.</em> <a href="https://arxiv.org/abs/2406.04151">arXiv:2406.04151</a>, <a href="https://agentgym.github.io/">project</a>.</li>
+<li>Luo et al. (2025). <em>Agent Lightning: Train ANY AI Agents with Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2508.03680">arXiv:2508.03680</a>, <a href="https://microsoft.github.io/agent-lightning/latest/">docs</a>.</li>
+<li>Pang et al. (2024). <em>KALM: Knowledgeable Agents by Offline RL from LLM Rollouts.</em> <a href="https://arxiv.org/abs/2404.09248">arXiv:2404.09248</a>, <a href="https://kalmneurips2024.github.io/">project</a>.</li>
+<li>Pouplin, T., Kobalczyk, K., Sun, H., &amp; van der Schaar, M. (2024). <em>The Synergy of LLMs &amp; RL Unlocks Offline Learning of Generalizable Language-Conditioned Policies (TEDUO).</em> ICML 2025. <a href="https://arxiv.org/abs/2412.06877">arXiv:2412.06877</a>.</li>
 <li>Hong, J., Dragan, A., &amp; Levine, S. (2025). <em>Planning without Search: Refining Frontier LLMs with Offline Goal-Conditioned RL.</em> NeurIPS 2025. <a href="https://arxiv.org/abs/2505.18098">arXiv:2505.18098</a>.</li>
-<li>Wang et al. (2025). <em>RAGEN.</em> <a href="https://arxiv.org/abs/2504.20073">arXiv:2504.20073</a>.</li>
-<li>Wang et al. (2026). <em>RAGEN-2.</em> <a href="https://arxiv.org/abs/2604.06268">arXiv:2604.06268</a>, <a href="https://ragen-ai.github.io/v2/">project</a>.</li>
+<li>Wang et al. (2025). <em>RAGEN: Understanding Self-Evolution in LLM Agents via Multi-Turn RL.</em> <a href="https://arxiv.org/abs/2504.20073">arXiv:2504.20073</a>.</li>
+<li>Wang et al. (2026). <em>RAGEN-2: Reasoning Collapse in Agentic RL.</em> <a href="https://arxiv.org/abs/2604.06268">arXiv:2604.06268</a>, <a href="https://ragen-ai.github.io/v2/">project</a>.</li>
 <li>Yi, H., &amp; Song, X. (2026). <em>HarnessMDP: Learning to Control LLM Agent Harnesses with Offline Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2607.05458">arXiv:2607.05458</a>.</li>
 <li>Ren, X., &amp; Xie, T. (2026). <em>When Does Trajectory-Level Supervision Permit Efficient Offline Reinforcement Learning?</em> <a href="https://arxiv.org/abs/2606.18531">arXiv:2606.18531</a>.</li>
 <li>Zhang, C. (2026). <em>From Reasoning to Agentic: Credit Assignment in Reinforcement Learning for Large Language Models.</em> <a href="https://arxiv.org/abs/2604.09459">arXiv:2604.09459</a>.</li>

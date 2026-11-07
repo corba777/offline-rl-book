@@ -35,7 +35,7 @@ permalink: "/offline-rl-book/ru/"
   </li>
   <li>
     <a href="/offline-rl-book/ru/chapter3.html">
-      <span><span class="ch-num">Гл 3</span>Оценка политик вне политики сбора данных (OPE)</span>
+      <span><span class="ch-num">Гл 3</span>Оценка политики по офлайн-данным (OPE)</span>
       <span class="ch-status ready">готово</span>
     </a>
   </li>

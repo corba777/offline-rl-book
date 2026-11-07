@@ -5,7 +5,7 @@ lang: ru
 en_url: /en/chapter4/
 prev_chapter:
   url: /ru/chapter3/
-  title: "Оценка политик вне политики сбора данных (OPE)"
+  title: "Оценка политики по офлайн-данным (OPE)"
 next_chapter:
   url: /ru/chapter5/
   title: "Неявное Q-обучение (IQL)"

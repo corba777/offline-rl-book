@@ -8,7 +8,7 @@ prev_chapter:
   title: "Поведенческое клонирование"
 next_chapter:
   url: /ru/chapter3/
-  title: "Оценка политик вне политики сбора данных (OPE)"
+  title: "Оценка политики по офлайн-данным (OPE)"
 permalink: "/offline-rl-book/ru/chapter2/"
 ---
 
