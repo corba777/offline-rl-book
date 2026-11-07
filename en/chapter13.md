@@ -216,6 +216,8 @@ The reward specification problem — arguably the hardest unsolved problem in ap
 
 Industrial rollout should be treated as a **sequence of admission gates**, not a fixed algorithm recipe. No offline RL method — including CQL, IQL, or physics-informed variants — is deployable from training metrics alone. Each gate asks whether you have enough evidence to move to the next level of authority over the plant.
 
+![Four deployment gates with growing authority over the plant and a stop or fallback at each gate](../figures/ch13/deployment_gates.svg)
+
 ### Gate 1 — Data and support
 
 **Goal:** Confirm the problem is RL-shaped and the logs support the intended ambition (Chapters 1–3, 12).

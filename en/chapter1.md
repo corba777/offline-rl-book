@@ -234,6 +234,10 @@ Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger
            outside training distribution
 ```
 
+The figure below makes the snowball concrete (`code/chapter1_5_8_figures.py`). A one-dimensional offset drifts unless it is corrected; the expert's feedback keeps it in a narrow band, and BC — a cubic fit to 150 noisy expert labels — matches the expert inside that band. Most BC rollouts stay there. But whenever noise carries one just outside, the cloned policy has no reliable answer, its small errors push the offset further out, and the rollout never comes back.
+
+![Expert and behavioral-cloning rollouts of a drifting offset; BC rollouts that leave the band covered by data run away](../figures/ch1/bc_drift.png)
+
 ---
 
 ## Practical Limitations for Industrial Processes

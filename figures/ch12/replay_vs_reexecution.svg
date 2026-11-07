@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 372" width="780" height="372" font-family="Inter, system-ui, -apple-system, Segoe UI, sans-serif" font-size="13">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1a1a2e"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b4441b"/></marker>
+  </defs>
+  <rect width="780" height="372" fill="#ffffff"/>
+
+  <!-- column headers -->
+  <g fill="#555570" font-size="12">
+    <text x="245" y="26" text-anchor="middle">actions fed in</text>
+    <text x="410" y="26" text-anchor="middle">what produces observations</text>
+    <text x="575" y="26" text-anchor="middle">observations</text>
+    <text x="700" y="26" text-anchor="middle">what it measures</text>
+  </g>
+
+  <!-- row template: y offsets 44, 124, 204, 284 -->
+  <!-- 1. exact replay -->
+  <text x="20" y="72" font-weight="600">Exact trace replay</text>
+  <rect x="190" y="50" width="110" height="36" rx="7" fill="#f4f4f0" stroke="#1a1a2e"/>
+  <text x="245" y="73" text-anchor="middle">logged a</text>
+  <rect x="340" y="50" width="140" height="36" rx="7" fill="#f4f4f0" stroke="#1a1a2e"/>
+  <text x="410" y="73" text-anchor="middle">the log itself</text>
+  <rect x="520" y="50" width="110" height="36" rx="7" fill="#f4f4f0" stroke="#1a1a2e"/>
+  <text x="575" y="73" text-anchor="middle">logged o</text>
+  <line x1="300" y1="68" x2="336" y2="68" stroke="#1a1a2e" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="480" y1="68" x2="516" y2="68" stroke="#1a1a2e" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="700" y="66" text-anchor="middle" font-size="12">the pipeline</text>
+  <text x="700" y="81" text-anchor="middle" font-size="12" fill="#555570">not a new policy</text>
+
+  <!-- 2. re-execution -->
+  <text x="20" y="152" font-weight="600">Re-execution</text>
+  <text x="20" y="168" fill="#555570" font-size="12">resettable sandbox</text>
+  <rect x="190" y="130" width="110" height="36" rx="7" fill="#dbe6fb" stroke="#2563eb"/>
+  <text x="245" y="153" text-anchor="middle">candidate a′</text>
+  <rect x="340" y="130" width="140" height="36" rx="7" fill="#f4f4f0" stroke="#1a1a2e"/>
+  <text x="410" y="153" text-anchor="middle">real tools, reset state</text>
+  <rect x="520" y="130" width="110" height="36" rx="7" fill="#dbe6fb" stroke="#2563eb"/>
+  <text x="575" y="153" text-anchor="middle">new o′</text>
+  <line x1="300" y1="148" x2="336" y2="148" stroke="#1a1a2e" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="480" y1="148" x2="516" y2="148" stroke="#1a1a2e" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="700" y="146" text-anchor="middle" font-size="12">the candidate,</text>
+  <text x="700" y="161" text-anchor="middle" font-size="12" fill="#555570">in that environment</text>
+
+  <!-- 3. simulator -->
+  <text x="20" y="232" font-weight="600">Simulator rollout</text>
+  <text x="20" y="248" fill="#555570" font-size="12">learned or hand-built</text>
+  <rect x="190" y="210" width="110" height="36" rx="7" fill="#dbe6fb" stroke="#2563eb"/>
+  <text x="245" y="233" text-anchor="middle">candidate a′</text>
+  <rect x="340" y="210" width="140" height="36" rx="7" fill="#f4f4f0" stroke="#1a1a2e"/>
+  <text x="410" y="233" text-anchor="middle">model of the tools</text>
+  <rect x="520" y="210" width="110" height="36" rx="7" fill="#dbe6fb" stroke="#2563eb"/>
+  <text x="575" y="233" text-anchor="middle">predicted ô′</text>
+  <line x1="300" y1="228" x2="336" y2="228" stroke="#1a1a2e" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="480" y1="228" x2="516" y2="228" stroke="#1a1a2e" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="700" y="226" text-anchor="middle" font-size="12">the candidate,</text>
+  <text x="700" y="241" text-anchor="middle" font-size="12" fill="#555570">under its assumptions</text>
+
+  <!-- 4. stitched cache (invalid) -->
+  <text x="20" y="312" font-weight="600" fill="#b4441b">Stitched cache</text>
+  <text x="20" y="328" fill="#b4441b" font-size="12">do not do this</text>
+  <rect x="190" y="290" width="110" height="36" rx="7" fill="#dbe6fb" stroke="#2563eb"/>
+  <text x="245" y="313" text-anchor="middle">candidate a′</text>
+  <rect x="340" y="290" width="140" height="36" rx="7" fill="#fbe9e1" stroke="#b4441b" stroke-dasharray="5 3"/>
+  <text x="410" y="313" text-anchor="middle" fill="#b4441b">cache for another a</text>
+  <rect x="520" y="290" width="110" height="36" rx="7" fill="#fbe9e1" stroke="#b4441b" stroke-dasharray="5 3"/>
+  <text x="575" y="313" text-anchor="middle" fill="#b4441b">old o</text>
+  <line x1="300" y1="308" x2="336" y2="308" stroke="#b4441b" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#ar)"/>
+  <line x1="480" y1="308" x2="516" y2="308" stroke="#b4441b" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#ar)"/>
+  <text x="700" y="306" text-anchor="middle" font-size="12" fill="#b4441b">nothing valid:</text>
+  <text x="700" y="321" text-anchor="middle" font-size="12" fill="#b4441b">a world never visited</text>
+
+  <text x="20" y="360" fill="#555570" font-size="12">Blue: produced by the candidate policy. A cached response is reusable only if the request and the environment snapshot match exactly.</text>
+</svg>

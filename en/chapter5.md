@@ -379,6 +379,10 @@ True Q values: [-0.8, -0.3, 0.1, 0.4, 0.9]   (mean 0.06, median 0.10)
 
 Expectiles are the squared-loss counterpart of quantiles: $\tau = 0.5$ gives the mean, not the median, and as $\tau \to 1$ the estimate approaches the maximum. At `tau=0.7`, $V(s)$ sits above three of the five dataset actions but below the top two. This means $A(s, a) = Q(s,a) - V(s)$ is positive only for the top actions — exactly the ones the policy should imitate.
 
+The figure traces the whole curve $V(\tau)$ for these five values (`code/chapter1_5_8_figures.py`). It rises smoothly from the worst dataset action toward the best, passes through the mean at $\tau = 0.5$, and never leaves the range of values actually present in the data — which is why IQL can be optimistic without querying a single unseen action.
+
+![The tau-expectile of five dataset Q-values as a function of tau, with the mean and the IQL default marked](../figures/ch5/expectiles.png)
+
 ---
 
 ## IQL vs CQL: Key Differences

@@ -190,6 +190,8 @@ Distinguish three operations before interpreting an evaluation score:
 2. **Environment re-execution** executes the candidate's actual actions in a resettable sandbox. It estimates performance in that environment; transfer depends on sandbox fidelity, tool versions and representative initial tasks. It is direct interaction with a test environment, rather than evaluation from a fixed dataset alone.
 3. **Simulator rollout** generates observations conditioned on each new action and the current simulated state. A learned simulator adds model bias, especially outside logged support; validate it separately and report uncertainty.
 
+![Four ways to score a candidate agent policy: exact replay, re-execution, simulator rollout and an invalid stitched cache](../figures/ch12/replay_vs_reexecution.svg)
+
 A cached response may be reused only when the complete request and relevant environment state match: arguments, authentication scope, document/database snapshot, tool version and any random inputs that affect the result. Determinism alone is insufficient if the snapshot changed. A cache miss must trigger sandbox execution, a validated simulation, or an explicit unsupported outcome; never silently substitute a response from another action.
 
 For example, a recorded `open_pdf(page=42)` result cannot become the observation after `open_pdf(page=43)`. Even the same page number is insufficient if the underlying filing changed. Reusing the old observation hides the consequences of the candidate's decision and creates an invalid counterfactual.

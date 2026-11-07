@@ -207,6 +207,8 @@
 <h3>A Different Geometry of Pessimism</h3>
 <p>MOPO uses a <strong>continuous</strong> penalty: the further from the data, the larger the subtracted cost. The policy can still venture into uncertain regions — it just finds them less attractive.</p>
 <p>MOReL takes a <strong>discrete</strong> approach: partition the state-action space into "known" and "unknown" regions, and impose a <strong>hard penalty</strong> $\kappa$ in the unknown region. This creates a sharp boundary rather than a gradient.</p>
+<p>The figure contrasts the two rewards as functions of model uncertainty (<code>code/chapter1_5_8_figures.py</code>). MOPO's reward slides down steadily as uncertainty grows, so a large enough predicted gain can still lure the policy into uncertain regions. MOReL leaves the reward untouched up to the threshold $\varepsilon$ and then replaces it with a fixed $-\kappa$ and a halt: no gain can compensate.</p>
+<p><img alt="Reward used for policy training as a function of model uncertainty: MOPO's linear penalty versus MOReL's threshold and halt" src="../figures/ch8/penalty_geometry.png" /></p>
 <p><strong>Model-Based Offline Reinforcement Learning (MOReL)</strong> — Kidambi et al., NeurIPS 2020 — constructs a <strong>Pessimistic MDP (P-MDP)</strong> directly from the offline data, with a built-in absorbing failure state for OOD transitions.</p>
 <h3>The P-MDP Construction</h3>
 <p>Let $\mathcal{D}$ be the offline dataset. MOReL defines a threshold $\epsilon$ on prediction uncertainty and partitions state-action space:</p>

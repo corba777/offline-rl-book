@@ -233,6 +233,8 @@ Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger
            outside training distribution
 </code></pre></div>
 
+<p>The figure below makes the snowball concrete (<code>code/chapter1_5_8_figures.py</code>). A one-dimensional offset drifts unless it is corrected; the expert's feedback keeps it in a narrow band, and BC — a cubic fit to 150 noisy expert labels — matches the expert inside that band. Most BC rollouts stay there. But whenever noise carries one just outside, the cloned policy has no reliable answer, its small errors push the offset further out, and the rollout never comes back.</p>
+<p><img alt="Expert and behavioral-cloning rollouts of a drifting offset; BC rollouts that leave the band covered by data run away" src="../figures/ch1/bc_drift.png" /></p>
 <hr />
 <h2>Practical Limitations for Industrial Processes</h2>
 <p>The book uses one running example throughout: a continuous asphalt coating line, where operators adjust heating and filler feed to keep temperature, filler fraction and viscosity on target. The companion code models it as a small toy environment, <code>ThermalProcessEnv</code>, which Chapters 3–9 reuse; Chapter 10 replaces it with a richer five-variable version. For such a process, with state variables (filler%, temperature, viscosity) and a 30-minute horizon, BC has specific failure modes:</p>
