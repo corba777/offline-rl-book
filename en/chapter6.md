@@ -49,7 +49,9 @@ The hyperparameter $\lambda$ balances the two. Small $\lambda$ → policy is alm
 
 If raw Q-values are large (e.g. in the hundreds), the gradient from the Q-term dominates and the BC term has little effect. TD3+BC scales Q-values in the batch before forming the actor loss:
 
-$$\tilde{Q}(s, a) = \frac{Q(s, a)}{\mathbb{E}_{(s,a) \sim \mathcal{B}} |Q(s,a)| + 10^{-6}}$$
+$$\tilde{Q}(s, a) = \frac{Q(s, a)}{\mathbb{E}_{s \sim \mathcal{B}} |Q(s,\pi(s))| + 10^{-6}}$$
+
+Two details matter for reproducing the method. The paper writes the normalizer over the batch pairs $(s_i, a_i)$, while the authors' reference implementation computes it on the actor's own actions, $Q(s, \pi(s))$, for the current batch; our code follows the implementation. In both, the normalizer is treated as a constant (detached from autograd): it rescales the Q-term but receives no gradient itself.
 
 Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\pi(s) - a)^2 \bigr]$. The paper calls this weight $\alpha$ and uses $\alpha = 2.5$ with the same mean-$|Q|$ normalization; in this chapter $\lambda$ and $\alpha$ are the same knob. Our code defaults to $\lambda = 0.25$ on the toy task, which keeps the policy closer to the data; $[0.1, 2.5]$ is a reasonable search range.
 
@@ -122,12 +124,12 @@ def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
     """
     pi = actor(states)
     q = Q1(states, pi)
-    q_norm = q / (q.abs().mean() + 1e-6)
+    q_norm = q / (q.abs().mean().detach() + 1e-6)   # scale is a constant
     bc_loss = ((pi - actions) ** 2).mean()
     return -q_norm.mean() * lambda_ + bc_loss
 ```
 
-The key is that both terms contribute meaningfully to the gradient. The implementation in `td3bc.py` follows the paper: Q is scaled by the mean absolute value over the batch (not Z-normalization), so $\lambda$ is directly comparable to the original TD3+BC setup.
+The key is that both terms contribute meaningfully to the gradient. The implementation in `td3bc.py` follows the paper: Q is scaled by the mean absolute value of $Q(s, \pi(s))$ over the batch (not Z-normalization), and that scale is detached, so $\lambda$ is directly comparable to the original TD3+BC setup. A unit test in `code/test_cql_td3bc.py` checks that no gradient flows through the scale.
 
 ### AWAC-Style Policy Loss (Advantage-Weighted)
 

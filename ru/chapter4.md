@@ -86,23 +86,31 @@ $$\log \sum_a \exp Q(s, a) \approx \log \mathbb{E}_{a \sim \mu(a|s)} \left[ \fra
 
 $$\log \mathbb{E}_{a \sim \pi_\theta} \left[ \frac{\exp Q(s,a)}{\pi_\theta(a|s)} \right] \approx \log \frac{1}{N} \sum_{i=1}^N \frac{\exp Q(s, a_i)}{\pi_\theta(a_i|s)} = \text{logsumexp}_i \left[ Q(s, a_i) - \log \pi_\theta(a_i|s) \right] + \text{const}$$
 
-Именно поэтому в коде вычисляется `q_policy - policy_log_probs` перед logsumexp: вычитание $\log \pi_\theta(a|s)$ реализует коррекцию importance weights. Без неё мы бы аппроксимировали $\mathbb{E}_{\pi_\theta}[Q]$ (простое среднее Монте-Карло), а не $\log \sum_a \exp Q$ (мягкий максимум, который требует CQL). Для случайных равномерных действий эта коррекция не нужна: их лог-плотность константна и сокращается внутри logsumexp.
+Именно поэтому в коде перед logsumexp из `q_pi` вычитается `log_pi`: вычитание $\log \pi_\theta(a|s)$ реализует коррекцию importance weights. Без неё мы бы аппроксимировали $\mathbb{E}_{\pi_\theta}[Q]$ (простое среднее Монте-Карло), а не $\log \sum_a \exp Q$ (мягкий максимум, который требует CQL). Равномерным сэмплам нужна такая же поправка. Их плотность на $[-1,1]^d$ равна $2^{-d}$, поэтому код прибавляет к их Q-значениям $d \log 2$. Постоянный сдвиг был бы безвреден, если бы использовались только равномерные сэмплы, но здесь два распределения-предложения усредняются: без поправки равномерный член оценивает $\log \int e^{Q}\,da - d \log 2$, а член политики — $\log \int e^{Q}\,da$, и их относительный вес незаметно меняется. Юнит-тесты в `code/test_cql_td3bc.py` сверяют оценку с интегралом, вычисленным аналитически.
 
 ### Теоретическая гарантия
 
-**Теорема (Kumar et al., 2020).** Пусть $\hat{Q}^\pi$ — Q-функция, обученная CQL, а $Q^\pi$ — истинная Q-функция политики $\pi$. Тогда:
+Kumar et al. (2020) доказывают две родственные нижние оценки, и разница между ними важна.
 
-$$\mathbb{E}_{a \sim \pi(\cdot \mid s)}\bigl[\hat{Q}^\pi(s, a)\bigr] \leq V^\pi(s) \quad \forall s \in \mathcal{D}$$
+**Теорема 3.1 (только «опускающий» член).** Если штраф содержит только $\mathbb{E}_{a \sim \mu}[Q]$, то для любого $\mu$, support которого лежит внутри support $\hat\pi_\beta$, обученная $\hat{Q}^\pi$ — *поточечная* нижняя оценка: $\hat{Q}^\pi(s, a) \leq Q^\pi(s, a)$ для всех $s \in \mathcal{D}$ и всех $a$, если $\alpha$ достаточно велико.
 
-при подходящих условиях на $\alpha$. (Штраф только с первым, «опускающим» членом даёт более сильную поточечную оценку $\hat{Q}^\pi(s,a) \leq Q^\pi(s,a)$; полная целевая функция, которая ещё и поднимает действия датасета, ограничивает ценность политики в среднем — на практике эта оценка точнее.)
+**Теорема 3.2 (полная целевая функция CQL).** Если добавлен член данных $-\mathbb{E}_{a \sim \hat\pi_\beta}[Q]$ и $\mu = \pi$, Q-значения перестают быть поточечной оценкой — частые в данных действия могут даже переоцениваться, — но ценность политики ограничена снизу:
 
-Иными словами: **при предположениях анализа CQL и достаточной оптимизации метод строит консервативную оценку, математическое ожидание которой даёт нижнюю границу истинной ценности политики в точках датасета**. Это снижает стимул эксплуатировать OOD-переоценки, но не является абсолютной гарантией безопасности или отсутствия переоценки в произвольной нейросетевой реализации.
+$$\hat{V}^\pi(s) = \mathbb{E}_{a \sim \pi(\cdot \mid s)}\bigl[\hat{Q}^\pi(s, a)\bigr] \leq V^\pi(s) \quad \forall s \in \mathcal{D}$$
 
-Более практично (при тех же предположениях) ожидаемая производительность политики удовлетворяет:
+Из двух оценок эта точнее. У неё есть три условия, о которых легко забыть:
 
-$$J(\hat\pi) \geq J(\pi_\beta) - \frac{\alpha}{1-\gamma} \cdot \mathbb{E}_{s \sim d^{\pi_\beta}} \left[ D_{CQL}(\hat\pi, \pi_\beta)(s) \right]$$
+- $\alpha$ должно превышать порог, который растёт вместе с ошибкой выборки эмпирического оператора Беллмана, — примерно $C\,R_{max} / \bigl((1-\gamma)\sqrt{|\mathcal{D}(s)|}\bigr)$, умноженное на множитель, зависящий от того, насколько $\pi$ далека от $\hat\pi_\beta$. Только при точном бэкапе достаточно любого $\alpha > 0$.
+- Оценка выполняется с вероятностью не ниже $1 - \delta$ по датасету и только для состояний, которые в нём есть.
+- Анализ проводится для неподвижной точки точной оценки политики без аппроксимации функций (в приложении он распространён на линейные модели и модели в духе NTK). Нейросеть, обученная конечным числом градиентных шагов, наследует мотивацию, но не гарантию.
 
-Граница (при предположениях теоремы) связывает производительность CQL с BC плюс штраф, пропорциональный отклонению политики от поведенческой — это не безусловная гарантия в каждой практической настройке.
+Таким образом, теорема утверждает, что консервативна в среднем *целевая функция* CQL. Она не гарантирует, что конкретная нейросетевая реализация занижает каждое Q-значение или что полученная политика безопасна.
+
+**Safe policy improvement (теорема 3.6).** Пусть $\pi^*$ — политика, полученная оптимизацией по Q-функции CQL, а $\hat M$ — эмпирический MDP, заданный данными. С вероятностью не ниже $1 - \delta$
+
+$$J(\pi^*) \geq J(\hat\pi_\beta) - \zeta, \qquad \zeta = \underbrace{2\Bigl(\tfrac{C_{r,\delta}}{1-\gamma} + \tfrac{\gamma R_{max} C_{T,\delta}}{(1-\gamma)^2}\Bigr) \mathbb{E}_{s \sim d^{\pi^*}_{\hat M}}\!\left[\tfrac{\sqrt{|\mathcal{A}|}}{\sqrt{|\mathcal{D}(s)|}} \sqrt{D_{CQL}(\pi^*, \hat\pi_\beta)(s) + 1}\right]}_{\text{потеря из-за ошибки выборки}} - \underbrace{\bigl(J(\pi^*, \hat M) - J(\hat\pi_\beta, \hat M)\bigr)}_{\geq\ \frac{\alpha}{1-\gamma} \mathbb{E}_{s \sim d^{\pi^*}_{\hat M}}[D_{CQL}(\pi^*, \hat\pi_\beta)(s)]}$$
+
+где $D_{CQL}$ измеряет, насколько $\pi^*$ отходит от поведенческой политики. Расхождение входит с обеих сторон. Удаление от данных увеличивает выигрыш, который CQL получает в эмпирическом MDP, но увеличивает и член ошибки выборки, который уменьшается только с ростом числа посещений состояний $|\mathcal{D}(s)|$. При достаточном объёме данных и подходящем $\alpha$ политика CQL гарантированно не намного хуже поведенческой — и может оказаться лучше.
 
 ---
 
@@ -161,59 +169,51 @@ class GaussianPolicy(nn.Module):
 ### Функция потерь CQL
 
 ```python
-def cql_loss(Q1, Q2, Q1_target, Q2_target, policy,
-             states, actions, rewards, next_states, dones,
-             alpha_cql=1.0, gamma=0.99, n_action_samples=10):
+def importance_sampled_logsumexp(q_rand, q_pi, log_pi, action_dim):
     """
-    CQL loss = стандартная TD-потеря + консервативный штраф.
-    alpha_cql: сила консерватизма. Больше = более пессимистично.
+    Оценка Монте-Карло для log ∫ exp Q(s,a) da на [-1, 1]^d (Kumar et al., прил. F):
+        log( 1/2 E_Unif[exp Q / Unif(a)] + 1/2 E_pi[exp Q / pi(a|s)] )
+    Каждое распределение-предложение делится на свою плотность; Unif(a) = 2^{-d}.
     """
-    batch_size = states.shape[0]
+    n = q_rand.shape[1]
+    log_unif = -action_dim * math.log(2.0)
+    weighted = torch.cat([q_rand - log_unif, q_pi - log_pi], dim=1)   # (B, 2N)
+    # Один logsumexp по всем 2N сэмплам минус log 2N — это и есть смесь 1/2–1/2.
+    return torch.logsumexp(weighted, dim=1) - math.log(2 * n)
 
-    # ── 1. Стандартная TD-цель ────────────────────────────────────────────
+
+def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
+                     states, actions, rewards, next_states, dones,
+                     alpha_cql=1.0, alpha_ent=0.1, gamma=0.99, n_samples=10):
+    """
+    CQL loss = TD_loss + alpha_cql * CQL_penalty.
+    Вызывается дважды — для Q1 и для Q2 (во втором вызове Q/Q_other и целевые сети меняются местами).
+    """
+    B = states.shape[0]
+    dev = states.device
+
     with torch.no_grad():
-        next_actions, next_log_probs = policy.sample(next_states)
-        q_next  = torch.min(Q1_target(next_states, next_actions),
-                            Q2_target(next_states, next_actions))
-        q_next -= 0.1 * next_log_probs    # SAC: энтропийный бонус
-        # ↑ 0.1 — фиксированный коэффициент энтропии. Автонастройку см. ниже.
-        td_target = rewards + gamma * (1 - dones) * q_next
+        a_next, lp_next = policy.sample(next_states)
+        v_next = (torch.min(Q_tgt(next_states, a_next), Q_other_tgt(next_states, a_next))
+                  - alpha_ent * lp_next)
+        td_target = rewards + gamma * (1 - dones) * v_next
 
-    td_loss = F.mse_loss(Q1(states, actions), td_target)
+    q_data  = Q(states, actions)
+    td_loss = F.mse_loss(q_data, td_target)
 
-    # ── 2. CQL штраф ──────────────────────────────────────────────────────
-    # Случайные OOD-действия из равномерного распределения
-    random_actions = torch.FloatTensor(
-        batch_size * n_action_samples, actions.shape[-1]
-    ).uniform_(-1, 1).to(states.device)
+    s_rep  = states.unsqueeze(1).expand(-1, n_samples, -1).reshape(B * n_samples, -1)
+    a_rand = torch.FloatTensor(B * n_samples, actions.shape[-1]).uniform_(-1, 1).to(dev)
+    a_pi, lp_pi = policy.sample(s_rep)
+    q_rand = Q(s_rep, a_rand).reshape(B, n_samples)
+    q_pi   = Q(s_rep, a_pi).reshape(B, n_samples)
+    lse = importance_sampled_logsumexp(q_rand, q_pi,
+                                       lp_pi.detach().reshape(B, n_samples),
+                                       actions.shape[-1])
+    cql_penalty = (lse - q_data).mean()
 
-    # Действия текущей политики
-    states_rep = states.unsqueeze(1).repeat(1, n_action_samples, 1).view(
-        batch_size * n_action_samples, -1)
-    policy_actions, policy_log_probs = policy.sample(states_rep)
-
-    # Q-значения для случайных OOD-действий
-    q_rand   = Q1(states.unsqueeze(1).repeat(1, n_action_samples, 1)
-                  .view(batch_size * n_action_samples, -1),
-                  random_actions).view(batch_size, n_action_samples)
-
-    # Q-значения для policy-действий — с коррекцией importance weights.
-    # Вычитаем log π(a|s): сэмплируем a ~ π, но нужен E_{uniform}[exp Q].
-    q_policy_raw = Q1(states_rep, policy_actions).view(batch_size, n_action_samples)
-    lp = policy_log_probs.detach().view(batch_size, n_action_samples)
-    q_policy = q_policy_raw - lp     # importance weight: exp(Q)/π → exp(Q - log π)
-
-    # Q-значения для действий из датасета
-    q_data = Q1(states, actions)
-
-    # Усредняем два предложения отдельно, затем объединяем (не смешивать в одном logsumexp)
-    # log E[exp Q] ≈ log( (1/2) E_rand[exp Q] + (1/2) E_π[exp Q] )
-    term_rand = torch.logsumexp(q_rand, dim=1) - math.log(n_action_samples)
-    term_pi   = torch.logsumexp(q_policy, dim=1) - math.log(n_action_samples)
-    logsumexp = torch.logsumexp(torch.stack([term_rand, term_pi], dim=1), dim=1) - math.log(2)
-    cql_penalty = (logsumexp - q_data).mean()
-
-    return td_loss + alpha_cql * cql_penalty, td_loss.item(), cql_penalty.item()
+    loss = td_loss + alpha_cql * cql_penalty
+    return loss, {'td_loss': td_loss.item(), 'cql_penalty': cql_penalty.item(),
+                  'q_data': q_data.mean().item(), 'q_ood': lse.mean().item()}
 ```
 
 ### Автоматическая настройка alpha
@@ -363,7 +363,7 @@ TD3+BC — хорошая отправная точка для детермин�
 
 **Консервативен по построению.** CQL не превзойдёт поведенческую политику значительно в регионах с редкими данными. Он создан для безопасности, а не для агрессивной экстраполяции. Для задач, требующих существенного выхода за пределы датасета, более уместны модельные методы (Глава 8).
 
-**Непрерывные пространства действий требуют сэмплирования.** Аппроксимация logsumexp требует сэмплирования — как правило, 10 случайных действий и 10 действий политики на состояние. В коде два предложения усредняются *отдельно* (log E_rand[exp Q] и log E_π[exp Q] с importance weights для π), затем объединяются как log((1/2)(E_rand + E_π)), а не один logsumexp по всем 20 сэмплам, чтобы не искажать веса важности. Это увеличивает вычислительные затраты по сравнению с BC или TD3+BC.
+**Непрерывные пространства действий требуют сэмплирования.** Аппроксимация logsumexp требует сэмплирования — как правило, 10 случайных действий и 10 действий политики на состояние. Каждый сэмпл делится на плотность распределения, из которого он взят ($2^{-d}$ для равномерных действий, $\pi(a|s)$ для действий политики); после этого один logsumexp по всем 20 взвешенным сэмплам минус $\log 20$ — это в точности оценка смеси 1/2–1/2 для $\log \int e^{Q}\,da$ из статьи Kumar et al. Дисперсия такой оценки растёт с размерностью действия, поэтому в статье вариант на основе политики оказывается устойчивее в пространствах действий большой размерности. Сэмплирование также добавляет вычислительных затрат по сравнению с BC или TD3+BC.
 
 ---
 

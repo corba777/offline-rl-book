@@ -86,23 +86,31 @@ where $\mu$ is a proposal distribution. In practice, $\mu$ is either uniform ove
 
 $$\log \mathbb{E}_{a \sim \pi_\theta} \left[ \frac{\exp Q(s,a)}{\pi_\theta(a|s)} \right] \approx \log \frac{1}{N} \sum_{i=1}^N \frac{\exp Q(s, a_i)}{\pi_\theta(a_i|s)} = \text{logsumexp}_i \left[ Q(s, a_i) - \log \pi_\theta(a_i|s) \right] + \text{const}$$
 
-This is why the code computes `q_policy - policy_log_probs` before the logsumexp: subtracting $\log \pi_\theta(a|s)$ implements the importance weight correction. Without it, we would be approximating $\mathbb{E}_{\pi_\theta}[Q]$ (a plain Monte Carlo average), not $\log \sum_a \exp Q$ (the soft-maximum that CQL requires). The uniform random actions don't need this correction because their log-density is constant and cancels in the logsumexp.
+This is why the code subtracts `log_pi` from `q_pi` before the logsumexp: subtracting $\log \pi_\theta(a|s)$ implements the importance weight correction. Without it, we would be approximating $\mathbb{E}_{\pi_\theta}[Q]$ (a plain Monte Carlo average), not $\log \sum_a \exp Q$ (the soft-maximum that CQL requires). The uniform samples need the same correction. Their density on $[-1,1]^d$ is $2^{-d}$, so the code adds $d \log 2$ to their Q-values. A constant shift would be harmless if uniform samples were used alone, but here the two proposals are averaged: without the correction the uniform term estimates $\log \int e^{Q}\,da - d \log 2$ while the policy term estimates $\log \int e^{Q}\,da$, which silently changes their relative weight. The unit tests in `code/test_cql_td3bc.py` check the estimator against a closed-form integral.
 
 ### The Theoretical Guarantee
 
-**Theorem (Kumar et al., 2020).** Let $\hat{Q}^\pi$ be the Q-function learned by CQL and $Q^\pi$ be the true Q-function of policy $\pi$. Then:
+Kumar et al. (2020) prove two related lower bounds, and the difference between them matters.
 
-$$\mathbb{E}_{a \sim \pi(\cdot \mid s)}\bigl[\hat{Q}^\pi(s, a)\bigr] \leq V^\pi(s) \quad \forall s \in \mathcal{D}$$
+**Theorem 3.1 (push-down term only).** If the penalty contains only $\mathbb{E}_{a \sim \mu}[Q]$, for any $\mu$ whose support lies inside that of $\hat\pi_\beta$, the learned $\hat{Q}^\pi$ is a *pointwise* lower bound: $\hat{Q}^\pi(s, a) \leq Q^\pi(s, a)$ for all $s \in \mathcal{D}$ and all $a$, provided $\alpha$ is large enough.
 
-under appropriate conditions on $\alpha$. (A penalty with only the first, push-down term gives the stronger pointwise bound $\hat{Q}^\pi(s,a) \leq Q^\pi(s,a)$; the full objective, which also lifts dataset actions, bounds the policy's value in expectation instead, which is tighter in practice.)
+**Theorem 3.2 (full CQL objective).** With the data term $-\mathbb{E}_{a \sim \hat\pi_\beta}[Q]$ included and $\mu = \pi$, the Q-values are no longer a pointwise bound — actions that are frequent in the data can even be overestimated — but the value of the policy is:
 
-In other words: **under the assumptions of the CQL analysis and sufficient optimization, CQL learns a conservative estimate whose expected value for the evaluated policy lower-bounds the true policy value at dataset points**. This reduces the incentive to exploit overestimated OOD actions, but does not guarantee safety or eliminate all overestimation in arbitrary neural implementations.
+$$\hat{V}^\pi(s) = \mathbb{E}_{a \sim \pi(\cdot \mid s)}\bigl[\hat{Q}^\pi(s, a)\bigr] \leq V^\pi(s) \quad \forall s \in \mathcal{D}$$
 
-More practically (under the same assumptions), the expected policy performance satisfies:
+This is the tighter of the two bounds. Three of its conditions are easy to forget:
 
-$$J(\hat\pi) \geq J(\pi_\beta) - \frac{\alpha}{1-\gamma} \cdot \mathbb{E}_{s \sim d^{\pi_\beta}} \left[ D_{CQL}(\hat\pi, \pi_\beta)(s) \right]$$
+- $\alpha$ must exceed a threshold that grows with the sampling error of the empirical Bellman operator, roughly $C\,R_{max} / \bigl((1-\gamma)\sqrt{|\mathcal{D}(s)|}\bigr)$ times a factor depending on how far $\pi$ is from $\hat\pi_\beta$. Only when the backup is exact does any $\alpha > 0$ suffice.
+- The bound holds with probability at least $1 - \delta$ over the dataset, and only for states that appear in it.
+- The analysis concerns the fixed point of exact policy evaluation without function approximation (the appendix extends it to linear and NTK-style models). A neural network trained for a finite number of gradient steps inherits the motivation, not the guarantee.
 
-where $D_{CQL}$ is a divergence term that measures how far the learned policy drifts from the behavior policy. Under the theorem's assumptions, this bound relates CQL performance to BC plus a penalty proportional to policy divergence — not a blanket guarantee in every practical setting.
+So the theorem says that CQL's *objective* is conservative in expectation. It does not certify that a particular neural implementation underestimates every Q-value, or that the resulting policy is safe.
+
+**Safe policy improvement (Theorem 3.6).** Let $\pi^*$ be the policy obtained by optimizing against the CQL Q-function, and $\hat M$ the empirical MDP defined by the data. With probability at least $1 - \delta$,
+
+$$J(\pi^*) \geq J(\hat\pi_\beta) - \zeta, \qquad \zeta = \underbrace{2\Bigl(\tfrac{C_{r,\delta}}{1-\gamma} + \tfrac{\gamma R_{max} C_{T,\delta}}{(1-\gamma)^2}\Bigr) \mathbb{E}_{s \sim d^{\pi^*}_{\hat M}}\!\left[\tfrac{\sqrt{|\mathcal{A}|}}{\sqrt{|\mathcal{D}(s)|}} \sqrt{D_{CQL}(\pi^*, \hat\pi_\beta)(s) + 1}\right]}_{\text{loss from sampling error}} - \underbrace{\bigl(J(\pi^*, \hat M) - J(\hat\pi_\beta, \hat M)\bigr)}_{\geq\ \frac{\alpha}{1-\gamma} \mathbb{E}_{s \sim d^{\pi^*}_{\hat M}}[D_{CQL}(\pi^*, \hat\pi_\beta)(s)]}$$
+
+where $D_{CQL}$ measures how far $\pi^*$ moves from the behavior policy. The divergence appears on both sides. Moving away from the data increases the improvement CQL can claim in the empirical MDP, but also the sampling-error term, which shrinks only as the state counts $|\mathcal{D}(s)|$ grow. With enough data and a suitable $\alpha$, the CQL policy is guaranteed not to be much worse than the behavior policy, and it can be better.
 
 ---
 
@@ -176,13 +184,25 @@ class GaussianPolicy(nn.Module):
 This is the core: the standard TD loss plus the CQL penalty.
 
 ```python
+def importance_sampled_logsumexp(q_rand, q_pi, log_pi, action_dim):
+    """
+    Monte Carlo estimate of log ∫ exp Q(s,a) da over [-1, 1]^d (Kumar et al., App. F):
+        log( 1/2 E_Unif[exp Q / Unif(a)] + 1/2 E_pi[exp Q / pi(a|s)] )
+    Each proposal is divided by its own density; Unif(a) = 2^{-d}.
+    """
+    n = q_rand.shape[1]
+    log_unif = -action_dim * math.log(2.0)
+    weighted = torch.cat([q_rand - log_unif, q_pi - log_pi], dim=1)   # (B, 2N)
+    # One logsumexp over all 2N samples, divided by 2N, equals the 1/2–1/2 mixture.
+    return torch.logsumexp(weighted, dim=1) - math.log(2 * n)
+
+
 def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
                      states, actions, rewards, next_states, dones,
                      alpha_cql=1.0, alpha_ent=0.1, gamma=0.99, n_samples=10):
     """
     CQL loss = TD_loss + alpha_cql * CQL_penalty.
     Call twice for Q1 and Q2 (swap Q/Q_other and targets for the second call).
-    Returns: (loss, info_dict) with 'td_loss', 'cql_penalty', 'q_data', 'q_ood'.
     """
     B = states.shape[0]
     dev = states.device
@@ -196,20 +216,19 @@ def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
     q_data  = Q(states, actions)
     td_loss = F.mse_loss(q_data, td_target)
 
-    s_rep = states.unsqueeze(1).expand(-1, n_samples, -1).reshape(B * n_samples, -1)
+    s_rep  = states.unsqueeze(1).expand(-1, n_samples, -1).reshape(B * n_samples, -1)
     a_rand = torch.FloatTensor(B * n_samples, actions.shape[-1]).uniform_(-1, 1).to(dev)
     a_pi, lp_pi = policy.sample(s_rep)
     q_rand = Q(s_rep, a_rand).reshape(B, n_samples)
-    q_pi   = (Q(s_rep, a_pi) - lp_pi.detach()).reshape(B, n_samples)
-    # Average each proposal separately, then combine (do not mix in one logsumexp)
-    term_rand = torch.logsumexp(q_rand, dim=1) - math.log(n_samples)
-    term_pi   = torch.logsumexp(q_pi, dim=1) - math.log(n_samples)
-    logsumexp = torch.logsumexp(torch.stack([term_rand, term_pi], dim=1), dim=1) - math.log(2)
-    cql_penalty = (logsumexp - q_data).mean()
+    q_pi   = Q(s_rep, a_pi).reshape(B, n_samples)
+    lse = importance_sampled_logsumexp(q_rand, q_pi,
+                                       lp_pi.detach().reshape(B, n_samples),
+                                       actions.shape[-1])
+    cql_penalty = (lse - q_data).mean()
 
     loss = td_loss + alpha_cql * cql_penalty
     return loss, {'td_loss': td_loss.item(), 'cql_penalty': cql_penalty.item(),
-                 'q_data': q_data.mean().item(), 'q_ood': logsumexp.mean().item()}
+                  'q_data': q_data.mean().item(), 'q_ood': lse.mean().item()}
 ```
 
 ### Training Loop
@@ -425,7 +444,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 
 **Conservative by design.** CQL will not outperform the behavior policy by a large margin in regions with sparse data. It is designed to be safe, not to extrapolate aggressively. For tasks requiring significant extrapolation beyond the dataset, model-based methods (Chapter 8) are more appropriate.
 
-**Continuous action spaces need sampling.** The logsumexp over actions requires sampling — typically 10 uniform + 10 policy samples per state. The code averages the two proposal distributions *separately* (log E_rand[exp Q] and log E_π[exp Q] with importance weights for π), then combines them as log((1/2)(E_rand + E_π)), rather than one logsumexp over all 20 samples, so importance weights are not distorted. This adds computational overhead compared to BC or TD3+BC.
+**Continuous action spaces need sampling.** The logsumexp over actions requires sampling — typically 10 uniform + 10 policy samples per state. Each sample is divided by the density of the distribution it came from ($2^{-d}$ for uniform actions, $\pi(a|s)$ for policy actions); after that, one logsumexp over all 20 weighted samples minus $\log 20$ is exactly the half-and-half mixture estimate of $\log \int e^{Q}\,da$ used by Kumar et al. The variance of this estimate grows with the action dimension, which is why the paper finds the policy-based variant more stable in high-dimensional action spaces. Sampling also adds computational overhead compared to BC or TD3+BC.
 
 ---
 
