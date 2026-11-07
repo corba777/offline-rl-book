@@ -338,7 +338,7 @@
 <ul>
 <li><strong>Кодирования, сохраняющие ценность.</strong> Какое сжатие длинной истории оставляет достаточно информации, чтобы $A_t$ оставалось идентифицируемым, и как проверить, что данное кодирование это делает.</li>
 <li><strong>Credit для структурированных действий.</strong> У вызова инструмента есть имя и аргументы; выбрать не тот инструмент и передать неверный аргумент — разные ошибки, и credit на уровне токенов может расходиться с credit на уровне вызовов.</li>
-<li><strong>Оценка credit без перезапуска.</strong> Большинство производственных логов получены в средах, которые нельзя отмотать назад, а значит, единственного прямого эталона нет.</li>
+<li><strong>Оценка credit без перезапуска.</strong> Большинство производственных логов получены в средах, которые нельзя отмотать назад, а значит, единственного прямого эталона нет. Один из способов получить перезапускаемые стенды для проверки оценок credit — генерировать исполняемые среды, как в SPADE (ниже); цена — разрыв между синтетическими задачами и производственными инструментами.</li>
 <li><strong>Нестационарные инструменты.</strong> Когда у инструмента меняется версия, распределение $\varepsilon_t$ сдвигается, и credit, выученный на старой версии, неверно приписывает исходы на новой.</li>
 </ul>
 <hr />
@@ -473,6 +473,11 @@
 <td><strong>Critic во время инференса</strong></td>
 <td><em>Planning without Search</em> (<a href="https://arxiv.org/abs/2505.18098">arXiv:2505.18098</a>) — goal-conditioned value function направляет уточнение плана</td>
 <td>Offline RL обучает critic; базовая LLM может оставаться замороженной</td>
+</tr>
+<tr>
+<td><strong>Генератор сред</strong></td>
+<td><a href="https://arxiv.org/abs/2608.19197">SPADE</a> (<a href="https://spade-rl.github.io/">Liu et al., 2026</a>) — LLM пишет исполняемые среды с <code>reset()</code>/<code>step()</code>; это online self-play, а не offline RL</td>
+<td>Исполняемые перезапускаемые среды делают возможными re-execution для OPE и продолжения из префиксов; синтетические задачи могут не переноситься на производственные инструменты</td>
 </tr>
 <tr>
 <td><strong>Модель награды</strong></td>
@@ -797,6 +802,7 @@ Dataset: no multiplication support
 <li>Yi, H., &amp; Song, X. (2026). <em>HarnessMDP: Learning to Control LLM Agent Harnesses with Offline Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2607.05458">arXiv:2607.05458</a>.</li>
 <li>Ren, X., &amp; Xie, T. (2026). <em>When Does Trajectory-Level Supervision Permit Efficient Offline Reinforcement Learning?</em> <a href="https://arxiv.org/abs/2606.18531">arXiv:2606.18531</a>.</li>
 <li>Zhang, C. (2026). <em>From Reasoning to Agentic: Credit Assignment in Reinforcement Learning for Large Language Models.</em> <a href="https://arxiv.org/abs/2604.09459">arXiv:2604.09459</a>.</li>
+<li>Liu, B., Yu, S., Jiang, Y., et al. (2026). <em>SPADE: Self-Play in Adaptive Synthetic Executable Environments.</em> <a href="https://arxiv.org/abs/2608.19197">arXiv:2608.19197</a>, <a href="https://spade-rl.github.io/">project</a>.</li>
 <li>Ng, A.Y., Harada, D., &amp; Russell, S. (1999). <em>Policy Invariance under Reward Transformations: Theory and Application to Reward Shaping.</em> ICML. <a href="https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf">PDF</a>.</li>
 <li>Arjona-Medina, J.A., Gillhofer, M., Widrich, M., Unterthiner, T., Brandstetter, J., &amp; Hochreiter, S. (2019). <em>RUDDER: Return Decomposition for Delayed Rewards.</em> NeurIPS. <a href="https://arxiv.org/abs/1806.07857">arXiv:1806.07857</a>.</li>
 <li>Lightman, H., Kosaraju, V., Burda, Y., et al. (2023). <em>Let's Verify Step by Step.</em> <a href="https://arxiv.org/abs/2305.20050">arXiv:2305.20050</a>.</li>

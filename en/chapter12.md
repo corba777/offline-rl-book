@@ -218,7 +218,7 @@ With several agents, the decision at step $t$ is a joint action $a_t = (a_t^1, \
 
 - **Encodings that preserve value.** Which summary of a long history keeps enough information for $A_t$ to remain identifiable, and how to test that a given encoding does.
 - **Credit for structured actions.** A tool call has a name and arguments; choosing the wrong tool and passing a wrong argument are different errors, and credit at the level of tokens and at the level of calls can disagree.
-- **Evaluating credit without resets.** Most production logs come from environments that cannot be rewound, which removes the only direct ground truth.
+- **Evaluating credit without resets.** Most production logs come from environments that cannot be rewound, which removes the only direct ground truth. Generated executable environments, as in SPADE (below), are one way to get resettable test beds for credit estimators, at the price of a gap between synthetic tasks and production tools.
 - **Non-stationary tools.** When a tool changes version, the distribution of $\varepsilon_t$ shifts, and credit learned under the old version misattributes outcomes under the new one.
 
 ---
@@ -306,6 +306,7 @@ LLMs appear in agentic offline pipelines in several roles — not only as the po
 | **Trajectory generator** | [KALM](https://arxiv.org/abs/2404.09248) ([Pang et al., NeurIPS 2024](https://arxiv.org/abs/2404.09248)) — LLM imaginary rollouts merged with real data, then standard offline RL | Expands coverage; watch semantic gap between text and low-level actions |
 | **Dataset labeler** | [TEDUO](https://arxiv.org/abs/2412.06877) — hindsight labeling and state abstraction on unlabeled logs, then offline RL + SFT | LLM as annotator before RL |
 | **Inference-time critic** | *Planning without Search* ([arXiv:2505.18098](https://arxiv.org/abs/2505.18098)) — goal-conditioned value function guides plan refinement | Offline RL trains critic; base LLM may stay frozen |
+| **Environment generator** | [SPADE](https://arxiv.org/abs/2608.19197) ([Liu et al., 2026](https://spade-rl.github.io/)) — an LLM writes executable environments with `reset()`/`step()`; an online self-play method, not offline RL | Executable, resettable environments make re-execution OPE and prefix rollouts possible; synthetic tasks may not transfer to production tools |
 | **Reward model** | LLM-as-judge scores | Cheap but gameable; combine with verifiers |
 
 KALM grounds the LLM on environment dynamics before generating rollouts — addressing the **semantic gap** between tokens and numerical state. TEDUO shows LLMs can enrich **unlabeled** interaction logs so offline RL has goals and abstract states to condition on.
@@ -588,6 +589,7 @@ See the [Appendix: Algorithm Selection Guide](/offline-rl-book/en/appendix.html)
 - Yi, H., & Song, X. (2026). *HarnessMDP: Learning to Control LLM Agent Harnesses with Offline Reinforcement Learning.* [arXiv:2607.05458](https://arxiv.org/abs/2607.05458).
 - Ren, X., & Xie, T. (2026). *When Does Trajectory-Level Supervision Permit Efficient Offline Reinforcement Learning?* [arXiv:2606.18531](https://arxiv.org/abs/2606.18531).
 - Zhang, C. (2026). *From Reasoning to Agentic: Credit Assignment in Reinforcement Learning for Large Language Models.* [arXiv:2604.09459](https://arxiv.org/abs/2604.09459).
+- Liu, B., Yu, S., Jiang, Y., et al. (2026). *SPADE: Self-Play in Adaptive Synthetic Executable Environments.* [arXiv:2608.19197](https://arxiv.org/abs/2608.19197), [project](https://spade-rl.github.io/).
 - Ng, A.Y., Harada, D., & Russell, S. (1999). *Policy Invariance under Reward Transformations: Theory and Application to Reward Shaping.* ICML. [PDF](https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf).
 - Arjona-Medina, J.A., Gillhofer, M., Widrich, M., Unterthiner, T., Brandstetter, J., & Hochreiter, S. (2019). *RUDDER: Return Decomposition for Delayed Rewards.* NeurIPS. [arXiv:1806.07857](https://arxiv.org/abs/1806.07857).
 - Lightman, H., Kosaraju, V., Burda, Y., et al. (2023). *Let's Verify Step by Step.* [arXiv:2305.20050](https://arxiv.org/abs/2305.20050).

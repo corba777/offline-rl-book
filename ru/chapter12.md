@@ -220,7 +220,7 @@ Temporal credit assignment — это задача восстановить от
 
 - **Кодирования, сохраняющие ценность.** Какое сжатие длинной истории оставляет достаточно информации, чтобы $A_t$ оставалось идентифицируемым, и как проверить, что данное кодирование это делает.
 - **Credit для структурированных действий.** У вызова инструмента есть имя и аргументы; выбрать не тот инструмент и передать неверный аргумент — разные ошибки, и credit на уровне токенов может расходиться с credit на уровне вызовов.
-- **Оценка credit без перезапуска.** Большинство производственных логов получены в средах, которые нельзя отмотать назад, а значит, единственного прямого эталона нет.
+- **Оценка credit без перезапуска.** Большинство производственных логов получены в средах, которые нельзя отмотать назад, а значит, единственного прямого эталона нет. Один из способов получить перезапускаемые стенды для проверки оценок credit — генерировать исполняемые среды, как в SPADE (ниже); цена — разрыв между синтетическими задачами и производственными инструментами.
 - **Нестационарные инструменты.** Когда у инструмента меняется версия, распределение $\varepsilon_t$ сдвигается, и credit, выученный на старой версии, неверно приписывает исходы на новой.
 
 ---
@@ -306,6 +306,7 @@ Cached response можно переиспользовать, только есл
 | **Генератор траекторий** | [KALM](https://arxiv.org/abs/2404.09248) ([Pang et al., NeurIPS 2024](https://arxiv.org/abs/2404.09248)) — воображаемые rollouts LLM смешиваются с реальными данными, затем обычный offline RL | Расширяет покрытие; следите за семантическим разрывом между текстом и низкоуровневыми действиями |
 | **Разметчик датасета** | [TEDUO](https://arxiv.org/abs/2412.06877) — ретроспективная разметка и абстракция состояний на неразмеченных логах, затем offline RL и SFT | LLM размечает данные до RL |
 | **Critic во время инференса** | *Planning without Search* ([arXiv:2505.18098](https://arxiv.org/abs/2505.18098)) — goal-conditioned value function направляет уточнение плана | Offline RL обучает critic; базовая LLM может оставаться замороженной |
+| **Генератор сред** | [SPADE](https://arxiv.org/abs/2608.19197) ([Liu et al., 2026](https://spade-rl.github.io/)) — LLM пишет исполняемые среды с `reset()`/`step()`; это online self-play, а не offline RL | Исполняемые перезапускаемые среды делают возможными re-execution для OPE и продолжения из префиксов; синтетические задачи могут не переноситься на производственные инструменты |
 | **Модель награды** | Оценки LLM-as-judge | Дёшево, но легко обмануть; сочетайте с verifiers |
 
 KALM сначала «заземляет» LLM на динамике среды и лишь затем генерирует rollouts — так он сокращает **семантический разрыв** между токенами и числовым состоянием. TEDUO показывает, что LLM способна обогатить **неразмеченные** логи взаимодействия так, чтобы у offline RL появились цели и абстрактные состояния для обусловливания.
@@ -588,6 +589,7 @@ Single-agent offline RL не решает три задачи, которые з
 - Yi, H., & Song, X. (2026). *HarnessMDP: Learning to Control LLM Agent Harnesses with Offline Reinforcement Learning.* [arXiv:2607.05458](https://arxiv.org/abs/2607.05458).
 - Ren, X., & Xie, T. (2026). *When Does Trajectory-Level Supervision Permit Efficient Offline Reinforcement Learning?* [arXiv:2606.18531](https://arxiv.org/abs/2606.18531).
 - Zhang, C. (2026). *From Reasoning to Agentic: Credit Assignment in Reinforcement Learning for Large Language Models.* [arXiv:2604.09459](https://arxiv.org/abs/2604.09459).
+- Liu, B., Yu, S., Jiang, Y., et al. (2026). *SPADE: Self-Play in Adaptive Synthetic Executable Environments.* [arXiv:2608.19197](https://arxiv.org/abs/2608.19197), [project](https://spade-rl.github.io/).
 - Ng, A.Y., Harada, D., & Russell, S. (1999). *Policy Invariance under Reward Transformations: Theory and Application to Reward Shaping.* ICML. [PDF](https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf).
 - Arjona-Medina, J.A., Gillhofer, M., Widrich, M., Unterthiner, T., Brandstetter, J., & Hochreiter, S. (2019). *RUDDER: Return Decomposition for Delayed Rewards.* NeurIPS. [arXiv:1806.07857](https://arxiv.org/abs/1806.07857).
 - Lightman, H., Kosaraju, V., Burda, Y., et al. (2023). *Let's Verify Step by Step.* [arXiv:2305.20050](https://arxiv.org/abs/2305.20050).

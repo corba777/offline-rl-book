@@ -337,7 +337,7 @@
 <ul>
 <li><strong>Encodings that preserve value.</strong> Which summary of a long history keeps enough information for $A_t$ to remain identifiable, and how to test that a given encoding does.</li>
 <li><strong>Credit for structured actions.</strong> A tool call has a name and arguments; choosing the wrong tool and passing a wrong argument are different errors, and credit at the level of tokens and at the level of calls can disagree.</li>
-<li><strong>Evaluating credit without resets.</strong> Most production logs come from environments that cannot be rewound, which removes the only direct ground truth.</li>
+<li><strong>Evaluating credit without resets.</strong> Most production logs come from environments that cannot be rewound, which removes the only direct ground truth. Generated executable environments, as in SPADE (below), are one way to get resettable test beds for credit estimators, at the price of a gap between synthetic tasks and production tools.</li>
 <li><strong>Non-stationary tools.</strong> When a tool changes version, the distribution of $\varepsilon_t$ shifts, and credit learned under the old version misattributes outcomes under the new one.</li>
 </ul>
 <hr />
@@ -473,6 +473,11 @@
 <td><strong>Inference-time critic</strong></td>
 <td><em>Planning without Search</em> (<a href="https://arxiv.org/abs/2505.18098">arXiv:2505.18098</a>) — goal-conditioned value function guides plan refinement</td>
 <td>Offline RL trains critic; base LLM may stay frozen</td>
+</tr>
+<tr>
+<td><strong>Environment generator</strong></td>
+<td><a href="https://arxiv.org/abs/2608.19197">SPADE</a> (<a href="https://spade-rl.github.io/">Liu et al., 2026</a>) — an LLM writes executable environments with <code>reset()</code>/<code>step()</code>; an online self-play method, not offline RL</td>
+<td>Executable, resettable environments make re-execution OPE and prefix rollouts possible; synthetic tasks may not transfer to production tools</td>
 </tr>
 <tr>
 <td><strong>Reward model</strong></td>
@@ -797,6 +802,7 @@ Dataset: no multiplication support
 <li>Yi, H., &amp; Song, X. (2026). <em>HarnessMDP: Learning to Control LLM Agent Harnesses with Offline Reinforcement Learning.</em> <a href="https://arxiv.org/abs/2607.05458">arXiv:2607.05458</a>.</li>
 <li>Ren, X., &amp; Xie, T. (2026). <em>When Does Trajectory-Level Supervision Permit Efficient Offline Reinforcement Learning?</em> <a href="https://arxiv.org/abs/2606.18531">arXiv:2606.18531</a>.</li>
 <li>Zhang, C. (2026). <em>From Reasoning to Agentic: Credit Assignment in Reinforcement Learning for Large Language Models.</em> <a href="https://arxiv.org/abs/2604.09459">arXiv:2604.09459</a>.</li>
+<li>Liu, B., Yu, S., Jiang, Y., et al. (2026). <em>SPADE: Self-Play in Adaptive Synthetic Executable Environments.</em> <a href="https://arxiv.org/abs/2608.19197">arXiv:2608.19197</a>, <a href="https://spade-rl.github.io/">project</a>.</li>
 <li>Ng, A.Y., Harada, D., &amp; Russell, S. (1999). <em>Policy Invariance under Reward Transformations: Theory and Application to Reward Shaping.</em> ICML. <a href="https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf">PDF</a>.</li>
 <li>Arjona-Medina, J.A., Gillhofer, M., Widrich, M., Unterthiner, T., Brandstetter, J., &amp; Hochreiter, S. (2019). <em>RUDDER: Return Decomposition for Delayed Rewards.</em> NeurIPS. <a href="https://arxiv.org/abs/1806.07857">arXiv:1806.07857</a>.</li>
 <li>Lightman, H., Kosaraju, V., Burda, Y., et al. (2023). <em>Let's Verify Step by Step.</em> <a href="https://arxiv.org/abs/2305.20050">arXiv:2305.20050</a>.</li>
