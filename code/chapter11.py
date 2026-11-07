@@ -58,14 +58,14 @@ try:
     _CQL_AVAILABLE = True
 except ImportError:
     _CQL_AVAILABLE = False
-    print("  [ch8] cql.py not found")
+    print("  [ch11] cql.py not found")
 
 try:
     from morel import DynamicsEnsemble
     _MOREL_AVAILABLE = True
 except ImportError:
     _MOREL_AVAILABLE = False
-    print("  [ch8] morel.py not found")
+    print("  [ch11] morel.py not found")
 
 try:
     from chapter10 import (
@@ -77,7 +77,7 @@ try:
     _CH7_AVAILABLE = True
 except ImportError:
     _CH7_AVAILABLE = False
-    print("  [ch8] chapter10.py not found")
+    print("  [ch11] chapter10.py not found")
 
 
 # ── State and action feature names for the coating process ──────────────────
@@ -694,7 +694,7 @@ def print_shap_summary(results: Dict,
     formatted for inclusion in an operator report or chapter discussion.
     """
     print("\n" + "=" * 58)
-    print("  CHAPTER 8 — SHAP ANALYSIS SUMMARY")
+    print("  CHAPTER 11 — SHAP ANALYSIS SUMMARY")
     print("=" * 58)
 
     # Q-function top features
@@ -749,9 +749,11 @@ def check_explanation_consistency(results: Dict) -> Dict[str, float]:
     Three consistency metrics:
 
     1. Q-policy rank correlation (Spearman):
-       Checks whether the features that drive the Q-value also drive the policy.
-       High correlation (>0.7) means the policy follows the Q-value gradient.
-       Low correlation (<0.3) may indicate policy collapse or distribution shift.
+       Compares the state-feature ranking of the Q-function with that of the
+       policy (mean |SHAP| summed over both actions). With five features only
+       rho above ~0.9 is significant, and the rankings need not agree: Q
+       attributes value, the policy attributes action. A low rho is a prompt
+       to look closer, not a test.
 
     2. Dynamics-policy alignment:
        For each action, checks whether the features that the policy attends to
@@ -760,11 +762,14 @@ def check_explanation_consistency(results: Dict) -> Dict[str, float]:
        Example: policy attends to temperature → dynamics_temperature should
        also rank temperature highly as an input.
 
-    3. Physics sanity check:
-       Checks that heat_input has a positive SHAP on next_temperature
-       and flow_input has a positive SHAP on next_filler.
-       Negative SHAP here would indicate the dynamics model learned an
-       inverted relationship — a physics violation.
+    3. Physics sign checks:
+       The slope of an input's SHAP value against the input itself should
+       have the physical sign: heat_input -> next_temperature and
+       flow_input -> next_level must both be positive. Mean signed SHAP is
+       not used: it sits near zero whenever instances straddle the background.
+       flow_input -> next_filler is reported but not judged: the true filler
+       response is delayed by two steps, so a correct model shows little
+       dependence on the current flow command.
 
     Returns dict of metric name → value.
     """
@@ -774,29 +779,23 @@ def check_explanation_consistency(results: Dict) -> Dict[str, float]:
 
     # 1. Q-policy rank correlation
     q_sv    = results['q_shap'][:, :len(STATE_NAMES)]   # state part only
-    pi_sv_0 = results['policy_shap'][0]                 # heat_input
     q_rank  = np.abs(q_sv).mean(0)
-    pi_rank = np.abs(pi_sv_0).mean(0)
+    pi_rank = sum(np.abs(sv).mean(0) for sv in results['policy_shap'])   # both actions
     rho, _  = spearmanr(q_rank, pi_rank)
     metrics['q_policy_spearman'] = float(rho)
 
-    # 2. Physics sanity checks (if dynamics available)
+    # 2. Physics sign checks (if dynamics available)
     if results['dynamics_shap']:
-        # heat_input → next_temperature: should be positive
-        if 0 in results['dynamics_shap']:
-            sv_temp     = results['dynamics_shap'][0]       # (n, S+A)
-            heat_idx    = len(STATE_NAMES)                  # heat_input column
-            heat_shap   = sv_temp[:, heat_idx].mean()
-            metrics['heat_to_temp_shap_mean'] = float(heat_shap)
-            metrics['heat_to_temp_sign_ok']   = float(heat_shap > 0)
-
-        # flow_input → next_filler: should be positive
-        if 1 in results['dynamics_shap']:
-            sv_fill     = results['dynamics_shap'][1]
-            flow_idx    = len(STATE_NAMES) + 1              # flow_input column
-            flow_shap   = sv_fill[:, flow_idx].mean()
-            metrics['flow_to_filler_shap_mean'] = float(flow_shap)
-            metrics['flow_to_filler_sign_ok']   = float(flow_shap > 0)
+        sa = np.concatenate([results['states'], results['actions']], axis=1)
+        heat_idx = len(STATE_NAMES)                         # heat_input column
+        flow_idx = len(STATE_NAMES) + 1                     # flow_input column
+        checks = [('heat_to_temp', 0, heat_idx),
+                  ('flow_to_level', 4, flow_idx),
+                  ('flow_to_filler', 1, flow_idx)]
+        for name, out_idx, in_idx in checks:
+            if out_idx in results['dynamics_shap']:
+                sv = results['dynamics_shap'][out_idx][:, in_idx]
+                metrics[f'{name}_slope'] = float(np.polyfit(sa[:, in_idx], sv, 1)[0])
 
     return metrics
 
@@ -807,28 +806,26 @@ def print_consistency_report(metrics: Dict[str, float]) -> None:
     print("─" * 50)
     rho = metrics.get('q_policy_spearman', None)
     if rho is not None:
-        status = '(n=5 features: not significant below ~0.9)' if rho > 0.0 else '✗ inverse ranking — inspect the actor'
-        print(f"  Q ↔ policy rank correlation  : {rho:.3f}  {status}")
+        print(f"  Q ↔ policy rank correlation  : {rho:+.3f}  "
+              f"(n=5 features: not significant below ~0.9)")
         if rho < 0.3:
-            print("    WARNING: Q-function and policy attend to different features.")
-            print("    Possible cause: policy collapse, OOD actions, or value overestimation.")
+            print("    Low: Q and policy rank features differently. Not a failure in itself;")
+            print("    check whether the actor still responds to the state.")
 
-    if 'heat_to_temp_sign_ok' in metrics:
-        ok = metrics['heat_to_temp_sign_ok'] > 0
-        val = metrics['heat_to_temp_shap_mean']
-        print(f"  heat_input → next_temperature: SHAP={val:+.4f}  "
-              f"{'✓ positive (correct)' if ok else '✗ NEGATIVE (physics violation!)'}")
-
-    if 'flow_to_filler_sign_ok' in metrics:
-        ok = metrics['flow_to_filler_sign_ok'] > 0
-        val = metrics['flow_to_filler_shap_mean']
-        print(f"  flow_input → next_filler     : SHAP={val:+.4f}  "
-              f"{'✓ positive (correct)' if ok else '✗ NEGATIVE (physics violation!)'}")
+    for name, label in [('heat_to_temp', 'heat_input → next_temperature'),
+                        ('flow_to_level', 'flow_input → next_level      ')]:
+        if f'{name}_slope' in metrics:
+            val = metrics[f'{name}_slope']
+            print(f"  {label}: slope={val:+.4f}  "
+                  f"{'✓ positive (correct)' if val > 0 else '✗ NEGATIVE (physics violation!)'}")
+    if 'flow_to_filler_slope' in metrics:
+        print(f"  flow_input → next_filler     : slope={metrics['flow_to_filler_slope']:+.4f}  "
+              f"(true effect is delayed two steps; expect ≈ 0)")
     print("─" * 50)
 
 
 # ============================================================================
-# 6. TRAINING UTILITIES (minimal — reuse from ch7)
+# 6. TRAINING UTILITIES (minimal — reuse from Chapter 10)
 # ============================================================================
 
 def train_cql_for_shap(device: str = 'cpu',
@@ -908,7 +905,7 @@ def run_shap_analysis(device:     str  = 'cpu',
         n_explain = 20; n_background = 20; n_samples = 20
 
     print("=" * 58)
-    print("Chapter 8: Explainability in Offline RL — SHAP Analysis")
+    print("Chapter 11: Explainability in Offline RL — SHAP Analysis")
     print("=" * 58)
 
     # Train

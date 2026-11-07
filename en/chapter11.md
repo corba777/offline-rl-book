@@ -142,7 +142,7 @@ class PolicySingleOutputWrapper:
         return action[:, self.action_idx].cpu().numpy()
 ```
 
-**Expected pattern:** `heat_input` driven primarily by `temperature` deviation; `flow_input` by `filler_frac` deviation. If `level` has high SHAP for `flow_input`, the policy learned that flow rate affects level — physically correct (level depends on inflow) and a sign that the agent has internalized the integrating dynamics.
+**Expected pattern:** `heat_input` driven primarily by `temperature`. For `flow_input` the naive guess is `filler_frac`, but in the run below `level` dominates by a wide margin (mean |SHAP| 0.16 against 0.02). That is physically sensible: the feed is the only lever on the integrating level, while the filler fraction relaxes back toward its setpoint largely on its own.
 
 ### Level 3: Dynamics SHAP — Why Does the Model Predict This Next State?
 
@@ -161,7 +161,7 @@ class DynamicsSingleOutputWrapper:
         return s_next[:, self.state_idx].cpu().numpy()
 ```
 
-**Physics sanity check:** `heat_input` should show a **positive dependence slope** with `next_temperature` (SHAP increases as heat rises); likewise `flow_input` with `next_filler_frac`. Test this via a feature-vs-SHAP correlation or the dependence plot — not via mean signed SHAP, which can sit near zero when instances straddle the background baseline. If the slope is inverted, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.
+**Physics sanity check:** `heat_input` should show a **positive dependence slope** with `next_temperature` (SHAP increases as heat rises); likewise `flow_input` with `next_level`. Do not expect the same for `next_filler_frac`: the filler responds to the feed two steps later, so a correct one-step model shows almost no dependence on the current flow command. Test this via a feature-vs-SHAP correlation or the dependence plot — not via mean signed SHAP, which can sit near zero when instances straddle the background baseline. If the slope is inverted, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.
 
 ---
 
@@ -268,16 +268,19 @@ metrics = check_explanation_consistency(results)
 print_consistency_report(metrics)
 ```
 
-Expected output:
+Output of `python code/chapter11.py` (the ensemble is retrained on every run, so the digits vary slightly):
 ```
-  Q ↔ policy rank correlation  : 0.71  (n=5 features: not significant below ~0.9)
-  heat_input → next_temperature: SHAP=+0.0412  ✓ positive (correct)
-  flow_input → next_filler     : SHAP=+0.0387  ✓ positive (correct)
+  Q ↔ policy rank correlation  : +0.200  (n=5 features: not significant below ~0.9)
+    Low: Q and policy rank features differently. Not a failure in itself;
+    check whether the actor still responds to the state.
+  heat_input → next_temperature: slope=+1.0488  ✓ positive (correct)
+  flow_input → next_level      : slope=+1.8630  ✓ positive (correct)
+  flow_input → next_filler     : slope=-0.0147  (true effect is delayed two steps; expect ≈ 0)
 ```
 
-**Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in the Q-function and in the policy. With only five state features this is a blunt instrument: for $n = 5$, $\rho$ must reach about 0.9 to be significant at the 5% level (one-sided), so a value like 0.71 is not evidence of anything on its own. Nor is there a reason the two rankings must agree: the Q-function attributes *value* and the policy attributes *action*, and a variable can matter for one without mattering for the other. A very low or negative $\rho$ is a prompt to look closer — for instance at whether a strongly regularized actor (large CQL $\alpha$) has stopped responding to the state — not a pass/fail test.
+**Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in the Q-function and in the policy. With only five state features this is a blunt instrument: for $n = 5$, $\rho$ must reach about 0.9 to be significant at the 5% level (one-sided), so the 0.20 above is not evidence of anything on its own. Here it is low for an understandable reason: the Q-function ranks `level` and `temperature` highest, and the policy does too, but the remaining three features have near-zero policy SHAP whose order is noise. Nor is there a reason the two rankings must agree: the Q-function attributes *value* and the policy attributes *action*, and a variable can matter for one without mattering for the other. A very low or negative $\rho$ is a prompt to look closer — for instance at whether a strongly regularized actor (large CQL $\alpha$) has stopped responding to the state — not a pass/fail test.
 
-**Physics sign tests:** `heat_input` should show a positive dependence slope with `next_temperature`, and `flow_input` with `next_filler_frac` — test the feature-vs-SHAP slope (or dependence plot), not the mean signed SHAP, which can sit near zero when instances straddle the background. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse.
+**Physics sign tests:** `heat_input` should show a positive dependence slope with `next_temperature`, and `flow_input` with `next_level`; the slope for `next_filler_frac` is printed for reference and should be near zero because of the transport delay. The code fits a line to SHAP against the feature value instead of averaging signed SHAP, which can sit near zero when instances straddle the background; the dependence plot shows the same thing visually. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse.
 
 ---
 
