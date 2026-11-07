@@ -118,6 +118,11 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">net</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">low</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">high</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+        <span class="c1"># The linear head is unbounded; actuators are not</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">high</span><span class="p">)</span>
+
 
 <span class="k">def</span><span class="w"> </span><span class="nf">train_bc</span><span class="p">(</span>
     <span class="n">states</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>   <span class="c1"># (N, state_dim)</span>
@@ -203,7 +208,7 @@
     <span class="k">return</span> <span class="n">policy</span>
 </code></pre></div>
 
-<p>Neither network bounds its output: a linear head or an unsquashed Gaussian can return an action outside the actuator range. The code clips actions in <code>act()</code>; the alternative is a tanh-squashed Gaussian with the change-of-variables correction to its log-density, as used by the SAC-based agents in later chapters.</p>
+<p>Neither network bounds its output: a linear head or an unsquashed Gaussian can return an action outside the actuator range. Both policies therefore clip their actions in <code>act()</code>, as <code>behavioral_cloning.py</code> does; the alternative is a tanh-squashed Gaussian with the change-of-variables correction to its log-density, as used by the SAC-based agents in later chapters.</p>
 <hr />
 <h2>When Does BC Work?</h2>
 <p>BC works well under two conditions:</p>

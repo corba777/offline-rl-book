@@ -85,7 +85,8 @@ The full Chapter 10 benchmark (ten seeds, about an hour on a laptop CPU for each
 python code/chapter10.py                 # state as logged
 python code/chapter10.py --lagged-flow   # Markov state with the feed commands in transit
 python code/chapter10.py --oracle-ablation   # 2x2: learned vs true dynamics, HALT on vs off
-python code/chapter10.py --halt-study [--lagged-flow]   # HALT at the 80th / 99th percentile vs off
+python code/chapter10.py --halt-study [--lagged-flow]   # HALT at the 80th / 99th percentile, data kappa, or off
+# fresh-seed confirmation: add --seeds 10 11 12 13 14 15 16 17 18 19 --out code/results/<name>_fresh.json
 ```
 
 To check that every script still runs (about two minutes on a laptop):

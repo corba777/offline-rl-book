@@ -1096,8 +1096,28 @@ def run_halt_study(seed: int = 0, device: str = 'cpu', lagged_flow: bool = True,
                     batch_size=batch_size, device=device, eval_every=n_morel_iters + 1, **sac)
         out['results'][name] = evaluator.evaluate(ag)
         out['extra'][f'halt_rate {name.split()[-1]}'] = float(np.mean(ag.halt_rate_history))
+    # The same 99th-percentile threshold with a penalty taken from the data
+    # instead of the worst case: the magnitude of the most negative discounted
+    # return-to-go in the logs, i.e. as bad as the worst logged future.
+    r = norm_dataset['rewards'].reshape(-1, 100)            # 100-step logged episodes
+    g, rtg = np.zeros(len(r)), np.zeros_like(r)
+    for k in range(r.shape[1] - 1, -1, -1):
+        g = r[:, k] + 0.99 * g
+        rtg[:, k] = g
+    kappa_data = float(np.abs(rtg.min()))
+    print(f"\n[seed {seed}] HALT p99, data kappa = {kappa_data:.1f} (worst-case kappa = {kappa:.1f})")
+    torch.manual_seed(seed + 1)
+    np.random.seed(seed + 1)
+    ag = MOReeLAgent(S, A, n_ensemble=4, rollout_horizon=5, kappa=kappa_data, device=device)
+    ag._model_reward = units.reward_fn
+    ag.ensemble = hm.hybrid_ensemble
+    ag.epsilon = eps99
+    train_morel(agent=ag, dataset=norm_dataset, env=env, s_mean=s_mean, s_std=s_std,
+                batch_size=batch_size, device=device, eval_every=n_morel_iters + 1, **sac)
+    out['results']['HALT p99, data kappa'] = evaluator.evaluate(ag)
+    out['extra']['halt_rate p99 data kappa'] = float(np.mean(ag.halt_rate_history))
     out['extra'].update({'epsilon p80': float(hm.morel_agent.epsilon), 'epsilon p99': eps99,
-                         'kappa': kappa})
+                         'kappa': kappa, 'kappa_data': kappa_data})
     for name, m in out['results'].items():
         evaluator.print_results(f"{name} (seed {seed})", m)
     return out
@@ -1137,7 +1157,9 @@ def summarize(runs: List[Dict]) -> Dict[str, Dict]:
                                           'min': float(np.nanmin(vals)), 'max': float(np.nanmax(vals))}
     pairs = [(a, b) for a, b in PAIRS if a in methods and b in methods]
     if 'HALT p80' in methods:
-        pairs = [('HALT p99', 'HALT p80'), ('no HALT', 'HALT p80'), ('no HALT', 'HALT p99')]
+        pairs = [('HALT p99', 'HALT p80'), ('no HALT', 'HALT p80'), ('no HALT', 'HALT p99'),
+                 ('HALT p99, data kappa', 'HALT p99'), ('no HALT', 'HALT p99, data kappa')]
+        pairs = [(a, b) for a, b in pairs if a in methods and b in methods]
     elif 'OracleMOReL' in methods:
         pairs = [('OracleMOReL', 'HybridMOReL'), ('HybridMOReL-noHALT', 'HybridMOReL'),
                  ('OracleMOReL-HALT', 'HybridMOReL'), ('OracleMOReL', 'OracleMOReL-HALT')]

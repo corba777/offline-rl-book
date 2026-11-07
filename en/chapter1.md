@@ -95,6 +95,11 @@ class BCPolicy(nn.Module):
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         return self.net(state)
 
+    def act(self, state: torch.Tensor, low: float = -1.0, high: float = 1.0) -> torch.Tensor:
+        # The linear head is unbounded; actuators are not
+        with torch.no_grad():
+            return self.forward(state).clamp(low, high)
+
 
 def train_bc(
     states: torch.Tensor,   # (N, state_dim)
@@ -182,7 +187,7 @@ def train_stochastic_bc(states, actions, state_dim, action_dim, n_epochs=100):
     return policy
 ```
 
-Neither network bounds its output: a linear head or an unsquashed Gaussian can return an action outside the actuator range. The code clips actions in `act()`; the alternative is a tanh-squashed Gaussian with the change-of-variables correction to its log-density, as used by the SAC-based agents in later chapters.
+Neither network bounds its output: a linear head or an unsquashed Gaussian can return an action outside the actuator range. Both policies therefore clip their actions in `act()`, as `behavioral_cloning.py` does; the alternative is a tanh-squashed Gaussian with the change-of-variables correction to its log-density, as used by the SAC-based agents in later chapters.
 
 ---
 
