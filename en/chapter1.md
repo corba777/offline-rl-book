@@ -20,7 +20,7 @@ permalink: "/offline-rl-book/en/chapter1/"
 You have a dataset. Someone — an operator, a controller, an expert — has been making decisions for months, and a logging system recorded everything: the state of the process at each moment, what action was taken, what happened next.
 
 ```
-D = {(s₁, a₁, s₂), (s₂, a₂, s₃), ..., (sₙ, aₙ, sₙ₊₁)}
+D = {(sᵢ, aᵢ, s'ᵢ)},  i = 1 … n     (transitions from many episodes; s'ᵢ is the state after aᵢ)
 ```
 
 You want to build a policy — a function π(s) → a — that behaves at least as well as whoever generated the data. You cannot run experiments. You cannot explore. You only have D.

@@ -197,12 +197,12 @@ def importance_sampled_logsumexp(q_rand, q_pi, log_pi, action_dim):
     return torch.logsumexp(weighted, dim=1) - math.log(2 * n)
 
 
-def compute_cql_loss(Q, Q_other, Q_tgt, Q_other_tgt, policy,
+def compute_cql_loss(Q, Q_tgt, Q_other_tgt, policy,
                      states, actions, rewards, next_states, dones,
                      alpha_cql=1.0, alpha_ent=0.1, gamma=0.99, n_samples=10):
     """
     CQL loss = TD_loss + alpha_cql * CQL_penalty.
-    Call twice for Q1 and Q2 (swap Q/Q_other and targets for the second call).
+    Call twice for Q1 and Q2 (swap the critic and the target pair for the second call).
     """
     B = states.shape[0]
     dev = states.device
@@ -258,10 +258,10 @@ class CQLAgent:
     def update(self, batch):
         s, a, r, s2, d = [x.to(self.device) for x in batch]
 
-        l1, i1 = compute_cql_loss(self.Q1, self.Q2, self.Q1_tgt, self.Q2_tgt,
+        l1, i1 = compute_cql_loss(self.Q1, self.Q1_tgt, self.Q2_tgt,
                                   self.policy, s, a, r, s2, d,
                                   self.alpha_cql, self.alpha_ent, self.gamma)
-        l2, i2 = compute_cql_loss(self.Q2, self.Q1, self.Q2_tgt, self.Q1_tgt,
+        l2, i2 = compute_cql_loss(self.Q2, self.Q2_tgt, self.Q1_tgt,
                                   self.policy, s, a, r, s2, d,
                                   self.alpha_cql, self.alpha_ent, self.gamma)
         self.q_opt.zero_grad()
@@ -313,7 +313,7 @@ target_cql = 0.14   # τ: the penalty observed with a fixed α (see below)
 # In the update step:
 alpha_cql = log_alpha_cql.exp().item()
 # ... compute cql_penalty ...
-alpha_loss = -log_alpha_cql * (cql_penalty - target_cql)
+alpha_loss = -log_alpha_cql * (cql_penalty.detach() - target_cql)   # no gradient into Q
 alpha_opt.zero_grad()
 alpha_loss.backward()
 alpha_opt.step()
@@ -454,7 +454,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 
 **Conservative by design.** CQL will not outperform the behavior policy by a large margin in regions with sparse data. It is designed to be safe, not to extrapolate aggressively. For tasks requiring significant extrapolation beyond the dataset, model-based methods (Chapter 8) are more appropriate.
 
-**Continuous action spaces need sampling.** The logsumexp over actions requires sampling — typically 10 uniform + 10 policy samples per state. Each sample is divided by the density of the distribution it came from ($2^{-d}$ for uniform actions, $\pi(a|s)$ for policy actions); after that, one logsumexp over all 20 weighted samples minus $\log 20$ is exactly the half-and-half mixture estimate of $\log \int e^{Q}\,da$ used by Kumar et al. The variance of this estimate grows with the action dimension, which is why the paper finds the policy-based variant more stable in high-dimensional action spaces. Sampling also adds computational overhead compared to BC or TD3+BC.
+**Continuous action spaces need sampling.** The logsumexp over actions requires sampling — typically 10 uniform + 10 policy samples per state. Each sample is divided by the density of the distribution it came from ($2^{-d}$ for uniform actions, $\pi(a|s)$ for policy actions); after that, one logsumexp over all 20 weighted samples minus $\log 20$ is exactly the half-and-half mixture estimate of $\log \int e^{Q}\,da$ used by Kumar et al. The variance of this estimate grows with the action dimension, which is why the paper finds the policy-based variant more stable in high-dimensional action spaces. Sampling also adds computational overhead compared to BC or TD3+BC. Three implementation details are worth knowing when comparing penalty magnitudes. In the code, dividing by the uniform density is written as subtracting `log_unif = -d * log 2`, which adds $d \log 2$. Policy samples are drawn at the current states only, while the reference implementation also draws them at the next states $s'$. And the tanh correction $\log(1 - \tanh^2 u)$ is computed as `log(1 - a**2 + 1e-6)`: the small constant keeps it finite, but once $|u| > 9$ the tanh rounds to $\pm 1$ and the gradient of the correction vanishes. The identity $\log(1 - \tanh^2 u) = 2(\log 2 - u - \operatorname{softplus}(-2u))$ stays accurate there; with `log_std` clamped at 2 saturation is rare, but it is worth using if you widen that range.
 
 ---
 
@@ -479,5 +479,5 @@ The remaining limitation: CQL is **model-free**. It learns from the data as-is, 
 
 - Kumar, A., Zhou, A., Tucker, G., & Levine, S. (2020). *Conservative Q-Learning for Offline Reinforcement Learning.* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).
 - Fujimoto, S., & Gu, S. (2021). *A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).* NeurIPS. [arXiv:2106.06860](https://arxiv.org/abs/2106.06860).
-- Haarnoja, T. et al. (2018). *Soft Actor-Critic: Off-Policy Maximum Entropy Deep RL.* ICML. [arXiv:1801.01290](https://arxiv.org/abs/1801.01290). *(SAC foundation for CQL)*
+- Haarnoja, T., Zhou, A., Abbeel, P., & Levine, S. (2018). *Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor.* ICML. [arXiv:1801.01290](https://arxiv.org/abs/1801.01290). *(SAC foundation for CQL)*
 - Levine, S. et al. (2020). *Offline Reinforcement Learning: Tutorial, Review, and Perspectives.* [arXiv:2005.01643](https://arxiv.org/abs/2005.01643).

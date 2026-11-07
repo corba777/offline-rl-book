@@ -167,10 +167,6 @@ At $\tau = 0.7$ (IQL default): estimate lies between the mean and the maximum â€
     <span class="k">def</span><span class="w"> </span><span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
-
-
-<span class="c1"># ============================================================================</span>
-<span class="c1"># 4. IQL LOSSES</span>
 </code></pre></div>
 
 <h3>Expectile Loss</h3>
@@ -299,11 +295,6 @@ At $\tau = 0.7$ (IQL default): estimate lies between the mean and the maximum â€
         <span class="s1">'adv_max'</span><span class="p">:</span>    <span class="n">adv</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
         <span class="s1">'weight_max'</span><span class="p">:</span> <span class="n">weights</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
     <span class="p">}</span>
-
-
-<span class="c1"># ============================================================================</span>
-<span class="c1"># 5. IQL AGENT</span>
-<span class="c1"># ============================================================================</span>
 </code></pre></div>
 
 <p>These are the weights of the reference implementation: $\exp(\beta A)$ clipped at 100, with no normalization over the batch, so a transition's weight does not depend on what else is in its batch. Clipping the exponent instead of the exponential gives the same value and cannot overflow. A popular "stabilized" variant subtracts <code>adv.max()</code> before exponentiating and divides by the batch mean; <code>iql.py</code> keeps it as <code>weighting='batch_normalized'</code>, but it is a different algorithm. After the shift every weight is at most 1, so the clip never binds; the weights become relative to the batch, so the same transition gets a different weight in a different batch; and when $\beta(\max A - \min A)$ is large, most weights underflow to zero and a handful of samples carry the whole update. The code reports the effective sample size $(\sum_i w_i)^2 / (n \sum_i w_i^2)$ as <code>ess</code>; if it falls to a few percent, the policy is being fitted to a few transitions.</p>
@@ -344,11 +335,6 @@ At $\tau = 0.7$ (IQL default): estimate lies between the mean and the maximum â€
             <span class="n">pt</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">mul_</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau_target</span><span class="p">)</span><span class="o">.</span><span class="n">add_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tau_target</span> <span class="o">*</span> <span class="n">p</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">info</span>
-
-
-<span class="c1"># ============================================================================</span>
-<span class="c1"># 6. BC BASELINE</span>
-<span class="c1"># ============================================================================</span>
 </code></pre></div>
 
 <p>Following the IQL paper: the value loss uses <strong>target</strong> Q-networks (<code>Q1_tgt</code>, <code>Q2_tgt</code>), while the Q-loss uses the <strong>live</strong> <code>V</code> network for the bootstrap at $s'$.</p>

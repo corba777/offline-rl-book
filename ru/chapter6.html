@@ -148,8 +148,9 @@
 <span class="sd">    """</span>
     <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
         <span class="n">A</span> <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span> <span class="o">-</span> <span class="n">V</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
-        <span class="n">weights</span> <span class="o">=</span> <span class="p">(</span><span class="n">A</span> <span class="o">/</span> <span class="n">beta</span><span class="p">)</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
-        <span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="p">(</span><span class="n">weights</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">+</span> <span class="mf">1e-6</span><span class="p">)</span>  <span class="c1"># stabilize</span>
+        <span class="c1"># exp(A / beta) с отсечением на 100 без переполнения: при beta = 0.1</span>
+        <span class="c1"># advantage больше ~9 иначе дал бы inf, а затем NaN</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">((</span><span class="n">A</span> <span class="o">/</span> <span class="n">beta</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">max</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">100.0</span><span class="p">)))</span>
     <span class="n">log_prob</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
     <span class="k">return</span> <span class="o">-</span><span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="n">log_prob</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
 </code></pre></div>
@@ -186,6 +187,16 @@
 <td>Размер батча</td>
 <td>256</td>
 <td>Стандарт для офлайн-обучения</td>
+</tr>
+<tr>
+<td>Сглаживание целевой политики</td>
+<td>шум со std 0.2, обрезанный на 0.5</td>
+<td>Добавляется к целевому действию перед $\min(Q_1', Q_2')$, как в TD3</td>
+</tr>
+<tr>
+<td>Задержка политики $d$</td>
+<td>2</td>
+<td>Актор и целевые сети обновляются раз в $d$ шагов критика</td>
 </tr>
 </tbody>
 </table>
@@ -261,11 +272,13 @@
 </tr>
 </tbody>
 </table>
-<p>Методы ограничения политики дают простой способ улучшиться относительно поведенческой политики, не уходя далеко от данных. TD3+BC реализуется легче всех; AWAC обновляет актора in-sample, а IQL полностью обходится без OOD-запросов. В промышленных задачах, где важна простота, TD3+BC — хорошая первая попытка; CQL и IQL — более сильные базовые варианты, когда данные зашумлены или политика должна держаться глубоко внутри данных. Безопасности не гарантирует ни один из них: какой сработает лучше, зависит от покрытия, устройства награды и динамики, и перед внедрением любой из них нуждается в независимой проверке безопасности (главы 3 и 13).</p>
+<p>Методы ограничения политики дают простой способ улучшиться относительно поведенческой политики, не уходя далеко от данных. TD3+BC реализуется легче всех; AWAC обновляет актора in-sample, а IQL полностью обходится без OOD-запросов. В промышленных задачах, где важна простота, TD3+BC — хорошая первая попытка; CQL и IQL — более сильные базовые варианты, когда данные зашумлены или политика должна держаться глубоко внутри данных. Безопасности не гарантирует ни один из них: какой сработает лучше, зависит от покрытия, устройства награды и динамики, и перед внедрением любой из них нуждается в независимой проверке безопасности (главы 3 и 13). При сравнении с современными библиотеками вроде CORL полезно знать два более поздних базовых метода: SAC-N и EDAC (<a href="https://arxiv.org/abs/2110.01548">An et al., 2021</a>) получают пессимизм ценности из большого разнообразного ансамбля критиков вместо сэмплированного log-sum-exp CQL, а ReBRAC (<a href="https://arxiv.org/abs/2305.09836">Tarasov et al., 2023</a>) сохраняет минимализм TD3+BC, но добавляет нормировку слоёв в критике и раздельные поведенческие штрафы для актора и критика, что делает его заметно сильнее на стандартных бенчмарках.</p>
 <p>Глава 7 переходит к совсем другой парадигме — <strong>Decision Transformers</strong>, которые рассматривают offline RL как моделирование последовательностей и обходятся без Bellman-бэкапа.</p>
 <hr />
 <h2>Литература</h2>
 <ul>
+<li>An, G., Moon, S., Kim, J.-H., &amp; Song, H. O. (2021). <em>Uncertainty-Based Offline Reinforcement Learning with Diversified Q-Ensemble (SAC-N, EDAC).</em> NeurIPS. <a href="https://arxiv.org/abs/2110.01548">arXiv:2110.01548</a>.</li>
+<li>Tarasov, D., Kurenkov, V., Nikulin, A., &amp; Kolesnikov, S. (2023). <em>Revisiting the Minimalist Approach to Offline Reinforcement Learning (ReBRAC).</em> NeurIPS. <a href="https://arxiv.org/abs/2305.09836">arXiv:2305.09836</a>.</li>
 <li>Fujimoto, S., &amp; Gu, S.S. (2021). <em>A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).</em> NeurIPS. <a href="https://arxiv.org/abs/2106.06860">arXiv:2106.06860</a>.</li>
 <li>Nair, A., Gupta, A., Dalal, M., &amp; Levine, S. (2020). <em>AWAC: Accelerating Online Reinforcement Learning with Offline Datasets.</em> <a href="https://arxiv.org/abs/2006.09359">arXiv:2006.09359</a>.</li>
 <li>Kumar, A. et al. (2020). <em>Conservative Q-Learning for Offline Reinforcement Learning (CQL).</em> NeurIPS. <a href="https://arxiv.org/abs/2006.04779">arXiv:2006.04779</a>.</li>

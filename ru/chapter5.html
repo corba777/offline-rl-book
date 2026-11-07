@@ -167,10 +167,6 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">act</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">state</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
-
-
-<span class="c1"># ============================================================================</span>
-<span class="c1"># 4. IQL LOSSES</span>
 </code></pre></div>
 
 <h3>Expectile Loss</h3>
@@ -299,11 +295,6 @@
         <span class="s1">'adv_max'</span><span class="p">:</span>    <span class="n">adv</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
         <span class="s1">'weight_max'</span><span class="p">:</span> <span class="n">weights</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
     <span class="p">}</span>
-
-
-<span class="c1"># ============================================================================</span>
-<span class="c1"># 5. IQL AGENT</span>
-<span class="c1"># ============================================================================</span>
 </code></pre></div>
 
 <p>Это веса эталонной реализации: $\exp(\beta A)$ с отсечением на 100 и без нормировки по батчу, так что вес перехода не зависит от того, что ещё попало в его батч. Отсечение показателя вместо самой экспоненты даёт то же значение и не может переполниться. Популярный «стабилизированный» вариант вычитает <code>adv.max()</code> перед экспонентой и делит на среднее по батчу; <code>iql.py</code> сохраняет его как <code>weighting='batch_normalized'</code>, но это уже другой алгоритм. После сдвига каждый вес не больше 1, поэтому отсечение не срабатывает; веса становятся относительными, и один и тот же переход в другом батче получает другой вес; а при большом $\beta(\max A - \min A)$ большинство весов обнуляется, и всё обновление несут несколько примеров. Код сообщает эффективный размер выборки $(\sum_i w_i)^2 / (n \sum_i w_i^2)$ как <code>ess</code>; если он падает до нескольких процентов, политика подгоняется под несколько переходов.</p>
@@ -342,11 +333,6 @@
             <span class="n">pt</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">mul_</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau_target</span><span class="p">)</span><span class="o">.</span><span class="n">add_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tau_target</span> <span class="o">*</span> <span class="n">p</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">info</span>
-
-
-<span class="c1"># ============================================================================</span>
-<span class="c1"># 6. BC BASELINE</span>
-<span class="c1"># ============================================================================</span>
 </code></pre></div>
 
 <p>По статье IQL: value loss использует <strong>таргетные</strong> Q-сети (<code>Q1_tgt</code>, <code>Q2_tgt</code>), а Q-loss — <strong>живую</strong> <code>V</code> для bootstrap на $s'$.</p>

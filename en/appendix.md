@@ -30,6 +30,8 @@ This appendix is a **decision aid**, not a ranking. Use it with OPE (Chapter 3),
 | **Decision Transformer** | Sequence modeling on trajectories | Long horizons; multi-task logs; seq-model tooling | Return conditioning OOD; no Bellman credit | Small narrow dataset; need explicit constraints |
 | **MOPO / MOReL** | Model + uncertainty penalty | Rich transitions; simulator-like structure helps | Model bias; false confidence in ensembles | Dynamics hard to learn; logs from one narrow controller |
 | **FQE / DR (OPE)** | Evaluate without deployment | Compare candidates offline | Extrapolation; weak coverage | High-stakes deploy with no OPE agreement |
+| **EDAC / ReBRAC** | Critic-ensemble pessimism; regularized TD3+BC | You want current strong model-free baselines (CORL, d3rlpy) | Ensemble cost (EDAC); several regularizers to tune (ReBRAC) | A simple, well-understood baseline is enough |
+| **COMBO** | CQL on real + model rollouts | Model helps but its uncertainty is untrustworthy | Model bias still leaks; CQL conservatism | No usable dynamics model |
 | **Physics-informed (Ch. 9)** | Known structure + residuals | Engineering model exists | Structural model mismatch | No trustworthy physics or constraints |
 
 ---
@@ -111,7 +113,7 @@ Before trusting results in production:
 Short definitions of the book's core terms; the chapter in parentheses introduces or discusses the term in depth.
 
 - **Advantage** $A(s,a) = Q(s,a) - V(s)$ — how much better action $a$ is than a typical action at state $s$ (Ch. 5–6).
-- **AWR (advantage-weighted regression)** — policy extraction as imitation of dataset actions weighted by $\exp(\beta A)$ (Ch. 5–6).
+- **AWR (advantage-weighted regression)** — policy extraction as imitation of dataset actions weighted by $\exp(\beta A)$ with an inverse temperature $\beta$ (Ch. 5, IQL) or $\exp(A/\beta)$ with a temperature $\beta$ (Ch. 6, AWAC and the original AWR); larger $\beta$ sharpens the weights in the first convention and flattens them in the second.
 - **Behavior policy** $\pi_\beta$ — the policy that collected the data: an operator, a controller or a previous agent (Ch. 1).
 - **Bellman backup** — updating a value estimate from the reward plus the value of the next state; the channel through which errors propagate in offline RL (Ch. 2).
 - **CMDP** — an MDP with constraints on expected cost, solved via a Lagrangian (Ch. 9).

@@ -85,7 +85,7 @@ So the **actor** makes no OOD queries: it is trained with weighted maximum likel
 
 ### Relation to IQL
 
-IQL (Chapter 5) also uses advantage-weighted regression for the policy and avoids OOD queries. IQL goes further by replacing $\max_{a'} Q(s', a')$ with expectile regression on $V(s')$. AWAC can be seen as a predecessor: same idea of weighting dataset actions by advantage, with a simpler (and potentially less safe) critic. For a unified implementation, the policy loss of IQL and AWAC are the same up to how $Q$ and $V$ are learned.
+IQL (Chapter 5) also uses advantage-weighted regression for the policy and avoids OOD queries. IQL goes further by replacing $\max_{a'} Q(s', a')$ with expectile regression on $V(s')$. AWAC can be seen as a predecessor: same idea of weighting dataset actions by advantage, with a simpler (and potentially less safe) critic. For a unified implementation, the policy losses of IQL and AWAC are the same up to how $Q$ and $V$ are learned.
 
 ---
 
@@ -141,8 +141,9 @@ def awac_actor_loss(policy, Q, V, states, actions, beta=1.0):
     """
     with torch.no_grad():
         A = Q(states, actions) - V(states)
-        weights = (A / beta).exp()
-        weights = weights / (weights.mean() + 1e-6)  # stabilize
+        # exp(A / beta) clipped at 100, computed without overflow: with beta = 0.1
+        # an advantage above ~9 would otherwise give inf and then NaN
+        weights = torch.exp((A / beta).clamp(max=np.log(100.0)))
     log_prob = policy.log_prob(states, actions)
     return -(weights * log_prob).mean()
 ```
@@ -161,6 +162,8 @@ For a deterministic policy (as in TD3), you would use a Gaussian with small fixe
 | Critic lr | 3e-4 | Same as TD3 |
 | Actor lr | 3e-4 | Same as TD3 |
 | Batch size | 256 | Standard for offline |
+| Target policy smoothing | noise std 0.2, clipped at 0.5 | Added to the target action before $\min(Q_1', Q_2')$, as in TD3 |
+| Policy delay $d$ | 2 | Actor and target networks update every $d$ critic steps |
 
 Start with the paper's $\lambda = 2.5$ on standard benchmarks, or with our more conservative $\lambda = 0.25$ on small, noisy industrial data. If the policy is too conservative (behaves like BC), increase $\lambda$. If the policy becomes unstable or OOD, decrease it.
 
@@ -198,7 +201,7 @@ Start with the paper's $\lambda = 2.5$ on standard benchmarks, or with our more 
 | CQL (Ch4) | Q-function | Yes (penalized) | Lower bound |
 | IQL (Ch5) | V + policy extraction | No | Implicit pessimism |
 
-Policy-constraint and actor-critic methods offer a simple way to improve over the behavior policy while staying close to the data. TD3+BC is the lightest to implement; AWAC keeps the actor update in-sample, and IQL avoids OOD queries entirely. For industrial applications where simplicity matters, TD3+BC is a good first try; CQL and IQL are stronger default baselines when the data are noisy or the policy must stay well inside the data. None of them guarantees safety: which works best depends on coverage, reward design and dynamics, and any of them needs independent safety validation before deployment (Chapters 3 and 13).
+Policy-constraint and actor-critic methods offer a simple way to improve over the behavior policy while staying close to the data. TD3+BC is the lightest to implement; AWAC keeps the actor update in-sample, and IQL avoids OOD queries entirely. For industrial applications where simplicity matters, TD3+BC is a good first try; CQL and IQL are stronger default baselines when the data are noisy or the policy must stay well inside the data. None of them guarantees safety: which works best depends on coverage, reward design and dynamics, and any of them needs independent safety validation before deployment (Chapters 3 and 13). Two later baselines are worth knowing when comparing against current libraries such as CORL: SAC-N and EDAC ([An et al., 2021](https://arxiv.org/abs/2110.01548)) obtain value pessimism from a large, diversified ensemble of critics instead of CQL's sampled log-sum-exp, and ReBRAC ([Tarasov et al., 2023](https://arxiv.org/abs/2305.09836)) keeps TD3+BC's minimalism but adds layer normalization in the critic and separate behavior penalties for actor and critic, which makes it much stronger on standard benchmarks.
 
 Chapter 7 turns to a different paradigm entirely: **Decision Transformers**, which treat offline RL as sequence modeling and dispense with the Bellman backup.
 
@@ -206,6 +209,8 @@ Chapter 7 turns to a different paradigm entirely: **Decision Transformers**, whi
 
 ## References
 
+- An, G., Moon, S., Kim, J.-H., & Song, H. O. (2021). *Uncertainty-Based Offline Reinforcement Learning with Diversified Q-Ensemble (SAC-N, EDAC).* NeurIPS. [arXiv:2110.01548](https://arxiv.org/abs/2110.01548).
+- Tarasov, D., Kurenkov, V., Nikulin, A., & Kolesnikov, S. (2023). *Revisiting the Minimalist Approach to Offline Reinforcement Learning (ReBRAC).* NeurIPS. [arXiv:2305.09836](https://arxiv.org/abs/2305.09836).
 - Fujimoto, S., & Gu, S.S. (2021). *A Minimalist Approach to Offline Reinforcement Learning (TD3+BC).* NeurIPS. [arXiv:2106.06860](https://arxiv.org/abs/2106.06860).
 - Nair, A., Gupta, A., Dalal, M., & Levine, S. (2020). *AWAC: Accelerating Online Reinforcement Learning with Offline Datasets.* [arXiv:2006.09359](https://arxiv.org/abs/2006.09359).
 - Kumar, A. et al. (2020). *Conservative Q-Learning for Offline Reinforcement Learning (CQL).* NeurIPS. [arXiv:2006.04779](https://arxiv.org/abs/2006.04779).

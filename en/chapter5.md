@@ -159,10 +159,6 @@ class DeterministicPolicy(nn.Module):
     def act(self, state: torch.Tensor) -> np.ndarray:
         with torch.no_grad():
             return self.forward(state).cpu().numpy().squeeze()
-
-
-# ============================================================================
-# 4. IQL LOSSES
 ```
 
 ### Expectile Loss
@@ -303,11 +299,6 @@ def iql_policy_loss(policy: DeterministicPolicy,
         'adv_max':    adv.max().item(),
         'weight_max': weights.max().item(),
     }
-
-
-# ============================================================================
-# 5. IQL AGENT
-# ============================================================================
 ```
 
 These are the weights of the reference implementation: $\exp(\beta A)$ clipped at 100, with no normalization over the batch, so a transition's weight does not depend on what else is in its batch. Clipping the exponent instead of the exponential gives the same value and cannot overflow. A popular "stabilized" variant subtracts `adv.max()` before exponentiating and divides by the batch mean; `iql.py` keeps it as `weighting='batch_normalized'`, but it is a different algorithm. After the shift every weight is at most 1, so the clip never binds; the weights become relative to the batch, so the same transition gets a different weight in a different batch; and when $\beta(\max A - \min A)$ is large, most weights underflow to zero and a handful of samples carry the whole update. The code reports the effective sample size $(\sum_i w_i)^2 / (n \sum_i w_i^2)$ as `ess`; if it falls to a few percent, the policy is being fitted to a few transitions.
@@ -352,11 +343,6 @@ All three losses in sequence:
             pt.data.mul_(1 - self.tau_target).add_(self.tau_target * p.data)
 
         return info
-
-
-# ============================================================================
-# 6. BC BASELINE
-# ============================================================================
 ```
 
 Following the IQL paper: the value loss uses **target** Q-networks (`Q1_tgt`, `Q2_tgt`), while the Q-loss uses the **live** `V` network for the bootstrap at $s'$.

@@ -91,9 +91,9 @@ and the policy $\hat\pi$ that MOPO finds is nearly as good as any policy that st
 
 $$J(\hat\pi) \geq \sup_{\pi} \bigl\{ J(\pi) - 2\lambda\, \epsilon_u(\pi) \bigr\}, \qquad \epsilon_u(\pi) = \mathbb{E}_{(s,a) \sim \rho^{\pi}_{\hat T}}\bigl[u(s, a)\bigr],$$
 
-where $\rho^{\pi}_{\hat T}$ is the discounted occupancy of $\pi$ in the learned model. Taking $\pi$ to be the behavior policy, whose model uncertainty should be small, MOPO is expected to do at least about as well as the data it learned from.
+where $\rho^{\pi}_{\hat T}$ is the discounted occupancy of $\pi$ in the learned model — the same object as $d^\pi$ in Chapter 2, written for $\hat M$ instead of the real MDP. Taking $\pi$ to be the behavior policy, whose model uncertainty should be small, MOPO is expected to do at least about as well as the data it learned from.
 
-The caveat is the assumption itself. Nothing guarantees that an ensemble's spread upper-bounds the true model error: ensemble members can agree and still be wrong, especially far from the data. The guarantee is only as good as the uncertainty estimate. *Note:* the original paper uses as $u$ the maximum over the ensemble of the norm of the learned (aleatoric) standard deviation; this book uses **ensemble disagreement** (the standard deviation of predicted means), a common reimplementation choice closer to MOReL's USAD. Neither is guaranteed to be admissible. For a probabilistic ensemble the two kinds of uncertainty separate cleanly: the total predictive variance is $\operatorname{Var}(s') = \mathbb{E}_m[\operatorname{Var}(s' \mid m)] + \operatorname{Var}_m(\mathbb{E}[s' \mid m])$, where the first term is the process noise each model has learned (aleatoric) and the second the disagreement between models (epistemic). Only the second shrinks with more data, and only the second says anything about being far from the data. Whichever is used, check it against reality: on held-out transitions, and on transitions from a shifted regime, the uncertainty should rise and fall with the actual prediction error. Disagreement can only flag errors on which the members differ. Members that share structure — the same physics prior, the same input features, the same gaps in the data — make correlated errors, and their agreement then reads as confidence exactly where it should not. Chapter 10 shows this concretely: every member of a hybrid ensemble used the same physics, which ignored a transport delay, and the ensemble's uncertainty did not flag the resulting errors on the filler loop.
+The caveat is the assumption itself. Nothing guarantees that an ensemble's spread upper-bounds the true model error: ensemble members can agree and still be wrong, especially far from the data. The guarantee is only as good as the uncertainty estimate. *Note:* the original paper uses as $u$ the maximum over the ensemble of the norm of the learned (aleatoric) standard deviation; this book uses **ensemble disagreement** (the standard deviation of predicted means), a common reimplementation choice closer to MOReL's USAD. Neither is guaranteed to be admissible. For a probabilistic ensemble the two kinds of uncertainty separate cleanly: the total predictive variance is $\operatorname{Var}(s') = \mathbb{E}_m[\operatorname{Var}(s' \mid m)] + \operatorname{Var}_m(\mathbb{E}[s' \mid m])$, where the first term is the process noise each model has learned (aleatoric) and the second the disagreement between models (epistemic). Only the second shrinks with more data, and only the second says anything about being far from the data. Whichever is used, check it against reality: on held-out transitions, and on transitions from a shifted regime, the uncertainty should rise and fall with the actual prediction error. Disagreement can only flag errors on which the members differ. Members that share structure — the same physics prior, the same input features, the same gaps in the data — make correlated errors, and their agreement then reads as confidence exactly where it should not. Chapter 10 shows this concretely: every member of a hybrid ensemble used the same physics, which ignored a transport delay, and the ensemble's uncertainty did not flag the resulting errors on the filler loop. One way around an untrustworthy $u$ is not to need it. COMBO ([Yu et al., 2021](https://arxiv.org/abs/2102.08363)) keeps the model rollouts but drops the uncertainty penalty: it trains a CQL-style critic on a mix of real and model-generated transitions, pushing Q-values down on the model's state-action pairs and up on the logged ones. A model error then makes the affected synthetic transitions less valuable instead of relying on the ensemble to notice it — at the price of the usual CQL conservatism and its $\alpha$ to tune.
 
 #### Branched Rollouts
 
@@ -139,6 +139,16 @@ class ProbabilisticDynamicsNet(nn.Module):
         # Learnable bounds on log_var to prevent numerical issues
         self.min_log_var = nn.Parameter(-10.0 * torch.ones(state_dim))
         self.max_log_var = nn.Parameter(0.5  * torch.ones(state_dim))
+
+    def forward(self, state, action):
+        """Returns the predicted residual s' - s (mean) and its log-variance."""
+        h       = self.trunk(torch.cat([state, action], -1))
+        mean    = self.mean_head(h)
+        log_var = self.log_var_head(h)
+        # Soft clamp between the learnable bounds; without it they would do nothing
+        log_var = self.max_log_var - F.softplus(self.max_log_var - log_var)
+        log_var = self.min_log_var + F.softplus(log_var - self.min_log_var)
+        return mean, log_var
 ```
 
 The `SiLU` activation (swish) outperforms ReLU for dynamics models — smoother gradients help fit smooth physical transitions. The learnable log-variance bounds prevent the model from collapsing variance to zero (overconfidence) or infinity.
@@ -431,6 +441,7 @@ The natural next question: can we do better than learning dynamics from scratch?
 
 ## References
 
+- Yu, T., Kumar, A., Rafailov, R., Rajeswaran, A., Levine, S., & Finn, C. (2021). *COMBO: Conservative Offline Model-Based Policy Optimization.* NeurIPS. [arXiv:2102.08363](https://arxiv.org/abs/2102.08363).
 - Yu, T., Thomas, G., Yu, L., Ermon, S., Zou, J., Levine, S., Finn, C., & Ma, T. (2020). *MOPO: Model-Based Offline Policy Optimization.* NeurIPS. [arXiv:2005.13239](https://arxiv.org/abs/2005.13239).
 - Kidambi, R., Rajeswaran, A., Netrapalli, P., & Kakade, S. (2020). *MOReL: Model-Based Offline Reinforcement Learning.* NeurIPS. [arXiv:2005.05951](https://arxiv.org/abs/2005.05951).
 - Janner, M., Fu, J., Zhang, M., & Levine, S. (2019). *When to Trust Your Model: Model-Based Policy Optimization.* NeurIPS. [arXiv:1906.08253](https://arxiv.org/abs/1906.08253). *(MBPO — online model-based RL foundation for MOPO)*

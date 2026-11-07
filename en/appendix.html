@@ -134,6 +134,20 @@
 <td>High-stakes deploy with no OPE agreement</td>
 </tr>
 <tr>
+<td><strong>EDAC / ReBRAC</strong></td>
+<td>Critic-ensemble pessimism; regularized TD3+BC</td>
+<td>You want current strong model-free baselines (CORL, d3rlpy)</td>
+<td>Ensemble cost (EDAC); several regularizers to tune (ReBRAC)</td>
+<td>A simple, well-understood baseline is enough</td>
+</tr>
+<tr>
+<td><strong>COMBO</strong></td>
+<td>CQL on real + model rollouts</td>
+<td>Model helps but its uncertainty is untrustworthy</td>
+<td>Model bias still leaks; CQL conservatism</td>
+<td>No usable dynamics model</td>
+</tr>
+<tr>
 <td><strong>Physics-informed (Ch. 9)</strong></td>
 <td>Known structure + residuals</td>
 <td>Engineering model exists</td>
@@ -213,7 +227,7 @@
 <p>Short definitions of the book's core terms; the chapter in parentheses introduces or discusses the term in depth.</p>
 <ul>
 <li><strong>Advantage</strong> $A(s,a) = Q(s,a) - V(s)$ — how much better action $a$ is than a typical action at state $s$ (Ch. 5–6).</li>
-<li><strong>AWR (advantage-weighted regression)</strong> — policy extraction as imitation of dataset actions weighted by $\exp(\beta A)$ (Ch. 5–6).</li>
+<li><strong>AWR (advantage-weighted regression)</strong> — policy extraction as imitation of dataset actions weighted by $\exp(\beta A)$ with an inverse temperature $\beta$ (Ch. 5, IQL) or $\exp(A/\beta)$ with a temperature $\beta$ (Ch. 6, AWAC and the original AWR); larger $\beta$ sharpens the weights in the first convention and flattens them in the second.</li>
 <li><strong>Behavior policy</strong> $\pi_\beta$ — the policy that collected the data: an operator, a controller or a previous agent (Ch. 1).</li>
 <li><strong>Bellman backup</strong> — updating a value estimate from the reward plus the value of the next state; the channel through which errors propagate in offline RL (Ch. 2).</li>
 <li><strong>CMDP</strong> — an MDP with constraints on expected cost, solved via a Lagrangian (Ch. 9).</li>

@@ -55,7 +55,7 @@ $$\phi = \arg\min_{\phi} \sum_{z \in \{0,1\}^n} \pi(z)\left[f(h(x, z)) - \phi_0 
 
 where $z$ is a binary mask, $h(x, z)$ replaces masked features with background samples, and $\pi(z)$ weights coalitions by the Shapley kernel. This works on any black-box function — Q-networks, policy networks, ensemble dynamics — with no architecture assumptions.
 
-That replacement has a cost the rest of this book warns about. Interventional KernelSHAP evaluates the model on hybrid inputs: a state from one transition with an action from another, or a temperature from one row with a viscosity from another, even though viscosity is a deterministic function of temperature and filler. Such inputs can lie far outside the data — exactly where Q-functions and dynamics models are least reliable — and the attributions inherit whatever the model does there. Treat attributions for derived or strongly correlated features (viscosity, density) with care: group them with the variables they depend on, or use a background conditioned on the instance.
+That replacement has a cost the rest of this book warns about. Interventional KernelSHAP evaluates the model on hybrid inputs: a state from one transition with an action from another, or a temperature from one row with a viscosity from another, even though viscosity is a deterministic function of temperature and filler. Such inputs can lie far outside the data — exactly where Q-functions and dynamics models are least reliable — and the attributions inherit whatever the model does there. Treat attributions for derived or strongly correlated features (viscosity, density) with care: group them with the variables they depend on, or use a background conditioned on the instance. For a principled treatment of Shapley values in RL — which characteristic function to use for a policy or a value function, and how to stay on the data distribution — see Beechey et al. ([2023](https://arxiv.org/abs/2306.05810)); Milani et al. ([2024](https://arxiv.org/abs/2202.08434)) place feature attribution among the other families of explainable-RL methods.
 
 We use KernelExplainer throughout for consistency: all three explanations use the same method, making them directly comparable.
 
@@ -75,7 +75,7 @@ A minimal example fixes intuition. Consider a toy Q-function with three inputs: 
 
 ![Toy Q: beeswarm of SHAP values](../figures/ch11/toy_shap_beeswarm.png)
 
-**Toy policy: which state feature drives the action?** Next, take a toy policy $\pi(s_1, s_2) = \text{clip}(0.5 + 0.4 s_1 - 0.3 s_2)$ with a single action. State_1 pushes the action up, state_2 pushes it down. Policy SHAP attributes the scalar action to the two state inputs. The bar chart shows which state variable the policy "looks at" most; the waterfall for one state shows how each feature's contribution moves the output from the average action $\mathbb{E}[\pi]$ to $\pi(s)$. In the real coating setup (Level 2) we have two action dimensions (heat_input, flow_input); we explain each separately and get one such bar and waterfall per action.
+**Toy policy: which state feature drives the action?** Next, take a toy policy $\pi(s_1, s_2) = \text{clip}(0.5 + 0.4 s_1 - 0.3 s_2)$ with a single action. State_1 pushes the action up, state_2 pushes it down. Policy SHAP attributes the scalar action to the two state inputs. The bar chart shows which state variable the policy "looks at" most; the waterfall for one state shows how each feature's contribution moves the output from the average action $\mathbb{E}[\pi]$ to $\pi(s)$. Do not read the sign of a bar as the sign of a coefficient: in the waterfall below $s_2 = 0.20$ lies below its background mean of about 0.5, so its contribution $-0.3 \times (0.20 - 0.50) = +0.09$ is positive although $s_2$ lowers the action. SHAP measures an effect relative to the background. In the real coating setup (Level 2) we have two action dimensions (heat_input, flow_input); we explain each separately and get one such bar and waterfall per action.
 
 ![Toy policy: mean |SHAP| per state feature](../figures/ch11/toy_policy_bar.png)
 
@@ -137,7 +137,7 @@ class PolicySingleOutputWrapper:
     def __call__(self, S: np.ndarray) -> np.ndarray:
         with torch.no_grad():
             s_t     = torch.FloatTensor(S).to(self.device)
-            mean, _ = self.policy._dist(s_t)
+            mean, _ = self.policy._dist(s_t)    # GaussianPolicy._dist in cql.py: (mean, std)
             action  = torch.tanh(mean)
         return action[:, self.action_idx].cpu().numpy()
 ```
@@ -155,6 +155,7 @@ class DynamicsSingleOutputWrapper:
     """
     def __call__(self, X: np.ndarray) -> np.ndarray:
         with torch.no_grad():
+            x_t   = torch.FloatTensor(X).to(self.device)
             s     = x_t[:, :self.s_dim]
             a     = x_t[:, self.s_dim:]
             s_next, _ = self.ensemble.predict_with_uncertainty(s, a)
@@ -282,7 +283,7 @@ Output of `python code/chapter11.py` (the ensemble is retrained on every run, so
 
 **Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in the Q-function and in the policy. With only five state features this is a blunt instrument: for $n = 5$, $\rho$ must reach about 0.9 to be significant at the 5% level (one-sided), so the 0.70 above is not evidence of anything on its own. How unstable it is shows directly: an earlier run of the same code, differing only in the random retraining, gave 0.20. Both the Q-function and the policy rank `level` and `temperature` highest; the remaining three features have near-zero policy SHAP, and their order — which decides $\rho$ — is noise. Nor is there a reason the two rankings must agree: the Q-function attributes *value* and the policy attributes *action*, and a variable can matter for one without mattering for the other. A very low or negative $\rho$ is a prompt to look closer — for instance at whether a strongly regularized actor (large CQL $\alpha$) has stopped responding to the state — not a pass/fail test.
 
-**Physics sign tests:** `heat_input` should show a positive dependence slope with `next_temperature`, and `flow_input` with `next_level`; the slope for `next_filler_frac` is printed for reference and should be near zero because of the transport delay. The code fits a line to SHAP against the feature value instead of averaging signed SHAP, which can sit near zero when instances straddle the background; the dependence plot shows the same thing visually. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse. The slope is still a heuristic, not a derivative: the sign of $d\,\mathrm{SHAP}_i / d x_i$ need not match the sign of $\partial f / \partial x_i$ when features interact, are correlated, or sit on the other side of the background. The code therefore also runs an intervention check — nudge one actuator input by $\pm 0.05$ with every other input fixed and measure the change in the model's mean prediction — which tests the model's own local response directly. Neither check sees delayed effects: a one-step model and its one-step attribution say nothing about what an action does two steps later, which for the filler loop is exactly where its effect lies; that needs a multi-step rollout or an impulse-response test. Here the two checks agree closely — slope and finite difference are $+1.04$ and $+1.03$ for heat, $+1.83$ for both on the level — which is what one should see when the model is smooth and the inputs nearly independent; a large gap between them is a reason to distrust the SHAP slope.
+**Physics sign tests:** `heat_input` should show a positive dependence slope with `next_temperature`, and `flow_input` with `next_level`; the slope for `next_filler_frac` is printed for reference and should be near zero because of the transport delay. The code fits a line to SHAP against the feature value instead of averaging signed SHAP, which can sit near zero when instances straddle the background; the dependence plot shows the same thing visually. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse. The slope is still a heuristic, not a derivative: the sign of $d\,\mathrm{SHAP}_i / d x_i$ need not match the sign of $\partial f / \partial x_i$ when features interact, are correlated, or sit on the other side of the background. The code therefore also runs an intervention check — nudge one actuator input by $\pm 0.05$ with every other input fixed and measure the change in the model's mean prediction — which tests the model's own local response directly. Neither check sees delayed effects: a one-step model and its one-step attribution say nothing about what an action does two steps later, which for the filler loop is exactly where its effect lies; that needs a multi-step rollout or an impulse-response test. Both checks are in normalized units: the ensemble predicts normalized states, so $d/du$ is in standard deviations of the output variable per unit of action. Converted with the logged standard deviations, the level response is $1.83 \times 0.109 \approx 0.199$ per action unit, against $0.5 \times 0.4 = 0.2$ from the mass balance, while the temperature response is $1.03 \times 0.041 \approx 0.042$ against a true $0.036$ — an 18% overestimate that a sign test cannot see. Here the two checks agree closely — slope and finite difference are $+1.04$ and $+1.03$ for heat, $+1.83$ for both on the level — which is what one should see when the model is smooth and the inputs nearly independent; a large gap between them is a reason to distrust the SHAP slope.
 
 ---
 
@@ -297,11 +298,11 @@ Output of `python code/chapter11.py` (the ensemble is retrained on every run, so
 ```python
 # Convert feature values back to physical units for display
 states_physical = results['states'] * s_std + s_mean
-# Do NOT multiply SHAP values by s_std.
-# SHAP values remain in the units of the model output:
-# - Q-SHAP: Q-value / return units
-# - policy-SHAP: action-output units
-# - dynamics-SHAP: next-state prediction units
+# SHAP values are in the units of the model's output, and here those are scaled:
+# - Q-SHAP: Q in units of the scaled reward (multiply by r_std for raw reward)
+# - policy-SHAP: action units in [-1, 1]
+# - dynamics-SHAP: normalized next-state units; multiply by s_std of the *output*
+#   variable for physical units — never by the s_std of the input feature
 ```
 
 ---
@@ -380,6 +381,8 @@ For fast per-step operator explanations in a deployed system: distill the policy
 
 ## References
 
+- Beechey, D., Smith, T. M. S., & Şimşek, Ö. (2023). *Explaining Reinforcement Learning with Shapley Values.* ICML. [arXiv:2306.05810](https://arxiv.org/abs/2306.05810).
+- Milani, S., Topin, N., Veloso, M., & Fang, F. (2024). *Explainable Reinforcement Learning: A Survey and Comparative Review.* ACM Computing Surveys. [arXiv:2202.08434](https://arxiv.org/abs/2202.08434).
 - Lundberg, S.M., & Lee, S.I. (2017). *A Unified Approach to Interpreting Model Predictions.* NeurIPS. [arXiv:1705.07874](https://arxiv.org/abs/1705.07874).
 - Lundberg, S.M., Erion, G., Chen, H. et al. (2020). *From Local Explanations to Global Understanding with Explainable AI for Trees.* Nature Machine Intelligence. [arXiv:1905.04610](https://arxiv.org/abs/1905.04610).
 - Shapley, L.S. (1953). *A Value for n-Person Games.* In Contributions to the Theory of Games.

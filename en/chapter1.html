@@ -66,7 +66,7 @@
 <hr />
 <h2>The Setting</h2>
 <p>You have a dataset. Someone — an operator, a controller, an expert — has been making decisions for months, and a logging system recorded everything: the state of the process at each moment, what action was taken, what happened next.</p>
-<div class="codehilite"><pre><span></span><code>D = {(s₁, a₁, s₂), (s₂, a₂, s₃), ..., (sₙ, aₙ, sₙ₊₁)}
+<div class="codehilite"><pre><span></span><code>D = {(sᵢ, aᵢ, s'ᵢ)},  i = 1 … n     (transitions from many episodes; s'ᵢ is the state after aᵢ)
 </code></pre></div>
 
 <p>You want to build a policy — a function π(s) → a — that behaves at least as well as whoever generated the data. You cannot run experiments. You cannot explore. You only have D.</p>

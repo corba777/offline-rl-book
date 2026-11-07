@@ -208,8 +208,8 @@ Everything in offline RL comes down to this tension:
 | Maximize reward → exploit Q-function | Q-function is unreliable for OOD actions |
 | Stay close to behavior policy | Behavior policy may be suboptimal |
 
-Too conservative → policy = BC (no improvement over behavior)
-Too aggressive → policy exploits Q-function errors (catastrophic failure)
+- Too conservative → policy = BC (no improvement over behavior).
+- Too aggressive → policy exploits Q-function errors (catastrophic failure).
 
 The solution space splits into two families:
 
@@ -224,12 +224,12 @@ Examples: TD3+BC, BEAR, BCQ.
 **Value-pessimism methods** — instead of constraining the policy, make Q-values pessimistic for OOD actions:
 
 ```math
-Q^{\ast} = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \cdot \mathbb{E}_{s \sim \mathcal{D}, a \sim \pi} \left[ Q(s,a) \right]
+Q^{\ast} = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \left( \mathbb{E}_{s \sim \mathcal{D}, a \sim \mu} \left[ Q(s,a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q(s,a) \right] \right)
 ```
 
-The intuition: if OOD Q-values are artificially pushed *down*, the greedy policy will naturally prefer in-distribution actions.
+The intuition: Q-values are pushed *down* on actions from a broad proposal $\mu$ (uniform, or the current policy) and pushed back *up* on the logged actions, so only actions the data do not support lose value; without the second term every Q-value would just shift down together. The greedy policy then prefers in-distribution actions.
 
-This is the approach of **CQL** (Chapter 4) and **IQL** (Chapter 5).
+This is the approach of **CQL** (Chapter 4). **IQL** (Chapter 5) reaches a similar effect differently: it never evaluates an action outside the data, using expectile regression instead of an explicit penalty.
 
 ### The Offline RL Algorithm Landscape
 
