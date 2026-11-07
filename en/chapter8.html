@@ -438,7 +438,7 @@
 <li><code>h=5</code>: default. Good balance of augmentation vs error compounding.</li>
 <li><code>h=10+</code>: only if model one-step accuracy is very high.</li>
 </ul>
-<p><strong>Rule of thumb</strong>: if the model has $\epsilon_1$ one-step error, after $h$ steps you accumulate roughly $h \cdot \epsilon_1$ error. Set $h$ so that $h \cdot \epsilon_1 < 0.1$ (10% accumulated error).</p>
+<p><strong>Rough guide</strong>: if the model has one-step error $\epsilon_1$, errors after $h$ steps grow at least like $h \cdot \epsilon_1$ (faster when the dynamics amplify them). Choose $h$ so that the accumulated error stays small relative to the state changes that matter for the reward — and check it directly by comparing multi-step model rollouts with held-out logged trajectories.</p>
 <h3>Both: $N$ (ensemble size)</h3>
 <ul>
 <li><code>N=3</code>: minimum for meaningful uncertainty (not recommended in production).</li>

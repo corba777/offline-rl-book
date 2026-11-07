@@ -807,7 +807,7 @@ def print_consistency_report(metrics: Dict[str, float]) -> None:
     print("─" * 50)
     rho = metrics.get('q_policy_spearman', None)
     if rho is not None:
-        status = '✓ aligned' if rho > 0.6 else ('△ weak' if rho > 0.3 else '✗ misaligned')
+        status = '(n=5 features: not significant below ~0.9)' if rho > 0.0 else '✗ inverse ranking — inspect the actor'
         print(f"  Q ↔ policy rank correlation  : {rho:.3f}  {status}")
         if rho < 0.3:
             print("    WARNING: Q-function and policy attend to different features.")

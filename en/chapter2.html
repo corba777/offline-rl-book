@@ -225,7 +225,7 @@ Too aggressive → policy exploits Q-function errors (catastrophic failure)</p>
 <p><strong>BC is insufficient when:</strong>
 - The behavior policy is suboptimal (real operators make mistakes)
 - You want to interpolate between good parts of different trajectories
-- The task requires reasoning about long-term consequences (H &gt; 20)
+- The task requires reasoning about long-term consequences (long horizons, where errors compound)
 - You have reward information and want to exploit it</p>
 <p>In industrial settings, all four conditions for BC insufficiency typically hold. Operators are not optimal; different shifts make different decisions; a 30-minute prediction horizon requires long-term planning; and the reward function (filler%, temperature stability, energy use) is well-defined.</p>
 <p>This is the motivation for the methods in Chapters 3–9.</p>

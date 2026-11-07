@@ -257,7 +257,7 @@ The answer depends on the quality and coverage of the behavior policy.
 **BC is insufficient when:**
 - The behavior policy is suboptimal (real operators make mistakes)
 - You want to interpolate between good parts of different trajectories
-- The task requires reasoning about long-term consequences (H > 20)
+- The task requires reasoning about long-term consequences (long horizons, where errors compound)
 - You have reward information and want to exploit it
 
 In industrial settings, all four conditions for BC insufficiency typically hold. Operators are not optimal; different shifts make different decisions; a 30-minute prediction horizon requires long-term planning; and the reward function (filler%, temperature stability, energy use) is well-defined.

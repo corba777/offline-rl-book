@@ -192,7 +192,7 @@ BC works well under two conditions:
 
 **2. Short horizons.** If the task requires only a few steps to complete, errors don't have time to compound.
 
-In practice, for tasks with horizon $H \leq 20$ and a high-quality demonstrator, BC is a strong baseline that's worth trying before anything more complex.
+In practice, for short tasks — tens of steps rather than hundreds — with a high-quality demonstrator, BC is a strong baseline that's worth trying before anything more complex. There is no sharp horizon cutoff: what matters is how quickly small errors carry the agent into unfamiliar states.
 
 ---
 

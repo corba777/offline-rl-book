@@ -371,7 +371,7 @@ print(f"Calibrated epsilon = {epsilon:.4f}")
 - `h=5`: default. Good balance of augmentation vs error compounding.
 - `h=10+`: only if model one-step accuracy is very high.
 
-**Rule of thumb**: if the model has $\epsilon_1$ one-step error, after $h$ steps you accumulate roughly $h \cdot \epsilon_1$ error. Set $h$ so that $h \cdot \epsilon_1 < 0.1$ (10% accumulated error).
+**Rough guide**: if the model has one-step error $\epsilon_1$, errors after $h$ steps grow at least like $h \cdot \epsilon_1$ (faster when the dynamics amplify them). Choose $h$ so that the accumulated error stays small relative to the state changes that matter for the reward — and check it directly by comparing multi-step model rollouts with held-out logged trajectories.
 
 ### Both: $N$ (ensemble size)
 

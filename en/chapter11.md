@@ -55,6 +55,8 @@ $$\phi = \arg\min_{\phi} \sum_{z \in \{0,1\}^n} \pi(z)\left[f(h(x, z)) - \phi_0 
 
 where $z$ is a binary mask, $h(x, z)$ replaces masked features with background samples, and $\pi(z)$ weights coalitions by the Shapley kernel. This works on any black-box function — Q-networks, policy networks, ensemble dynamics — with no architecture assumptions.
 
+That replacement has a cost the rest of this book warns about. Interventional KernelSHAP evaluates the model on hybrid inputs: a state from one transition with an action from another, or a temperature from one row with a viscosity from another, even though viscosity is a deterministic function of temperature and filler. Such inputs can lie far outside the data — exactly where Q-functions and dynamics models are least reliable — and the attributions inherit whatever the model does there. Treat attributions for derived or strongly correlated features (viscosity, density) with care: group them with the variables they depend on, or use a background conditioned on the instance.
+
 We use KernelExplainer throughout for consistency: all three explanations use the same method, making them directly comparable.
 
 ### Toy example: what SHAP shows
@@ -194,7 +196,7 @@ results = explainer.explain_all(
 #               'policy_shap', 'dynamics_shap', 'q_base'
 ```
 
-`n_samples` controls approximation quality. At 80, standard error is ~0.005 on normalized outputs — sufficient for feature ranking. At 500 the estimates are publication-quality but 6× slower.
+`n_samples` controls approximation quality. The Monte Carlo error depends on the model and the background, so check it directly: repeat the explanation with a different random seed and confirm that the feature ranking does not change. Larger values give more stable estimates at proportional cost.
 
 ---
 
@@ -268,12 +270,12 @@ print_consistency_report(metrics)
 
 Expected output:
 ```
-  Q ↔ policy rank correlation  : 0.71  ✓ aligned
+  Q ↔ policy rank correlation  : 0.71  (n=5 features: not significant below ~0.9)
   heat_input → next_temperature: SHAP=+0.0412  ✓ positive (correct)
   flow_input → next_filler     : SHAP=+0.0387  ✓ positive (correct)
 ```
 
-**Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in Q-function and policy. $\rho > 0.6$ means the agent's critic and actor attend to the same features. $\rho < 0.3$ suggests policy collapse — the actor ignores most of the state that the critic cares about. Common when CQL's $\alpha$ is too large.
+**Q-policy Spearman $\rho$:** ranks state features by mean |SHAP| in the Q-function and in the policy. With only five state features this is a blunt instrument: for $n = 5$, $\rho$ must reach about 0.9 to be significant at the 5% level (one-sided), so a value like 0.71 is not evidence of anything on its own. Nor is there a reason the two rankings must agree: the Q-function attributes *value* and the policy attributes *action*, and a variable can matter for one without mattering for the other. A very low or negative $\rho$ is a prompt to look closer — for instance at whether a strongly regularized actor (large CQL $\alpha$) has stopped responding to the state — not a pass/fail test.
 
 **Physics sign tests:** `heat_input` should show a positive dependence slope with `next_temperature`, and `flow_input` with `next_filler_frac` — test the feature-vs-SHAP slope (or dependence plot), not the mean signed SHAP, which can sit near zero when instances straddle the background. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse.
 
@@ -351,7 +353,7 @@ Three complementary SHAP explanations for a trained Offline RL agent:
 | Policy SHAP | Actor $\pi(s)$ | Why was this action chosen? | $s \in \mathbb{R}^S$ |
 | Dynamics SHAP | $\hat{f}(s,a)$ | Why is this next state predicted? | $(s, a) \in \mathbb{R}^{S+A}$ |
 
-The consistency check — Q-policy Spearman correlation and physics sign tests — provides automated validation that the three explanations are mutually coherent and physically plausible.
+The consistency checks — the Q-policy rank comparison and the physics sign tests — are screening tools: the sign tests can catch a physically impossible dynamics model, while the rank comparison only flags cases worth a closer look.
 
 Chapter 12 carries the offline RL toolkit over to tool-using LLM agents, where states are contexts and actions are tool calls. Chapter 13 then closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.
 
