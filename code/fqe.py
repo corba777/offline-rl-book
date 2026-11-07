@@ -271,15 +271,14 @@ def evaluate(env, agent, n_episodes=20, seed=100, s_mean=None, s_std=None):
 # 5. MAIN
 # ============================================================================
 
-def main():
+def main(quick=False):
     print("FQE (Chapter 3) — Off-Policy Evaluation on ThermalProcessEnv")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     state_dim, action_dim = 3, 2
     batch_size = 256
-    bc_epochs = 80
-    fqe_epochs = 100
+    bc_epochs, fqe_epochs, n_episodes, n_eval = (2, 2, 40, 2) if quick else (80, 100, 400, 20)
 
-    dataset = collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0)
+    dataset = collect_offline_dataset(n_episodes=n_episodes, noise_scale=0.3, seed=0)
     s_mean, s_std, r_scale = normalize_dataset(dataset)
 
     loader = DataLoader(
@@ -318,7 +317,7 @@ def main():
     print(f"FQE proxy over dataset states = {J_fqe_proxy:.4f} (normalized reward scale)")
 
     # 3) True return via rollout (raw rewards, not normalized)
-    mean_ret, std_ret = evaluate(env, bc, n_episodes=20, seed=100,
+    mean_ret, std_ret = evaluate(env, bc, n_episodes=n_eval, seed=100,
                                   s_mean=s_mean, s_std=s_std)
     print(f"Rollout return (true J): {mean_ret:.2f} ± {std_ret:.2f} (raw env reward)")
 
@@ -328,4 +327,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--quick", action="store_true", help="tiny settings for a smoke test")
+    main(quick=p.parse_args().quick)

@@ -2,7 +2,7 @@
 td3bc.py
 ========
 TD3+BC (TD3 with Behavioral Cloning penalty) for offline continuous control.
-Referenced from Chapter 5 of "Offline RL: From Theory to Industrial Practice".
+Referenced from Chapter 6 of "Offline RL: From Theory to Industrial Practice".
 
 Fujimoto & Gu, "A Minimalist Approach to Offline Reinforcement Learning (TD3+BC)", NeurIPS 2021.
 arXiv:2106.06860
@@ -301,14 +301,14 @@ def evaluate(env, agent, s_mean, s_std, n_episodes=20, seed=100):
 # 7. MAIN
 # ============================================================================
 
-def main():
-    print("TD3+BC (Chapter 5) — Offline RL on ThermalProcessEnv")
+def main(quick=False):
+    print("TD3+BC (Chapter 6) — Offline RL on ThermalProcessEnv")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     state_dim, action_dim = 3, 2
     batch_size = 256
-    epochs = 100
+    epochs, n_episodes, n_eval, eval_every = (2, 40, 2, 2) if quick else (100, 400, 20, 20)
 
-    dataset = collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0)
+    dataset = collect_offline_dataset(n_episodes=n_episodes, noise_scale=0.3, seed=0)
     s_mean, s_std, r_scale = normalize_dataset(dataset)
 
     loader = DataLoader(
@@ -334,9 +334,9 @@ def main():
                          s2.cpu().numpy(), d.cpu().numpy())
             bc.update(s.cpu().numpy(), a.cpu().numpy(), r.cpu().numpy(),
                       s2.cpu().numpy(), d.cpu().numpy())
-        if (epoch + 1) % 20 == 0:
-            mean_td3bc, std_td3bc = evaluate(env, td3bc, s_mean, s_std, n_episodes=20, seed=100)
-            mean_bc, std_bc = evaluate(env, bc, s_mean, s_std, n_episodes=20, seed=100)
+        if (epoch + 1) % eval_every == 0:
+            mean_td3bc, std_td3bc = evaluate(env, td3bc, s_mean, s_std, n_episodes=n_eval, seed=100)
+            mean_bc, std_bc = evaluate(env, bc, s_mean, s_std, n_episodes=n_eval, seed=100)
             print(f"Epoch {epoch+1} | TD3+BC return: {mean_td3bc:.2f} ± {std_td3bc:.2f} | "
                   f"BC return: {mean_bc:.2f} ± {std_bc:.2f}")
 
@@ -344,4 +344,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--quick", action="store_true", help="tiny settings for a smoke test")
+    main(quick=p.parse_args().quick)

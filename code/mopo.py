@@ -2,7 +2,7 @@
 mopo.py
 =======
 Model-Based Offline Policy Optimization (MOPO) for offline continuous control.
-Referenced from Chapter 5 of "Offline RL: From Theory to Industrial Practice".
+Referenced from Chapter 8 of "Offline RL: From Theory to Industrial Practice".
 
 Yu et al., "MOPO: Model-Based Offline Policy Optimization", NeurIPS 2020.
 arXiv:2005.13239
@@ -720,14 +720,15 @@ def train_sac_agent(agent, loader, real_states_tensor,
 # 9. MAIN
 # ============================================================================
 
-def run_comparison():
+def run_comparison(quick=False):
     print("=" * 60)
-    print("Chapter 5: MOPO vs Model-Free Methods on Thermal Process")
+    print("Chapter 8: MOPO vs Model-Free Methods on Thermal Process")
     print("=" * 60)
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    n_episodes, n_epochs, model_epochs, n_eval = (40, 2, 2, 2) if quick else (400, 80, 30, 20)
 
     # Data
-    dataset = collect_offline_dataset(n_episodes=400, noise_scale=0.3)
+    dataset = collect_offline_dataset(n_episodes=n_episodes, noise_scale=0.3)
     s_mean, s_std, _ = normalize_dataset(dataset)
     ds = TensorDataset(*[torch.FloatTensor(dataset[k])
                          for k in ['states','actions','rewards',
@@ -737,7 +738,7 @@ def run_comparison():
 
     # Behavior policy baseline
     pid_r = []
-    for ep in range(20):
+    for ep in range(n_eval):
         obs = env.reset(seed=9000+ep); ep_r = 0; done = False
         while not done:
             act = pid_action(obs, env.T_target, env.f_target)
@@ -749,18 +750,18 @@ def run_comparison():
     # BC
     print("\n--- Behavioral Cloning ---")
     bc = BCAgent(3, 2, device=device)
-    for epoch in range(1, 81):
+    for epoch in range(1, n_epochs + 1):
         for batch in loader:
             bc.update(batch)
         if epoch % 20 == 0:
             print(f"  Epoch {epoch}")
-    bc_res = evaluate(bc, env, s_mean, s_std, device=device)
+    bc_res = evaluate(bc, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # MOPO (moderate penalty)
     print("\n--- MOPO (λ=1.0, h=5, N=5) ---")
     mopo = MOPOAgent(3, 2, n_ensemble=5, rollout_horizon=5, lam=1.0,
                      rollout_batch=512, real_ratio=0.5, device=device)
-    mopo.train_model(dataset, n_epochs=30, log_every=10)
+    mopo.train_model(dataset, n_epochs=model_epochs, log_every=10)
 
     # Show uncertainty diagnostic
     show_model_uncertainty(mopo.ensemble, dataset, device)
@@ -769,18 +770,18 @@ def run_comparison():
     print("\n--- MOPO policy training ---")
     real_states = torch.FloatTensor(dataset['states']).to(device)
     train_sac_agent(mopo, loader, real_states,
-                    n_epochs=80, rollout_every=10, log_every=20)
-    mopo_res = evaluate(mopo, env, s_mean, s_std, device=device)
+                    n_epochs=n_epochs, rollout_every=10, log_every=20)
+    mopo_res = evaluate(mopo, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # MOPO (conservative)
     print("\n--- MOPO (λ=3.0, h=3, N=5) ---")
     mopo_c = MOPOAgent(3, 2, n_ensemble=5, rollout_horizon=3, lam=3.0,
                        rollout_batch=512, real_ratio=0.7, device=device)
-    mopo_c.train_model(dataset, n_epochs=30, log_every=30)
+    mopo_c.train_model(dataset, n_epochs=model_epochs, log_every=30)
     print("\n--- MOPO conservative policy training ---")
     train_sac_agent(mopo_c, loader, real_states,
-                    n_epochs=80, rollout_every=10, log_every=20)
-    mopo_c_res = evaluate(mopo_c, env, s_mean, s_std, device=device)
+                    n_epochs=n_epochs, rollout_every=10, log_every=20)
+    mopo_c_res = evaluate(mopo_c, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # Summary
     print("\n" + "=" * 60)
@@ -799,4 +800,7 @@ def run_comparison():
 
 
 if __name__ == '__main__':
-    run_comparison()
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument('--quick', action='store_true', help='tiny settings for a smoke test')
+    run_comparison(quick=p.parse_args().quick)

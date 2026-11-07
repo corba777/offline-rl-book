@@ -68,7 +68,14 @@ python code/agentic_offline_rl_toy.py
 python code/extrapolation_error.py
 ```
 
-Full chapter scripts (CQL, IQL, MOPO, …) are educational and may take longer; see the map at the top of `requirements.txt`.
+Full chapter scripts (CQL, IQL, MOPO, …) are educational and may take longer; see the map at the top of `requirements.txt`. Most accept `--quick` for tiny settings. To check that every script still runs (about two minutes on a laptop):
+
+```bash
+python scripts/run_examples.py            # all chapter scripts, quick settings, in a temp copy
+python -m unittest discover -s code -p 'test_*.py'
+```
+
+GitHub Actions runs both on every push, and also checks that the chapter HTML was rebuilt after the Markdown changed.
 
 ## Writing New Chapters
 

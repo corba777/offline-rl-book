@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  examples:
+    name: Unit tests and chapter scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies (CPU-only PyTorch)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m unittest discover -s code -p 'test_*.py' -v
+      - name: Run every chapter script with quick settings
+        run: python scripts/run_examples.py
+
+  html:
+    name: Chapter HTML is up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Exact versions: other versions change the markup, not the content.
+      - run: pip install markdown==3.11.3 Pygments==2.21.0 PyYAML==6.0.3
+      - run: python scripts/md2html.py
+      - name: Fail if any HTML differs from its Markdown source
+        run: |
+          if [ -n "$(git status --porcelain -- '*.html')" ]; then
+            git status --short -- '*.html'
+            echo "::error::HTML is stale. Run 'python scripts/md2html.py' and commit the result."
+            exit 1
+          fi

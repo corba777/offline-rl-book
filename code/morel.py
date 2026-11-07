@@ -2,7 +2,7 @@
 morel.py
 ========
 Model-Based Offline Reinforcement Learning (MOReL) for offline continuous control.
-Referenced from Chapter 5 of "Offline RL: From Theory to Industrial Practice".
+Referenced from Chapter 8 of "Offline RL: From Theory to Industrial Practice".
 
 Kidambi et al., "MOReL: Model-Based Offline Reinforcement Learning", NeurIPS 2020.
 arXiv:2005.05951
@@ -643,6 +643,11 @@ class MOReeLAgent:
                 - 2.0 * f_next.pow(2)
                 - 0.1 * actions.pow(2).sum(-1))
 
+    def act(self, state):
+        """Deterministic action for one normalized state (used by evaluate)."""
+        s = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        return self.policy.act(s)
+
     # ------------------------------------------------------------------ #
     #  Phase 4: SAC update on real + P-MDP data                           #
     # ------------------------------------------------------------------ #
@@ -914,7 +919,7 @@ def train_morel(agent: MOReeLAgent,
 # 10. FULL COMPARISON: BC vs MOReL
 # ============================================================================
 
-def run_comparison():
+def run_comparison(quick=False):
     """
     Train BC and MOReL on the same offline dataset; compare on real env.
 
@@ -924,10 +929,14 @@ def run_comparison():
     """
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Device: {device}\n")
+    if quick:
+        n_episodes, n_epochs, n_iters, sac_steps, n_eval, n_final = 40, 2, 2, 20, 2, 2
+    else:
+        n_episodes, n_epochs, n_iters, sac_steps, n_eval, n_final = 400, 50, 20, 500, 20, 30
 
     # ── Data ────────────────────────────────────────────────────────────
     env     = ThermalProcessEnv(seed=99)
-    dataset = collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0)
+    dataset = collect_offline_dataset(n_episodes=n_episodes, noise_scale=0.3, seed=0)
     s_mean, s_std, r_scale = normalize_dataset(dataset)
 
     # ── Behavioral Cloning ───────────────────────────────────────────────
@@ -935,8 +944,8 @@ def run_comparison():
     print("BEHAVIORAL CLONING")
     print("="*55)
     bc = BCAgent(env.state_dim, env.action_dim, device=device)
-    bc.train(dataset, n_epochs=50)
-    bc_return = evaluate(bc, env, s_mean, s_std, device=device)
+    bc.train(dataset, n_epochs=n_epochs)
+    bc_return = evaluate(bc, env, s_mean, s_std, n_episodes=n_eval, device=device)
     print(f"BC return: {bc_return:.2f}")
 
     # ── MOReL ────────────────────────────────────────────────────────────
@@ -955,7 +964,7 @@ def run_comparison():
     )
 
     # Phase 1: train model
-    morel.train_model(dataset, n_epochs=50, log_every=10)
+    morel.train_model(dataset, n_epochs=n_epochs, log_every=10)
 
     # Phase 2: calibrate epsilon from data
     morel.calibrate_epsilon(dataset, percentile=80.0)
@@ -968,13 +977,13 @@ def run_comparison():
     # Phases 3-4: iterative rollout + SAC
     morel_returns = train_morel(
         morel, dataset, env, s_mean, s_std,
-        n_outer_iters     = 20,
-        sac_steps_per_iter= 500,
+        n_outer_iters     = n_iters,
+        sac_steps_per_iter= sac_steps,
         device            = device,
         eval_every        = 5,
     )
 
-    final_morel = evaluate(morel, env, s_mean, s_std, n_episodes=30,
+    final_morel = evaluate(morel, env, s_mean, s_std, n_episodes=n_final,
                             device=device)
 
     # ── Summary ──────────────────────────────────────────────────────────
@@ -1006,4 +1015,7 @@ def run_comparison():
 
 
 if __name__ == '__main__':
-    run_comparison()
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument('--quick', action='store_true', help='tiny settings for a smoke test')
+    run_comparison(quick=p.parse_args().quick)

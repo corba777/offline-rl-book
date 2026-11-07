@@ -2,7 +2,7 @@
 iql.py
 ======
 Implicit Q-Learning (IQL) for offline continuous control.
-Referenced from Chapter 4 of "Offline RL: From Theory to Industrial Practice".
+Referenced from Chapter 5 of "Offline RL: From Theory to Industrial Practice".
 
 Kostrikov et al., "Offline Reinforcement Learning with Implicit Q-Learning", ICLR 2022.
 arXiv:2110.06169
@@ -12,14 +12,14 @@ a policy that maximizes advantage A(s,a) = Q(s,a) - V(s) — without ever
 querying the policy during Q-updates. This keeps all updates fully in-sample.
 
 Contents:
-    1. ThermalProcessEnv     — same toy environment as Chapter 3
+    1. ThermalProcessEnv     — same toy environment as Chapter 4
     2. Dataset collection    — noisy PID behavior policy
     3. ValueNetwork          — V(s) critic
     4. QNetwork              — Q(s,a) critic (double-Q)
     5. DeterministicPolicy   — simple MLP actor
     6. expectile_loss()      — asymmetric L2 (core of IQL)
     7. IQLAgent              — full training loop
-    8. BCAgent               — behavioral cloning baseline (from ch3)
+    8. BCAgent               — behavioral cloning baseline (as in Chapter 4)
     9. run_comparison()      — BC vs CQL-style vs IQL comparison
 
 Usage:
@@ -508,18 +508,19 @@ def show_expectile_intuition():
 # 9. MAIN
 # ============================================================================
 
-def run_comparison():
+def run_comparison(quick=False):
     print("=" * 60)
-    print("Chapter 4: IQL vs BC on Thermal Process")
+    print("Chapter 5: IQL vs BC on Thermal Process")
     print("=" * 60)
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    n_episodes, n_epochs, n_eval = (40, 2, 2) if quick else (400, 100, 20)
 
     # Show what expectile regression does before training
     show_expectile_intuition()
     print()
 
     # Data
-    dataset = collect_offline_dataset(n_episodes=400, noise_scale=0.3)
+    dataset = collect_offline_dataset(n_episodes=n_episodes, noise_scale=0.3)
     s_mean, s_std, _ = normalize_dataset(dataset)
     ds = TensorDataset(*[torch.FloatTensor(dataset[k])
                          for k in ['states','actions','rewards','next_states','dones']])
@@ -528,7 +529,7 @@ def run_comparison():
 
     # Behavior policy baseline (clean PID, no noise)
     pid_r = []
-    for ep in range(20):
+    for ep in range(n_eval):
         obs = env.reset(seed=9000+ep); ep_r = 0; done = False
         while not done:
             act = pid_action(obs, env.T_target, env.f_target)
@@ -539,7 +540,7 @@ def run_comparison():
     # Evaluate noisy PID (behavior policy)
     noisy_r = []
     rng = np.random.default_rng(42)
-    for ep in range(20):
+    for ep in range(n_eval):
         obs = env.reset(seed=9000+ep); ep_r = 0; done = False
         while not done:
             act = pid_action(obs, env.T_target, env.f_target)
@@ -551,20 +552,20 @@ def run_comparison():
     # BC
     print("--- Behavioral Cloning ---")
     bc = BCAgent(3, 2, device=device)
-    train_agent(bc, loader, n_epochs=100, log_every=25)
-    bc_res = evaluate(bc, env, s_mean, s_std, device=device)
+    train_agent(bc, loader, n_epochs=n_epochs, log_every=25)
+    bc_res = evaluate(bc, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # IQL with default tau=0.7
     print("\n--- IQL (tau=0.7, beta=3.0) ---")
     iql = IQLAgent(3, 2, tau=0.7, beta=3.0, device=device)
-    train_agent(iql, loader, n_epochs=100, log_every=25)
-    iql_res = evaluate(iql, env, s_mean, s_std, device=device)
+    train_agent(iql, loader, n_epochs=n_epochs, log_every=25)
+    iql_res = evaluate(iql, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # IQL more aggressive: tau=0.9
     print("\n--- IQL (tau=0.9, beta=5.0) ---")
     iql_agg = IQLAgent(3, 2, tau=0.9, beta=5.0, device=device)
-    train_agent(iql_agg, loader, n_epochs=100, log_every=25)
-    agg_res = evaluate(iql_agg, env, s_mean, s_std, device=device)
+    train_agent(iql_agg, loader, n_epochs=n_epochs, log_every=25)
+    agg_res = evaluate(iql_agg, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # Summary
     print("\n" + "=" * 60)
@@ -584,4 +585,7 @@ def run_comparison():
 
 
 if __name__ == '__main__':
-    run_comparison()
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument('--quick', action='store_true', help='tiny settings for a smoke test')
+    run_comparison(quick=p.parse_args().quick)

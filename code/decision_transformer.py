@@ -2,7 +2,7 @@
 decision_transformer.py
 ======================
 Decision Transformer (DT) for offline continuous control.
-Referenced from Chapter 6 of "Offline RL: From Theory to Industrial Practice".
+Referenced from Chapter 7 of "Offline RL: From Theory to Industrial Practice".
 
 Chen et al., "Decision Transformer: Reinforcement Learning via Sequence Modeling", NeurIPS 2021.
 arXiv:2106.01345
@@ -316,8 +316,8 @@ def evaluate_dt(env, model, target_return, s_mean, s_std, rtg_scale, context_len
 # 6. MAIN
 # ============================================================================
 
-def main():
-    print("Decision Transformer (Chapter 6) — Offline RL via sequence modeling")
+def main(quick=False):
+    print("Decision Transformer (Chapter 7) — Offline RL via sequence modeling")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     state_dim, action_dim = 3, 2
     context_len = 20
@@ -325,10 +325,10 @@ def main():
     n_heads = 4
     n_layers = 2
     batch_size = 64
-    epochs = 50
+    epochs, n_episodes, n_eval, eval_every = (2, 20, 2, 2) if quick else (50, 200, 15, 10)
     gamma = 0.99
 
-    trajectories = collect_trajectories(n_episodes=200, noise_scale=0.3, gamma=gamma, seed=0)
+    trajectories = collect_trajectories(n_episodes=n_episodes, noise_scale=0.3, gamma=gamma, seed=0)
     s_mean, s_std, rtg_scale = normalize_trajectories(trajectories)
     dataset = ChunkDataset(trajectories, context_len)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -350,10 +350,10 @@ def main():
 
     for epoch in range(epochs):
         loss = train_epoch(model, loader, optimizer, device)
-        if (epoch + 1) % 10 == 0:
+        if (epoch + 1) % eval_every == 0:
             mean_ret, std_ret = evaluate_dt(
                 env, model, target_return, s_mean, s_std, rtg_scale, context_len,
-                device, n_episodes=15, seed=100,
+                device, n_episodes=n_eval, seed=100,
             )
             print(f"Epoch {epoch+1} | loss={loss:.4f} | eval return={mean_ret:.2f} ± {std_ret:.2f}")
 
@@ -361,4 +361,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--quick", action="store_true", help="tiny settings for a smoke test")
+    main(quick=p.parse_args().quick)

@@ -1,17 +1,17 @@
 """
 physics_informed.py
 ===================
-Physics-Informed Offline RL — complete implementation for Chapter 6.
+Physics-Informed Offline RL — complete implementation for Chapter 9.
 "Offline RL: From Theory to Industrial Practice"
 
 Three modular components, each usable independently:
 
   Part I  — PhysicsRewardWrapper  : soft constraint penalties in reward
   Part II — HybridDynamicsNet     : physics prior + learned residual
-             HybridEnsemble       : drop-in for Chapter 5 DynamicsEnsemble
+             HybridEnsemble       : drop-in for Chapter 8 DynamicsEnsemble
   Part III— LagrangianPolicyOptimizer : hard constraints via primal-dual
 
-All three components are designed to wrap existing Ch3-5 algorithms
+All three components are designed to wrap existing Chapter 4–8 algorithms
 without modification. See run_demo() at the bottom for a complete example.
 
 References:
@@ -444,7 +444,7 @@ class HybridEnsemble:
     """
     Ensemble of HybridDynamicsNet models.
 
-    Drop-in replacement for Chapter 5's DynamicsEnsemble.
+    Drop-in replacement for Chapter 8's DynamicsEnsemble.
     Uncertainty = standard deviation of ensemble predictions over the residual.
     In OOD regions: physics term is active → physically meaningful mean prediction
     even when residuals are uncertain.
@@ -871,7 +871,7 @@ def visualize_hybrid_vs_blackbox(hybrid_ensemble: HybridEnsemble,
 # 7. DEMO — full pipeline
 # ============================================================================
 
-def run_demo(device: str = 'cpu') -> None:
+def run_demo(device: str = 'cpu', quick: bool = False) -> None:
     """
     End-to-end demo:
       1. Collect offline dataset from noisy PID controller
@@ -880,7 +880,7 @@ def run_demo(device: str = 'cpu') -> None:
       4. Set up Lagrangian optimizer (Part III — setup only, not full training)
     """
     print("=" * 65)
-    print("Physics-Informed Offline RL — Chapter 6 Demo")
+    print("Physics-Informed Offline RL — Chapter 9 Demo")
     print("=" * 65)
 
     STATE_DIM  = 3
@@ -888,7 +888,7 @@ def run_demo(device: str = 'cpu') -> None:
 
     # ── 1. Dataset ─────────────────────────────────────────────────────────
     print("\n[1] Collecting offline dataset...")
-    dataset = collect_offline_dataset(n_episodes=200, episode_len=50)
+    dataset = collect_offline_dataset(n_episodes=20 if quick else 200, episode_len=50)
     norm_dataset, s_mean, s_std = normalize_dataset(dataset)
 
     # ── 2. Physics reward shaping ──────────────────────────────────────────
@@ -956,7 +956,7 @@ def run_demo(device: str = 'cpu') -> None:
     coverage = ensemble.diagnose_physics_coverage(dataset)
 
     print("\n  Training ensemble...")
-    ensemble.train_ensemble(dataset, n_epochs=30, log_every=10)
+    ensemble.train_ensemble(dataset, n_epochs=2 if quick else 30, log_every=10)
 
     print("\n  Post-training visualization:")
     visualize_hybrid_vs_blackbox(ensemble, dataset, STATE_DIM, device=device)
@@ -991,4 +991,7 @@ def run_demo(device: str = 'cpu') -> None:
 
 
 if __name__ == '__main__':
-    run_demo(device='cpu')
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument('--quick', action='store_true', help='tiny settings for a smoke test')
+    run_demo(device='cpu', quick=p.parse_args().quick)

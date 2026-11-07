@@ -1,7 +1,7 @@
 """
 chapter11_toy_figures.py
 =======================
-Standalone toy examples for Chapter 8 explainability.
+Standalone toy examples for Chapter 11 explainability.
 Generates figures that can be embedded in the book to illustrate SHAP
 without running the full coating-process pipeline.
 
@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import shap
 
 # Output directory (relative to repo root when run as python code/chapter11_toy_figures.py)
-FIG_DIR = os.path.join(os.path.dirname(__file__), '..', 'figures', 'ch8')
+FIG_DIR = os.path.join(os.path.dirname(__file__), '..', 'figures', 'ch11')
 os.makedirs(FIG_DIR, exist_ok=True)
 
 
@@ -325,7 +325,7 @@ def plot_dynamics_waterfall(dynamics_data: dict, output_name: str = 'next_s1',
 
 
 def main():
-    print("Chapter 8 toy SHAP figures")
+    print("Chapter 11 toy SHAP figures")
     print("  1. Toy Q(s1, s2, a) = 2*s1 - s2 + 0.5*a")
     data = run_toy_shap()
     plot_toy_bar(data, os.path.join(FIG_DIR, 'toy_shap_bar.png'))

@@ -2,7 +2,7 @@
 cql.py
 ======
 Conservative Q-Learning (CQL) for offline continuous control.
-Referenced from Chapter 3 of "Offline RL: From Theory to Industrial Practice".
+Referenced from Chapter 4 of "Offline RL: From Theory to Industrial Practice".
 
 Kumar et al., "Conservative Q-Learning for Offline Reinforcement Learning", NeurIPS 2020.
 arXiv:2006.04779
@@ -435,30 +435,24 @@ def train_agent(agent, loader, n_epochs=80, log_every=20):
 # 7. MAIN
 # ============================================================================
 
-def run_comparison():
+def run_comparison(quick=False):
     print("=" * 60)
-    print("Chapter 3: CQL vs BC on Thermal Process")
+    print("Chapter 4: CQL vs BC on Thermal Process")
     print("=" * 60)
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    n_episodes, n_epochs, n_eval = (40, 2, 2) if quick else (400, 80, 20)
 
     # Data
-    dataset = collect_offline_dataset(n_episodes=400, noise_scale=0.3)
+    dataset = collect_offline_dataset(n_episodes=n_episodes, noise_scale=0.3)
     s_mean, s_std, _ = normalize_dataset(dataset)
     ds = TensorDataset(*[torch.FloatTensor(dataset[k])
                          for k in ['states','actions','rewards','next_states','dones']])
     loader = DataLoader(ds, batch_size=256, shuffle=True, drop_last=True)
     env = ThermalProcessEnv()
 
-    # Behavior policy baseline
-    class PIDAgent:
-        policy = type('P', (), {'act': staticmethod(
-            lambda s, det=True: pid_action(
-                s.cpu().numpy().squeeze() * np.array([1,1,1]) + np.array([0,0,0]),
-                0.6, 0.5))})()
-
-    # We evaluate PID directly (no normalization needed for it)
+    # Behavior policy baseline: PID evaluated directly (no normalization needed)
     pid_r = []
-    for ep in range(20):
+    for ep in range(n_eval):
         obs = env.reset(seed=9000+ep); ep_r = 0; done = False
         while not done:
             act = pid_action(obs, env.T_target, env.f_target)
@@ -469,21 +463,21 @@ def run_comparison():
     # BC
     print("\n--- Behavioral Cloning ---")
     bc = BCAgent(3, 2, device=device)
-    train_agent(bc, loader, n_epochs=80, log_every=20)
-    bc_res = evaluate(bc, env, s_mean, s_std, device=device)
+    train_agent(bc, loader, n_epochs=n_epochs, log_every=20)
+    bc_res = evaluate(bc, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # CQL fixed alpha
     print("\n--- CQL (alpha=1.0) ---")
     cql = CQLAgent(3, 2, alpha_cql=1.0, alpha_ent=0.1, device=device)
-    train_agent(cql, loader, n_epochs=80, log_every=20)
-    cql_res = evaluate(cql, env, s_mean, s_std, device=device)
+    train_agent(cql, loader, n_epochs=n_epochs, log_every=20)
+    cql_res = evaluate(cql, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # CQL auto alpha
     print("\n--- CQL (auto alpha) ---")
     cql_auto = CQLAgent(3, 2, auto_alpha=True, target_cql=-1.0,
                         alpha_ent=0.1, device=device)
-    train_agent(cql_auto, loader, n_epochs=80, log_every=20)
-    auto_res = evaluate(cql_auto, env, s_mean, s_std, device=device)
+    train_agent(cql_auto, loader, n_epochs=n_epochs, log_every=20)
+    auto_res = evaluate(cql_auto, env, s_mean, s_std, n_episodes=n_eval, device=device)
 
     # Summary
     print("\n" + "=" * 60)
@@ -499,4 +493,7 @@ def run_comparison():
 
 
 if __name__ == '__main__':
-    run_comparison()
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument('--quick', action='store_true', help='tiny settings for a smoke test')
+    run_comparison(quick=p.parse_args().quick)
