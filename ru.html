@@ -40,6 +40,10 @@
     .hero{margin:0 0 1.75rem}
     .hero img{display:block;width:100%;height:auto;border-radius:14px}
     .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+    .pdf-link{font-family:var(--sans);font-size:0.88rem;margin-bottom:1rem}
+    .pdf-link a{color:var(--accent);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:0.3rem 0.7rem;display:inline-block}
+    .pdf-link a:hover{border-color:var(--accent)}
+    .pdf-link span{color:var(--text-light);margin-left:0.5rem}
     .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light);line-height:1.6}
     .site-footer a{color:var(--accent)}
   </style>
@@ -55,6 +59,7 @@
   <h1 class="visually-hidden">Offline RL: От теории к промышленной практике</h1>
   <p class="hero"><img src="/offline-rl-book/figures/readme/banner_ru.svg" alt="Offline RL: от теории к промышленной практике. Политика обучается по действиям операторов, записанным раньше на установке, без пробных действий на установке во время обучения." /></p>
   <p class="byline">Created and maintained by <strong>Artem Zvyagintsev</strong></p>
+  <p class="pdf-link"><a href="https://github.com/corba777/offline-rl-book/releases/download/pdf/offline-rl-book.pdf">Скачать PDF</a><span>вся книга одним файлом, пока только английская версия</span></p>
   <p class="disclaimer">Прикладные учебные заметки по offline deep RL — не авторитетный textbook. Материал суммирует алгоритмы, паттерны реализации и практические caveats; код — учебный каркас.</p>
   <p>Практическое руководство по офлайн-обучению с подкреплением — для практиков, которые знают ML и хотят применять RL к реальным системам без живых экспериментов.</p>
   <p>Каждая глава: <strong>идея → формализация → код → ограничения</strong>.</p>

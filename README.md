@@ -27,6 +27,7 @@
 <p align="center">
   <a href="https://corba777.github.io/offline-rl-book/">Read (EN)</a> ·
   <a href="https://corba777.github.io/offline-rl-book/ru/">Читать (RU)</a> ·
+  <a href="https://github.com/corba777/offline-rl-book/releases/download/pdf/offline-rl-book.pdf">PDF</a> ·
   <a href="#contents">Contents</a> ·
   <a href="#run-the-examples">Run the examples</a> ·
   <a href="#repository-layout">Layout</a> ·
@@ -158,7 +159,7 @@ brew install pandoc tectonic librsvg   # once; tectonic fetches the LaTeX packag
 python scripts/build_pdf.py            # -> build/pdf/offline-rl-book.pdf
 ```
 
-`build/pdf/` also holds the LaTeX source and its figures, which is what arXiv expects for a TeX-built paper. The styling lives in `scripts/pdf/`. CI builds the PDF on every push; download it from the run's artifacts (*offline-rl-book-pdf*) on the [Actions](https://github.com/corba777/offline-rl-book/actions/workflows/ci.yml) page.
+`build/pdf/` also holds the LaTeX source and its figures, which is what arXiv expects for a TeX-built paper. The styling lives in `scripts/pdf/`. CI rebuilds the PDF on every push to `main` and publishes it at a permanent link: [offline-rl-book.pdf](https://github.com/corba777/offline-rl-book/releases/download/pdf/offline-rl-book.pdf). Each CI run also keeps the PDF with its LaTeX source as an artifact (*offline-rl-book-pdf*).
 
 ## License
 

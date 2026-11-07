@@ -50,6 +50,8 @@ jobs:
     name: PDF of the English edition
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write   # to update the "pdf" release on main
     steps:
       - uses: actions/checkout@v5
       - name: Install pandoc, tectonic and rsvg-convert
@@ -73,3 +75,17 @@ jobs:
             build/pdf/preamble.tex
             build/pdf/title.tex
             build/pdf/figures/
+      # A fixed release gives the site a permanent link to the latest PDF:
+      # https://github.com/corba777/offline-rl-book/releases/download/pdf/offline-rl-book.pdf
+      - name: Publish the PDF to the "pdf" release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Latest PDF of the English edition, rebuilt by CI on every push to main. Built from ${GITHUB_SHA::7}."
+          if ! gh release view pdf >/dev/null 2>&1; then
+            gh release create pdf --title "PDF (latest build)" --notes "$notes" --target "$GITHUB_SHA"
+          else
+            gh release edit pdf --notes "$notes"
+          fi
+          gh release upload pdf build/pdf/offline-rl-book.pdf --clobber
