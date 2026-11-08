@@ -184,7 +184,25 @@ def coverage_tables():
     write("cov_data_wins.tex", f"{int((d > 0).sum())}%\n")
     q = lambda f, m: np.mean([r["extra"][f"q_data {m}"] for r in f["runs"]])
     write("cov_q.tex", f"\\newcommand{{\\qsacnarrow}}{{{q(n10, 'SAC, real data only'):+.1f}}}"
-          f"\\newcommand{{\\qmbnarrow}}{{{q(n10, 'no pessimism'):.0f}}}\n")
+          f"\\newcommand{{\\qmbnarrow}}{{{q(n10, 'no pessimism'):.0f}}}"
+          f"\\newcommand{{\\iqmdatanarrow}}{{{stats.trim_mean(per_seed(n20, 'HALT p99, data kappa'), 0.25):.2f}}}"
+          f"\\newcommand{{\\iqmnopnarrow}}{{{stats.trim_mean(per_seed(n20, 'no pessimism'), 0.25):.2f}}}"
+          f"\\newcommand{{\\signp}}{{{stats.binomtest(int((d > 0).sum()), len(d)).pvalue:.2f}}}\n")
+
+
+def coverage_fresh_table():
+    a, b = load("ch10_coverage_normal_1-10_noise_k20.json"), load("ch10_coverage_normal_1-10_noise_k20_fresh.json")
+    rows = [" & ".join([label, cov_cell(a, m), cov_cell(b, m)]) + r" \\" for m, label in COV_ARMS]
+    write("coverage_fresh.tex", "\n".join(rows) + "\n")
+    write("cov_fresh_data_vs_cql.tex", fmt(paired(b, "HALT p99, data kappa", b, "CQL alpha=0.1"), sign=True) + "%\n")
+    fails = lambda m: n_fail(a, m) + n_fail(b, m)
+    ci = lambda k: stats.beta.ppf(0.975, k + 1, 20 - k) if k < 20 else 1.0
+    lo = lambda k: stats.beta.ppf(0.025, k, 21 - k) if k > 0 else 0.0
+    k_nop, k_dat = fails("no pessimism"), fails("HALT p99, data kappa")
+    write("cov_fresh_pooled.tex",
+          f"\\newcommand{{\\poolnopfails}}{{{k_nop}}}\\newcommand{{\\pooldatafails}}{{{k_dat}}}"
+          f"\\newcommand{{\\poolnopci}}{{{100 * lo(k_nop):.1f}\\%--{100 * ci(k_nop):.0f}\\%}}"
+          f"\\newcommand{{\\pooldataci}}{{{100 * lo(k_dat):.0f}\\%--{100 * ci(k_dat):.0f}\\%}}\n")
 
 
 def calibration_tables():
@@ -242,5 +260,6 @@ if __name__ == "__main__":
     fresh_table()
     baselines_table()
     coverage_tables()
+    coverage_fresh_table()
     calibration_tables()
     rollout_figure()

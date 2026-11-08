@@ -12,7 +12,7 @@ type: software
 authors:
   - family-names: Zvyagintsev
     given-names: Artem
-version: 1.1.0
+version: 1.1.1
 doi: 10.5281/zenodo.24045871
 date-released: 2026-11-08
 url: "https://corba777.github.io/offline-rl-book/"
@@ -35,6 +35,6 @@ preferred-citation:
     - family-names: Zvyagintsev
       given-names: Artem
   year: 2026
-  version: 1.1.0
+  version: 1.1.1
   doi: 10.5281/zenodo.24045871
   url: "https://corba777.github.io/offline-rl-book/"
