@@ -37,6 +37,8 @@ SCRIPTS = [
     ("chapter10.py",              ["--quick"]),
     ("chapter10.py",              ["--quick", "--oracle-ablation"]),
     ("chapter10.py",              ["--quick", "--halt-study"]),
+    ("chapter10.py",              ["--quick", "--baselines-study"]),
+    ("chapter10.py",              ["--quick", "--edge-study"]),
     ("chapter11.py",              ["--quick"]),
     ("chapter11_toy_figures.py",  []),
     ("chapter11_causal_toy.py",   []),

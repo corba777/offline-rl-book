@@ -1123,6 +1123,124 @@ def run_halt_study(seed: int = 0, device: str = 'cpu', lagged_flow: bool = True,
     return out
 
 
+@torch.no_grad()
+def mean_q_on_data(agent, norm_dataset: Dict, device: str = 'cpu') -> float:
+    """Mean min(Q1, Q2)(s, pi(s)) over the dataset states: a value that grows
+    far beyond the logged returns would be the overestimation of Sims et al."""
+    s = torch.FloatTensor(norm_dataset['states']).to(device)
+    a, _ = agent.policy.sample(s)
+    return float(torch.min(agent.Q1(s, a), agent.Q2(s, a)).mean())
+
+
+def run_baselines_study(seed: int = 0, device: str = 'cpu', n_train_ep: int = 400,
+                        n_morel_iters: int = 15, n_cql_epochs: int = 80, n_eval_ep: int = 20,
+                        batch_size: int = 256, cql_alphas=(0.1, 0.3, 3.0, 10.0),
+                        quick_test: bool = False) -> Dict[str, object]:
+    """
+    One seed of the baselines study, on the Markov (lagged) state and the same
+    datasets as the benchmark. Does the model-based agent without HALT gain from
+    its synthetic data at all (the same SAC on real data only), does it collapse
+    with a longer budget (three times the SAC steps), and is CQL with alpha = 1
+    a fair baseline (an alpha grid)? The hybrid ensemble and the no-HALT arm
+    repeat those of the HALT study exactly.
+    """
+    if quick_test:
+        n_train_ep, n_morel_iters, n_cql_epochs, n_eval_ep = 40, 2, 2, 3
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    env  = CoatingProcessEnv(seed=seed, lagged_flow=True)
+    S, A = env.obs_dim, CoatingProcessEnv.ACTION_DIM
+    dataset = collect_industrial_dataset(n_episodes=n_train_ep, seed=seed, lagged_flow=True)
+    norm_dataset, s_mean, s_std = normalize_dataset(dataset)
+    units = Units(s_mean, s_std, float(dataset['rewards'].std() + 1e-8), device)
+    evaluator = IndustrialEvaluator(env, s_mean, s_std, n_eval_ep,
+                                    seed_base=8000 + 100 * seed, device=device)
+    kappa = max(100.0, 2.0 * float(np.abs(norm_dataset['rewards']).max()) / (1 - 0.99))
+    steps = 300 if not quick_test else 20
+    out = {'seed': seed, 'results': {}, 'extra': {}}
+
+    torch.manual_seed(seed + 1)                       # as in the HALT study
+    hm = HybridMOReL(S, A, units, kappa=kappa, device=device)
+    hm.train_dynamics(norm_dataset, n_epochs=30 if not quick_test else 2, batch_size=batch_size)
+
+    for name, iters, real_ratio in [('no HALT', n_morel_iters, 0.5),
+                                    ('no HALT, 3x budget', 3 * n_morel_iters, 0.5),
+                                    ('SAC, real data only', n_morel_iters, 1.0)]:
+        print(f"\n[seed {seed}] {name}")
+        torch.manual_seed(seed + 1)
+        np.random.seed(seed + 1)
+        ag = MOReeLAgent(S, A, n_ensemble=4, rollout_horizon=5, kappa=kappa,
+                         real_ratio=real_ratio, device=device)
+        ag._model_reward = units.reward_fn
+        ag.ensemble = hm.hybrid_ensemble if real_ratio < 1.0 else OracleDynamics(units)
+        ag.epsilon = float('inf')
+        train_morel(agent=ag, dataset=norm_dataset, env=env, s_mean=s_mean, s_std=s_std,
+                    n_outer_iters=iters, sac_steps_per_iter=steps, batch_size=batch_size,
+                    device=device, eval_every=iters + 1)
+        out['results'][name] = evaluator.evaluate(ag)
+        out['extra'][f'q_data {name}'] = mean_q_on_data(ag, norm_dataset, device)
+
+    loader = make_dataloader(norm_dataset, batch_size, device)
+    for alpha in cql_alphas:
+        name = f'CQL alpha={alpha:g}'
+        print(f"\n[seed {seed}] {name}")
+        torch.manual_seed(seed + 2)
+        cql = CQLAgent(S, A, alpha_cql=alpha, device=device)
+        train_cql_agent(cql, loader, n_cql_epochs)
+        out['results'][name] = evaluator.evaluate(cql)
+    for name, m in out['results'].items():
+        evaluator.print_results(f"{name} (seed {seed})", m)
+    return out
+
+
+def run_edge_study(seed: int = 0, device: str = 'cpu', n_train_ep: int = 400,
+                   n_morel_iters: int = 15, n_eval_ep: int = 20, batch_size: int = 256,
+                   quick_test: bool = False) -> Dict[str, object]:
+    """
+    One seed of the edge-of-reach check (Sims et al., 2024), on the Markov state:
+    model-based SAC without pessimism on the true dynamics, with half of every
+    batch real data (as in the factorial ablation) or 5%, as in their
+    HalfCheetah runs, and with three times the SAC budget. Edge-of-reach states
+    hurt only through bootstrapping from states that are never updated; real
+    data and dataset-covered states update them anyway.
+    """
+    if quick_test:
+        n_train_ep, n_morel_iters, n_eval_ep = 40, 2, 3
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    env  = CoatingProcessEnv(seed=seed, lagged_flow=True)
+    S, A = env.obs_dim, CoatingProcessEnv.ACTION_DIM
+    dataset = collect_industrial_dataset(n_episodes=n_train_ep, seed=seed, lagged_flow=True)
+    norm_dataset, s_mean, s_std = normalize_dataset(dataset)
+    units = Units(s_mean, s_std, float(dataset['rewards'].std() + 1e-8), device)
+    evaluator = IndustrialEvaluator(env, s_mean, s_std, n_eval_ep,
+                                    seed_base=8000 + 100 * seed, device=device)
+    kappa = max(100.0, 2.0 * float(np.abs(norm_dataset['rewards']).max()) / (1 - 0.99))
+    steps = 300 if not quick_test else 20
+    out = {'seed': seed, 'results': {}, 'extra': {}}
+    for name, iters, real_ratio in [('true, 50% real', n_morel_iters, 0.5),
+                                    ('true, 5% real', n_morel_iters, 0.05),
+                                    ('true, 5% real, 3x budget', 3 * n_morel_iters, 0.05)]:
+        print(f"\n[seed {seed}] {name}")
+        torch.manual_seed(seed + 1)
+        np.random.seed(seed + 1)
+        ag = MOReeLAgent(S, A, n_ensemble=4, rollout_horizon=5, kappa=kappa,
+                         real_ratio=real_ratio, device=device)
+        ag._model_reward = units.reward_fn
+        ag.ensemble = OracleDynamics(units)
+        ag.epsilon = float('inf')
+        # 5% of a ~256 batch: 13 real + 247 synthetic transitions per update.
+        real_batch = batch_size if real_ratio >= 0.5 else max(1, round(batch_size * real_ratio))
+        train_morel(agent=ag, dataset=norm_dataset, env=env, s_mean=s_mean, s_std=s_std,
+                    n_outer_iters=iters, sac_steps_per_iter=steps, batch_size=real_batch,
+                    device=device, eval_every=iters + 1)
+        out['results'][name] = evaluator.evaluate(ag)
+        out['extra'][f'q_data {name}'] = mean_q_on_data(ag, norm_dataset, device)
+    for name, m in out['results'].items():
+        evaluator.print_results(f"{name} (seed {seed})", m)
+    return out
+
+
 def t_interval(values, alpha: float = 0.05):
     """Mean and Student-t confidence interval over per-seed values. With few
     seeds this is more honest than a percentile bootstrap, which undercovers."""
@@ -1156,7 +1274,11 @@ def summarize(runs: List[Dict]) -> Dict[str, Dict]:
             summary['methods'][mth][k] = {'mean': m, 'lo': lo, 'hi': hi,
                                           'min': float(np.nanmin(vals)), 'max': float(np.nanmax(vals))}
     pairs = [(a, b) for a, b in PAIRS if a in methods and b in methods]
-    if 'HALT p80' in methods:
+    if 'true, 5% real' in methods:
+        pairs = [('true, 5% real', 'true, 50% real'), ('true, 5% real, 3x budget', 'true, 5% real')]
+    elif 'SAC, real data only' in methods:
+        pairs = [('no HALT', 'SAC, real data only'), ('no HALT, 3x budget', 'no HALT')]
+    elif 'HALT p80' in methods:
         pairs = [('HALT p99', 'HALT p80'), ('no HALT', 'HALT p80'), ('no HALT', 'HALT p99'),
                  ('HALT p99, data kappa', 'HALT p99'), ('no HALT', 'HALT p99, data kappa')]
         pairs = [(a, b) for a, b in pairs if a in methods and b in methods]
@@ -1205,8 +1327,13 @@ def print_summary(summary) -> None:
 def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                    quick_test: bool = False, device: str = 'cpu',
                    lagged_flow: bool = False, oracle_ablation: bool = False,
-                   halt_study: bool = False) -> Dict:
-    if halt_study:
+                   halt_study: bool = False, baselines_study: bool = False,
+                   edge_study: bool = False) -> Dict:
+    if edge_study:
+        runs = [run_edge_study(seed=s, device=device, quick_test=quick_test) for s in seeds]
+    elif baselines_study:
+        runs = [run_baselines_study(seed=s, device=device, quick_test=quick_test) for s in seeds]
+    elif halt_study:
         runs = [run_halt_study(seed=s, device=device, lagged_flow=lagged_flow,
                                quick_test=quick_test) for s in seeds]
     elif oracle_ablation:
@@ -1223,7 +1350,7 @@ def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                  'results': {m: {k: v for k, v in res.items() if k != 'episodes'}
                              for m, res in r['results'].items()}} for r in runs]
         with open(out_path, 'w') as fh:
-            json.dump({'seeds': list(seeds), 'lagged_flow': lagged_flow or oracle_ablation,
+            json.dump({'seeds': list(seeds), 'lagged_flow': lagged_flow or oracle_ablation or baselines_study or edge_study,
                        'oracle_ablation': oracle_ablation,
                        'interval': '95% Student-t over per-seed means',
                        'runs': slim, 'summary': summary}, fh, indent=2)
@@ -1242,15 +1369,22 @@ if __name__ == '__main__':
                    help='HybridMOReL vs MOReL with the true dynamics, on the lagged state')
     p.add_argument('--halt-study', action='store_true',
                    help='same MOReL with HALT at p80, p99 or off (combine with --lagged-flow)')
+    p.add_argument('--baselines-study', action='store_true',
+                   help='SAC on real data only, no-HALT agent at 3x budget, CQL alpha grid (lagged state)')
+    p.add_argument('--edge-study', action='store_true',
+                   help='true dynamics without pessimism at 50% or 5% real data (lagged state)')
     p.add_argument('--out', default=None,
                    help='default: results/ch10_benchmark{,_lagged,_oracle}.json')
     p.add_argument('--device', default='cpu')
     args = p.parse_args()
-    name = (('ch10_halt_lagged.json' if args.lagged_flow else 'ch10_halt_logged.json')
+    name = 'ch10_edge_lagged.json' if args.edge_study else \
+           'ch10_baselines_lagged.json' if args.baselines_study else \
+           (('ch10_halt_lagged.json' if args.lagged_flow else 'ch10_halt_logged.json')
             if args.halt_study else
             'ch10_benchmark_oracle.json' if args.oracle_ablation else
             'ch10_benchmark_lagged.json' if args.lagged_flow else 'ch10_benchmark.json')
     out = args.out or os.path.join(_HERE, 'results', name)
     run_multi_seed(tuple(args.seeds), out_path=None if args.quick else out,
                    quick_test=args.quick, device=args.device, lagged_flow=args.lagged_flow,
-                   oracle_ablation=args.oracle_ablation, halt_study=args.halt_study)
+                   oracle_ablation=args.oracle_ablation, halt_study=args.halt_study,
+                   baselines_study=args.baselines_study, edge_study=args.edge_study)

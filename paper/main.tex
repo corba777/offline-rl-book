@@ -18,19 +18,20 @@
 \maketitle
 
 \begin{abstract}
-Model-based offline reinforcement learning methods such as MOReL guard against model exploitation by terminating synthetic rollouts, with a large penalty, wherever an ensemble's disagreement exceeds a threshold. We study this mechanism on a simulated industrial coating process with an integrating tank level and a transport delay, using ten seeds, paired comparisons and a confirmation run on ten fresh seeds. MOReL with a hybrid physics-plus-residual dynamics model is unstable, and a $2\times2$ factorial ablation locates the cause: with termination switched off, the learned and the true dynamics yield nearly identical policy returns (paired difference $+0.001$ [$-0.002$, $+0.004$]), and the agent, then plain model-based SAC, beats CQL by $+0.19$ [$+0.15$, $+0.23$]; with termination on, even the true dynamics produce failing seeds. Two design choices explain the damage. A threshold set at a percentile of the uncertainty on the data halts that share of in-distribution transitions by construction, and a penalty sized to deter halting in the worst case is three orders of magnitude larger than ordinary rewards, so that a few percent of halted rollouts dominate the critic. Raising the threshold to the 99th percentile removes the failing seeds but leaves the agent worse than behavioral cloning; taking the penalty from the data instead recovers most of the loss, but no termination setting we tried beats none. Multi-step diagnostics show why the uncertainty is a poor trigger: over a 20-step rollout the model's error grows five- to sixfold while the ensemble's disagreement stays flat, and its rank correlation with the error falls from 0.4 to near zero. The results concern one simulated process and one rollout horizon; they argue for measuring a pessimism mechanism like any other component rather than for dropping pessimism in general. Code, results and a companion book are public.
+Model-based offline reinforcement learning methods such as MOReL guard against model exploitation by terminating synthetic rollouts, with a large penalty, wherever an ensemble's disagreement exceeds a threshold. We study this mechanism on a simulated industrial coating process with an integrating tank level and a transport delay, using ten seeds, paired comparisons and a confirmation run on ten fresh seeds. A MOReL-style agent --- MOReL's termination rule inside an MBPO-style SAC learner --- with a hybrid physics-plus-residual dynamics model is unstable, and a $2\times2$ factorial ablation locates the cause: with termination on, even the true dynamics produce failing seeds; with termination off, the agent --- then plain model-based SAC --- never fails and beats CQL at its default $\alpha=1$ by $+0.19$ [$+0.15$, $+0.23$]. Without termination the synthetic data turn out not to matter: SAC on the real transitions alone, with no model and no pessimism, matches the model-based agent (paired difference $+0.005$ [$-0.013$, $+0.022$]), and so does model-based SAC on the true dynamics with only 5\% real data, the setting in which \citeauthor{sims2024edge} found such agents to collapse. The task is benign for offline value learning, so it cannot show what pessimism buys; it does show what a mis-sized safeguard costs. Two design choices explain the damage. A threshold set at a percentile of the uncertainty on the data halts that share of in-distribution transitions by construction, and a penalty sized to deter halting in the worst case is three orders of magnitude larger than ordinary rewards, so that a few percent of halted rollouts dominate the critic. Raising the threshold to the 99th percentile removes the failing seeds but leaves the agent worse than behavioral cloning; taking the penalty from the data instead recovers most of the loss, but no termination setting we tried beats none. Multi-step diagnostics show why the uncertainty is a poor trigger: over a 20-step rollout the model's error grows five- to sixfold while the ensemble's disagreement stays flat, and its rank correlation with the error falls from 0.4 to near zero. The results concern one simulated process and one rollout horizon; they argue for measuring a pessimism mechanism like any other component rather than for dropping pessimism in general. Code, results and a companion book are public.
 \end{abstract}
 
 \section{Introduction}
 
 Offline reinforcement learning learns a policy from logged data without trial actions on the system~\citep{levine2020offline}. Its central risk is extrapolation: a learned value function or dynamics model can be wrong where the data are thin, and an optimizer will find those errors. Model-based offline methods answer with pessimism built on an uncertainty estimate. MOPO subtracts a penalty proportional to the uncertainty from the reward~\citep{yu2020mopo}; MOReL builds a pessimistic MDP in which any state-action pair whose uncertainty exceeds a threshold $\epsilon$ leads to an absorbing HALT state with a large penalty $\kappa$~\citep{kidambi2020morel}. The uncertainty is usually the disagreement of an ensemble of learned models~\citep{lakshminarayanan2017ensembles,chua2018pets}.
 
-These safeguards are rarely tested on their own. Benchmarks report the full algorithm, and when a model-based method underperforms, the usual suspect is the model. We report a case where that diagnosis was wrong. On a simulated coating process with an integrating level and a transport delay, MOReL with a hybrid physics-plus-residual model failed on some seeds, and the physics prior was demonstrably wrong on one control loop, which made the model the natural culprit. A factorial ablation showed instead that the model was adequate and the termination rule caused the failures.
+These safeguards are rarely tested on their own. Benchmarks report the full algorithm, and when a model-based method underperforms, the usual suspect is the model. We report a case where that diagnosis was wrong. On a simulated coating process with an integrating level and a transport delay, a MOReL-style agent with a hybrid physics-plus-residual model failed on some seeds, and the physics prior was demonstrably wrong on one control loop, which made the model the natural culprit. A factorial ablation showed instead that the termination rule caused the failures, and further baselines showed that on this task even plain offline SAC, with no model and no pessimism, does not fail: the safeguard had nothing to protect against, and its cost is all that remained.
 
 Our contributions are empirical and methodological:
 \begin{itemize}
   \item A $2\times2$ ablation crossing learned versus true dynamics with HALT on versus off, which separates model error from the pessimism mechanism (Section~\ref{sec:factorial}).
   \item A study of the termination rule: threshold percentile and the size of $\kappa$, on two versions of the state, one of them non-Markov with a wrong physics prior (Section~\ref{sec:halt}).
+  \item Baselines that test whether the model, or any pessimism, is needed at all --- SAC on real data only, longer training, a CQL $\alpha$ grid --- and a repeat of the true-dynamics experiment of \citet{sims2024edge} at their real-data share, with the opposite outcome (Section~\ref{sec:edge}).
   \item One-step and multi-step diagnostics of whether ensemble disagreement tracks the model's actual error, using the true dynamics as an oracle (Section~\ref{sec:uncertainty}).
   \item A confirmation of the main conclusions on ten seeds that played no part in choosing the configurations (Section~\ref{sec:fresh}).
 \end{itemize}
@@ -38,7 +39,7 @@ All experiments use ten seeds, Student-$t$ intervals over per-seed means and pai
 
 \section{Related work}
 
-MOReL~\citep{kidambi2020morel} and MOPO~\citep{yu2020mopo} introduced the two standard forms of uncertainty-based pessimism in model-based offline RL. Both rely on an uncertainty estimate whose admissibility --- that it bounds the model's error --- is assumed rather than guaranteed. COMBO~\citep{yu2021combo} removes the explicit uncertainty estimate and applies CQL-style value regularization~\citep{kumar2020cql} to model-generated transitions instead. MBPO~\citep{janner2019mbpo} uses short model rollouts branched from real states, without pessimism, in the online setting; the agent we obtain by switching HALT off is essentially MBPO trained on a fixed dataset. Closest to our study, \citet{lu2022revisiting} revisit design choices in offline model-based RL on the D4RL locomotion tasks. They compare uncertainty heuristics used as MOPO-style reward penalties --- including MOReL's maximum pairwise disagreement, used there as a penalty rather than a termination rule --- measure how well each penalty ranks the true dynamics error, and tune the number of models, the rollout length and the penalty weight, finding that longer rollouts with larger penalties typically help. They also note that the released MOReL code implements the halt penalty differently from the paper and without its absorbing state. Our study differs in three ways. We test the termination mechanism as described in the MOReL paper, with its threshold and its penalty $\kappa$, rather than a reward penalty. We separate the model's error from the pessimism mechanism with a factorial design that includes the true dynamics as an oracle, which a hyperparameter search cannot do. And on our task the outcome is the opposite of ``more pessimism helps'': the best configuration had none. The two results need not conflict; they concern different mechanisms, rollout lengths and tasks. Industrial and near-real-world offline benchmarks such as the Industrial Benchmark~\citep{hein2017industrial} and NeoRL~\citep{qin2022neorl} share features of our task --- narrow logs from conservative controllers, delays, partial observability --- that standard locomotion suites~\citep{fu2020d4rl} lack.
+MOReL~\citep{kidambi2020morel} and MOPO~\citep{yu2020mopo} introduced the two standard forms of uncertainty-based pessimism in model-based offline RL. Both rely on an uncertainty estimate whose admissibility --- that it bounds the model's error --- is assumed rather than guaranteed. COMBO~\citep{yu2021combo} removes the explicit uncertainty estimate and applies CQL-style value regularization~\citep{kumar2020cql} to model-generated transitions instead. MBPO~\citep{janner2019mbpo} uses short model rollouts branched from real states, without pessimism, in the online setting; the agent we obtain by switching HALT off is essentially MBPO trained on a fixed dataset. Closest to our study, \citet{lu2022revisiting} revisit design choices in offline model-based RL on the D4RL locomotion tasks. They compare uncertainty heuristics used as MOPO-style reward penalties --- including MOReL's maximum pairwise disagreement, used there as a penalty rather than a termination rule --- measure how well each penalty ranks the true dynamics error, and tune the number of models, the rollout length and the penalty weight, finding that longer rollouts with larger penalties typically help. They also note that the released MOReL code implements the halt penalty differently from the paper and without its absorbing state. Our study differs in three ways. We test the termination of MOReL's pessimistic MDP, in a value-equivalent terminal form with its threshold and penalty (Section~3), rather than a reward penalty; we do not reimplement MOReL as a whole, whose planner differs from ours. We separate the model's error from the pessimism mechanism with a factorial design that includes the true dynamics as an oracle, which a hyperparameter search cannot do. And on our task the outcome is the opposite of ``more pessimism helps'': the best configuration had none. The two results need not conflict; they concern different mechanisms, rollout lengths and tasks. The experiment closest to our oracle arm is that of \citet{sims2024edge}, with the opposite outcome. They replace the learned model with the true dynamics in MBPO-style offline methods on D4RL, so that the uncertainty penalties vanish, and the methods fail completely. They trace the failure to edge-of-reach states --- states reached only at the last step of truncated rollouts, which serve as bootstrap targets but are never updated themselves --- and propose RAVL, which replaces dynamics pessimism with value pessimism over a critic ensemble. Our model-based SAC without pessimism does not fail on the true dynamics; Section~\ref{sec:edge} tests what separates the two settings. Industrial and near-real-world offline benchmarks such as the Industrial Benchmark~\citep{hein2017industrial} and NeoRL~\citep{qin2022neorl} share features of our task --- narrow logs from conservative controllers, delays, partial observability --- that standard locomotion suites~\citep{fu2020d4rl} lack.
 
 \section{Setup}
 
@@ -48,7 +49,9 @@ MOReL~\citep{kidambi2020morel} and MOPO~\citep{yu2020mopo} introduced the two st
 
 \paragraph{Data.} Each seed generates 400 episodes of 100 steps (40{,}000 transitions) from noisy proportional operators that leave steady-state offsets: 60\% normal operation, 25\% setpoint transitions, 15\% disturbances with a low tank level. Episodes end on a time limit, which is not treated as termination in the TD targets.
 
-\paragraph{Methods.} Behavioral cloning (BC); CQL~\citep{kumar2020cql} with $\alpha=1$; CQL with a reward penalty for leaving the bounds; and MOReL~\citep{kidambi2020morel} with a hybrid dynamics ensemble. The hybrid ensemble has four members, each predicting a known first-order physics model plus a learned Gaussian residual; on the Markov state the physics applies the delay exactly, on the logged state it cannot, and it then predicts the filler increments worse than predicting no change (explained variance $-50\%$). The policy is optimized with SAC~\citep{haarnoja2018sac} on batches that are half real transitions and half transitions from five-step model rollouts branched from dataset states, 15 outer iterations of 300 gradient steps. The HALT threshold $\epsilon$ is a percentile of the ensemble's disagreement on dataset transitions; the default is the 80th percentile, and the default penalty is $\kappa = \max(100,\ 2\max|r|/(1-\gamma))$ with $\gamma=0.99$, the value of staying forever in the worst-rewarded state, doubled ($\approx\kappaworst$ in normalized reward units). The same agent with the true noise-free dynamics in place of the ensemble serves as an oracle.
+\paragraph{Methods.} Behavioral cloning (BC); CQL~\citep{kumar2020cql} with $\alpha=1$; CQL with a reward penalty for leaving the bounds; and a MOReL-style agent with a hybrid dynamics ensemble. The hybrid ensemble has four members, each predicting a known first-order physics model plus a learned Gaussian residual; on the Markov state the physics applies the delay exactly, on the logged state it cannot, and it then predicts the filler increments worse than predicting no change (explained variance $-50\%$). The policy is optimized with SAC~\citep{haarnoja2018sac} on batches that are half real transitions and half transitions from five-step model rollouts branched from dataset states, 15 outer iterations of 300 gradient steps. The HALT threshold $\epsilon$ is a percentile of the ensemble's disagreement on dataset transitions; the default is the 80th percentile, and the default penalty is $\kappa = \max(100,\ 2\max|r|/(1-\gamma))$ with $\gamma=0.99$, the value of staying forever in the worst-rewarded state, doubled ($\approx\kappaworst$ in normalized reward units). The same agent with the true noise-free dynamics in place of the ensemble serves as an oracle.
+
+\paragraph{Termination, and how it relates to MOReL.} In MOReL's pessimistic MDP~\citep{kidambi2020morel}, a state-action pair in the unknown region earns its ordinary reward $r(s,a)$ and leads to an absorbing HALT state that pays $-\kappa_{\text{step}}$ at every step, so its value is $r(s,a) - \gamma\kappa_{\text{step}}/(1-\gamma)$. Our implementation records such a transition with reward $-\kappa$, marks it terminal and stops the rollout, so its value is $-\kappa$. The two coincide when $\kappa = \gamma\kappa_{\text{step}}/(1-\gamma) - r(s,a)$; since $|r|\ll\kappa$ here, our worst-case $\kappa\approx\kappaworst$ corresponds to $\kappa_{\text{step}}\approx 24$ in normalized units, about twice the largest per-step reward magnitude --- the same order as the $\kappa\approx R_{\max}$ suggested by MOReL's analysis --- and the data-derived $\kappa\approx\kappadata$ to $\kappa_{\text{step}}\approx 2$. Two further differences from MOReL as published are deliberate: the uncertainty is the norm of the ensemble's standard deviation rather than the maximum pairwise discrepancy, and the policy is trained by SAC on a 50/50 mix of real and short synthetic transitions, as in MBPO~\citep{janner2019mbpo}, rather than by model-based natural policy gradient on full rollouts in the pessimistic MDP. We therefore call the agent MOReL-style: the results concern MOReL's termination rule in this learner, not MOReL's complete algorithm.
 
 \paragraph{Evaluation.} Each policy runs 20 episodes of 200 steps on the real (simulated) process, half from nominal and half from disturbed starts. We report the mean return, the integrated absolute error (IAE) of the level and the number of failing seeds, defined as a mean return below $-10$ (an order of magnitude below every stable configuration). With ten seeds a failure count is a coarse signal, not an estimate of a failure probability: two failures in ten give a 95\% Clopper--Pearson interval of 2.5\%--56\% for the failure rate, and zero failures in ten still allow up to 31\%. Intervals are 95\% Student-$t$ intervals over the ten per-seed means; comparisons between methods are paired by seed, since within a seed all methods see the same dataset.
 
@@ -56,33 +59,33 @@ MOReL~\citep{kidambi2020morel} and MOPO~\citep{yu2020mopo} introduced the two st
 
 \subsection{Baseline comparison}
 
-Table~\ref{tab:benchmark} reports the four methods on both versions of the state. CQL clearly improves on BC, mostly by removing the operators' steady-state offsets, and the bounds penalty adds a small gain detectable only in a paired comparison ($+0.07$ [$+0.03$, $+0.10$] on the Markov state). MOReL is the worst method on average and has a failing seed on the logged state, where its physics prior is wrong.
+Table~\ref{tab:benchmark} reports the four methods on both versions of the state. CQL clearly improves on BC, mostly by removing the operators' steady-state offsets, and the bounds penalty adds a small gain detectable only in a paired comparison ($+0.07$ [$+0.03$, $+0.10$] on the Markov state). The MOReL-style agent is the worst method on average and has a failing seed on the logged state, where its physics prior is wrong.
 
 \begin{table}[h]
 \centering\small
 \resizebox{\linewidth}{!}{%
-\begin{tabular}{lcccccc}
+\begin{tabular}{lcccccccc}
 \toprule
-& \multicolumn{3}{c}{Five logged variables} & \multicolumn{3}{c}{Markov state} \\
-\cmidrule(lr){2-4}\cmidrule(lr){5-7}
-Method & Return & Level IAE & Fails & Return & Level IAE & Fails \\
+& \multicolumn{4}{c}{Five logged variables} & \multicolumn{4}{c}{Markov state} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}
+Method & Return & IQM & Level IAE & Fails & Return & IQM & Level IAE & Fails \\
 \midrule
 \csname @@input\endcsname tables/benchmark.tex \bottomrule
 \end{tabular}}
-\caption{Benchmark, ten seeds (0--9). Return over 200 steps, mean [95\% $t$-interval]; a seed fails when its mean return is below $-10$.}
+\caption{Benchmark, ten seeds (0--9). Return over 200 steps, mean [95\% $t$-interval]; IQM is the interquartile mean over seeds (the mean of the middle six of ten), which a failing seed cannot drag down; a seed fails when its mean return is below $-10$.}
 \label{tab:benchmark}
 \end{table}
 
 \subsection{Model or termination rule?}\label{sec:factorial}
 
-Table~\ref{tab:factorial} crosses the dynamics (learned hybrid or true) with the termination rule (HALT at the 80th percentile or none), on the Markov state, with the same SAC budget, rollout horizon, reward and policy initialization in every cell. Without HALT the learned and the true dynamics yield nearly identical policy returns under these training and evaluation conditions: the paired difference between the two right-hand cells is \input{tables/factorial_true_vs_learned.tex}, and both beat CQL on the same datasets. With HALT, the learned model has two failing seeds and the true dynamics one, with a return of $-224$. The termination rule, not the model, is the bottleneck. The same 4{,}500 SAC steps suffice for the agent without HALT; whether an agent with HALT would recover with a larger budget we did not test. Note that the agent without HALT and without any uncertainty penalty is no longer MOReL: it is model-based SAC with no pessimism, close to MBPO~\citep{janner2019mbpo} on a fixed dataset.
+Table~\ref{tab:factorial} crosses the dynamics (learned hybrid or true) with the termination rule (HALT at the 80th percentile or none), on the Markov state, with the same SAC budget, rollout horizon, reward and policy initialization in every cell. Without HALT the learned and the true dynamics yield nearly identical policy returns under these training and evaluation conditions: the paired difference between the two right-hand cells is \input{tables/factorial_true_vs_learned.tex}, and both beat CQL on the same datasets. Section~\ref{sec:edge} shows that this agreement says little about the model: without HALT the policy hardly depends on the synthetic data. With HALT, the learned model has two failing seeds and the true dynamics one, with a return of $-224$. In that cell the transitions come from the true dynamics, but the decision to halt is made exactly as in the learned-model cell: by the hybrid ensemble's disagreement at the same state-action pair, against the same threshold $\epsilon$ and with the same $\kappa$. The true dynamics carry no uncertainty of their own, so the cell isolates the termination rule from the model's errors: the rollouts are exact, and only the halts can mislead the critic. The termination rule, not the model, is the bottleneck. The same 4{,}500 SAC steps suffice for the agent without HALT; whether an agent with HALT would recover with a larger budget we did not test. Note that the agent without HALT and without any uncertainty penalty is no longer MOReL-style: it is model-based SAC with no pessimism, close to MBPO~\citep{janner2019mbpo} on a fixed dataset.
 
 \begin{table}[h]
 \centering\small
 \resizebox{\linewidth}{!}{%
-\begin{tabular}{llcccc}
+\begin{tabular}{llccccc}
 \toprule
-Dynamics & HALT & Return & Level IAE & Fails & Paired vs CQL \\
+Dynamics & HALT & Return & IQM & Level IAE & Fails & Paired vs CQL \\
 \midrule
 \csname @@input\endcsname tables/factorial.tex \bottomrule
 \end{tabular}}
@@ -92,17 +95,17 @@ Dynamics & HALT & Return & Level IAE & Fails & Paired vs CQL \\
 
 \subsection{Threshold and penalty}\label{sec:halt}
 
-A percentile threshold labels a fixed share of in-distribution transitions UNKNOWN: at the 80th percentile, about 22\% of rollout steps halt. Each halt costs $\kappa\approx\kappaworst$ against ordinary rewards near $-1$, so a fifth of the synthetic data carries a penalty three orders of magnitude larger than anything else, and the critic's targets are set by where the threshold happens to fall. Table~\ref{tab:halt} varies the rule with the learned model held fixed. Raising the threshold to the 99th percentile cuts the halt rate to about 5\% and removes the failing seeds, but the agent remains worse than BC. Keeping the 99th percentile and taking $\kappa$ from the data instead --- the magnitude of the most negative discounted return-to-go in the logs, about \kappadata --- improves the return by \input{tables/kappa_effect.tex}, to between BC and CQL. No termination setting beats none. On the logged state, where the physics prior is wrong on the filler loop, the picture is the same: the failures come from HALT, and without it the agent still beats CQL. The physics error mattered much less to the final policy than to the one-step predictions.
+A percentile threshold labels a fixed share of in-distribution transitions UNKNOWN: at the 80th percentile, about 22\% of rollout steps halt. Each halt costs $\kappa\approx\kappaworst$ against ordinary rewards near $-1$, so a fifth of the synthetic data carries a penalty three orders of magnitude larger than anything else, and the critic's targets are set by where the threshold happens to fall. Table~\ref{tab:halt} varies the rule with the learned model held fixed. Raising the threshold to the 99th percentile cuts the halt rate to about 5\% and removes the failing seeds, but the agent remains worse than BC. Keeping the 99th percentile and taking $\kappa$ from the data instead --- the magnitude of the most negative discounted return-to-go in the logs, about \kappadata{} --- improves the return by \input{tables/kappa_effect.tex}, to between BC and CQL. No termination setting beats none. On the logged state, where the physics prior is wrong on the filler loop, the picture is the same: the failures come from HALT, and without it the agent still beats CQL. That the physics error did not hurt the final policy is, after Section~\ref{sec:edge}, unsurprising: without HALT the policy barely uses the model.
 
 \begin{table}[h]
 \centering\scriptsize
 \setlength{\tabcolsep}{3pt}
 \resizebox{\linewidth}{!}{%
-\begin{tabular}{lcccccccc}
+\begin{tabular}{lcccccccccc}
 \toprule
-& \multicolumn{4}{c}{Markov state} & \multicolumn{4}{c}{Five logged variables} \\
-\cmidrule(lr){2-5}\cmidrule(lr){6-9}
-Termination & Return & Halted & Fails & vs CQL & Return & Halted & Fails & vs CQL \\
+& \multicolumn{5}{c}{Markov state} & \multicolumn{5}{c}{Five logged variables} \\
+\cmidrule(lr){2-6}\cmidrule(lr){7-11}
+Termination & Return & IQM & Halted & Fails & vs CQL & Return & IQM & Halted & Fails & vs CQL \\
 \midrule
 \csname @@input\endcsname tables/halt.tex \bottomrule
 \end{tabular}}
@@ -138,7 +141,7 @@ Step $k$ & Error, open loop & Error, closed loop & Mean $u$ & Halted by $k$ (ope
 \midrule
 \csname @@input\endcsname tables/rollout.tex \bottomrule
 \end{tabular}}
-\caption{Multi-step error of the hybrid model against the true dynamics (root-mean-square over start states of the Euclidean error, normalized units), mean over seeds. MOReL's rollouts use $k\le5$.}
+\caption{Multi-step error of the hybrid model against the true dynamics (root-mean-square over start states of the Euclidean error, normalized units), mean over seeds. The agent's training rollouts use $k\le5$.}
 \label{tab:rollout}
 \end{table}
 
@@ -149,7 +152,40 @@ Step $k$ & Error, open loop & Error, closed loop & Mean $u$ & Halted by $k$ (ope
 \label{fig:rollout}
 \end{figure}
 
-The policy did not exploit these multi-step errors: without HALT it did as well on the learned model as on the truth. With five-step rollouts and half of every batch real data, the errors stayed small enough not to matter.
+Without HALT these multi-step errors did not reach the policy, but that is not evidence of a good model: as the next section shows, the policy did as well with no model at all.
+
+\subsection{Is the model, or any pessimism, needed?}\label{sec:edge}
+
+That the learned and the true dynamics agree to three decimals without HALT raises the question whether the synthetic data are used at all. Table~\ref{tab:baselines} answers it on the same seeds and datasets, with the same SAC initialization. SAC trained on the real transitions alone --- no model, no pessimism, the same 4{,}500 steps --- matches the model-based agent: the paired difference is \input{tables/synthetic_effect.tex}. Tripling the budget changes nothing. Model-based SAC on the true dynamics with only 5\% real data in each batch, the share \citet{sims2024edge} use on HalfCheetah, matches the version with half real data (\input{tables/real_share_effect.tex}), also at three times the budget. None of these agents fails, and the critics show no sign of the overestimation by which edge-of-reach states act: the mean $Q$ on dataset states stays negative and moves away from zero as training continues, towards the policy's value of roughly $-30$ in normalized units. The critics have not converged, but they err on the side of under-learning, not of runaway optimism.
+
+\begin{table}[h]
+\centering\small
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Dynamics & Real share & Budget & Return & Fails & Paired vs CQL & Mean $Q$ on data \\
+\midrule
+\csname @@input\endcsname tables/baselines.tex \bottomrule
+\end{tabular}}
+\caption{Agents without HALT, Markov state, seeds 0--9. ``Real share'' is the fraction of real transitions in each SAC batch; the budget is relative to 4{,}500 SAC steps; mean $Q$ is $\min(Q_1,Q_2)(s,\pi(s))$ over the dataset states, in normalized reward units. The first and third rows repeat the no-HALT cells of Table~\ref{tab:factorial} seed for seed; the last row uses no model.}
+\label{tab:baselines}
+\end{table}
+
+The comparison with CQL changes accordingly (Table~\ref{tab:cqlalpha}). At its default $\alpha=1$, CQL is over-conservative on this task; at $\alpha=0.1$ the gap to SAC without pessimism shrinks to \input{tables/best_cql_gap.tex}, about a tenth of the gap at $\alpha=1$. The grid was read off evaluation returns, which favours CQL. ``Beats CQL'' in the other tables therefore means ``beats CQL at its default $\alpha$''.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+CQL weight & Return & Fails & Paired vs $\alpha=1$ \\
+\midrule
+\csname @@input\endcsname tables/cql_alpha.tex \bottomrule
+\end{tabular}
+\caption{CQL's conservatism weight, Markov state, seeds 0--9, same datasets. The $\alpha=1$ row is the CQL of Table~\ref{tab:benchmark}.}
+\label{tab:cqlalpha}
+\end{table}
+
+Why does the failure reported by \citet{sims2024edge} not appear? Their mechanism needs states that are reached only at the end of truncated rollouts, are never updated themselves, and on which the critic extrapolates badly. Here the logs come from noisy operators across normal operation, setpoint changes and disturbances; the state has seven bounded dimensions; and the dynamics are smooth and stable. A five-step rollout from a dataset state plausibly stays close to other dataset states, whose values are set by real transitions. That even model-free SAC without regularization does not diverge on these data points the same way: the task is benign for offline value learning. We did not measure the distance from rollout states to the data, so the explanation is a hypothesis. Its consequence for this paper is not: the benchmark cannot show what pessimism buys, only what a mis-sized safeguard costs.
 
 \subsection{Confirmation on fresh seeds}\label{sec:fresh}
 
@@ -158,9 +194,9 @@ The configurations above were compared, and the conclusions drawn, on seeds 0--9
 \begin{table}[h]
 \centering\small
 \resizebox{\linewidth}{!}{%
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-Method & Return & Fails & Paired vs CQL \\
+Method & Return & IQM & Fails & Paired vs CQL \\
 \midrule
 \csname @@input\endcsname tables/fresh.tex \bottomrule
 \end{tabular}}
@@ -172,13 +208,13 @@ Method & Return & Fails & Paired vs CQL \\
 
 \paragraph{Why the safeguard failed.} Two choices that look conservative combined into the dominant training signal. A percentile threshold guarantees that a fixed share of in-distribution transitions halts, whatever the model's actual error; a penalty sized for the worst case guarantees that each halt outweighs everything else the critic sees. Neither is specific to our task, and both are common defaults. The data-derived penalty shows that the size of $\kappa$ matters as much as the threshold. Its residual cost --- the agent still trails the version without termination --- is consistent with the diagnostics: an uncertainty that barely tracks the model's error cannot direct the halts to where they would help.
 
-\paragraph{What this does not show.} Pessimism was unnecessary here because the model was accurate enough over five-step rollouts and every batch was half real data. On a task where the policy can steer into regions the model gets badly wrong, an agent without any pessimism can be exploited by its own model; our results say nothing against pessimism in such settings. They concern one simulated process, one ensemble size, one rollout horizon, one real-data ratio and one SAC budget, with no per-method tuning. We did not test value-based alternatives such as COMBO~\citep{yu2021combo}, which avoid an explicit uncertainty trigger and are a natural next step.
+\paragraph{What this does not show.} Pessimism was unnecessary here, and not because the model was good: SAC without a model or any regularization also worked, so the data covered what the policy needed and the critic extrapolated benignly. On a task where the policy can steer into regions the model gets badly wrong, an agent without any pessimism can be exploited by its own model; our results say nothing against pessimism in such settings. They concern MOReL's termination rule inside an MBPO-style learner, not MOReL's own planner on full rollouts, which may behave differently; and one simulated process, one ensemble size and one rollout horizon; the real-data share and the budget were varied only for the agent without HALT, and of the baselines only CQL's $\alpha$ was tuned. We did not test value-based alternatives such as COMBO~\citep{yu2021combo}, which avoid an explicit uncertainty trigger and are a natural next step.
 
-\paragraph{Recommendations.} Treat the termination rule as a component to be measured: report the halt rate on in-distribution rollouts and the share of the critic's targets that halts determine; size $\kappa$ from the data rather than from the worst case; check that the uncertainty tracks the model's error over the rollout horizon, not only one step ahead; and include the same agent without pessimism as a baseline, so that the cost of the safeguard is visible.
+\paragraph{Recommendations.} Treat the termination rule as a component to be measured: report the halt rate on in-distribution rollouts and the share of the critic's targets that halts determine; size $\kappa$ from the data rather than from the worst case; check that the uncertainty tracks the model's error over the rollout horizon, not only one step ahead; and include the same agent without pessimism, and the same learner on the real data alone, as baselines: the first makes the cost of the safeguard visible, the second shows whether the task can reward pessimism at all.
 
 \section{Reproducibility}
 
-All code, saved results and the scripts that build this paper's tables and figure from them are at \url{https://github.com/corba777/offline-rl-book}; every table is generated from JSON files in \texttt{code/results/} by \texttt{paper/make\_artifacts.py}, with no manual transcription. The experiments are run by \texttt{code/chapter10.py} with the flags \texttt{--lagged-flow}, \texttt{--oracle-ablation} and \texttt{--halt-study}; each ten-seed run takes about an hour on a laptop CPU. Continuous integration runs every script with reduced settings and the unit tests on each change. The study is the case study of Chapter~10 of a companion book on offline RL~\citep{zvyagintsev2026book}, which describes the process, the hybrid model and the evaluation in more detail.
+All code, saved results and the scripts that build this paper's tables and figure from them are at \url{https://github.com/corba777/offline-rl-book}; every table is generated from JSON files in \texttt{code/results/} by \texttt{paper/make\_artifacts.py}, with no manual transcription. The experiments are run by \texttt{code/chapter10.py} with the flags \texttt{--lagged-flow}, \texttt{--oracle-ablation}, \texttt{--halt-study}, \texttt{--baselines-study} and \texttt{--edge-study}; each ten-seed run takes about an hour on a laptop CPU. Continuous integration runs every script with reduced settings and the unit tests on each change. The study is the case study of Chapter~10 of a companion book on offline RL~\citep{zvyagintsev2026book}, which describes the process, the hybrid model and the evaluation in more detail.
 
 \bibliographystyle{plainnat}
 \bibliography{refs}

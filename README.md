@@ -88,6 +88,8 @@ python code/chapter10.py                 # state as logged
 python code/chapter10.py --lagged-flow   # Markov state with the feed commands in transit
 python code/chapter10.py --oracle-ablation   # 2x2: learned vs true dynamics, HALT on vs off
 python code/chapter10.py --halt-study [--lagged-flow]   # HALT at the 80th / 99th percentile, data kappa, or off
+python code/chapter10.py --baselines-study   # SAC on real data only, 3x budget, CQL alpha grid
+python code/chapter10.py --edge-study        # true dynamics without pessimism at 50% / 5% real data
 # fresh-seed confirmation: add --seeds 10 11 12 13 14 15 16 17 18 19 --out code/results/<name>_fresh.json
 ```
 

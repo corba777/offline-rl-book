@@ -669,7 +669,8 @@ class MOReeLAgent:
         s_r, a_r, r_r, s2_r, d_r = [x.to(self.device) for x in real_batch]
         n_real = s_r.shape[0]
 
-        n_syn = max(1, int(n_real * (1.0 - self.real_ratio) / self.real_ratio))
+        n_syn = 0 if self.real_ratio >= 1.0 else \
+            max(1, int(n_real * (1.0 - self.real_ratio) / self.real_ratio))
         n_syn = min(n_syn, synthetic['states'].shape[0])
         idx   = torch.randint(0, synthetic['states'].shape[0], (n_syn,))
 

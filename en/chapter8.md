@@ -238,7 +238,7 @@ $$\tilde{T}(s' | s, a) = \begin{cases} \hat{T}(s' | s, a) & \text{if } (s,a) \in
 
 $$\tilde{r}(s, a) = \begin{cases} \hat{r}(s, a) & \text{if } s \neq s_\perp \\ -\kappa & \text{if } s = s_\perp \end{cases}$$
 
-where $s_\perp$ is an absorbing failure state and $\kappa > 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive. The implementation below realizes the absorbing state as termination instead: the transition into UNKNOWN receives a single $-\kappa$ with `done=True`, so the TD target carries no future value. For $\gamma < 1$ the two forms are equivalent up to rescaling the penalty, since $-\kappa$ forever is worth $-\kappa/(1-\gamma)$ received once.
+where $s_\perp$ is an absorbing failure state and $\kappa > 0$ is a large penalty. Once the agent enters the unknown region, it transitions to $s_\perp$ and receives $-\kappa$ at every subsequent step — a strong disincentive. The implementation below realizes the absorbing state as termination instead: the transition into UNKNOWN receives a single $-\kappa$ with `done=True`, so the TD target carries no future value. The two forms give the same value to the unknown transition when the one-time penalty is set accordingly: in the absorbing form the transition earns $\hat r(s,a)$ and then $-\kappa$ from the next step on, worth $\hat r(s,a) - \gamma\kappa/(1-\gamma)$, so a terminal penalty $\kappa' = \gamma\kappa/(1-\gamma) - \hat r(s,a)$ is equivalent. When $\kappa$ dwarfs the rewards, $\kappa' \approx \gamma\kappa/(1-\gamma)$; a terminal $\kappa'$ of about 2,400 at $\gamma=0.99$ corresponds to a per-step $\kappa \approx 24$.
 
 ### The Theoretical Guarantee
 

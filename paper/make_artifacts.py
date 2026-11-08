@@ -38,6 +38,12 @@ def paired(a_file, a_method, b_file, b_method, key="reward"):
     return t_ci(np.array(per_seed(a_file, a_method, key)) - np.array(per_seed(b_file, b_method, key)))
 
 
+def iqm(run_file, method):
+    """Interquartile mean over seeds (Agarwal et al., 2021): with ten seeds, the
+    mean of the middle six, robust to the one or two failing seeds."""
+    return f"${stats.trim_mean(per_seed(run_file, method), 0.25):.2f}$"
+
+
 def fmt(ci, d=2, sign=False):
     m, lo, hi = ci
     s = "+" if sign else ""
@@ -58,10 +64,10 @@ def benchmark_table():
     logged, lagged = load("ch10_benchmark.json"), load("ch10_benchmark_lagged.json")
     rows = []
     for m, label in [("BC", "BC"), ("CQL", "CQL"), ("CQL+Physics", "CQL + bounds penalty"),
-                     ("HybridMOReL", "HybridMOReL (HALT, $p_{80}$)")]:
+                     ("HybridMOReL", "MOReL-style (HALT, $p_{80}$)")]:
         cells = [label]
         for f in (logged, lagged):
-            cells += [fmt(t_ci(per_seed(f, m))), f"{np.mean(per_seed(f, m, 'L_iae')):.3f}",
+            cells += [fmt(t_ci(per_seed(f, m))), iqm(f, m), f"{np.mean(per_seed(f, m, 'L_iae')):.3f}",
                       str(n_fail(f, m))]
         rows.append(" & ".join(cells) + r" \\")
     write("benchmark.tex", "\n".join(rows) + "\n")
@@ -74,12 +80,12 @@ def factorial_table():
                          ("HybridMOReL-noHALT", "learned hybrid", "off"),
                          ("OracleMOReL-HALT", "true", "on"),
                          ("OracleMOReL", "true", "off")]:
-        rows.append(" & ".join([dyn, halt, fmt(t_ci(per_seed(o, m))),
+        rows.append(" & ".join([dyn, halt, fmt(t_ci(per_seed(o, m))), iqm(o, m),
                                 f"{np.mean(per_seed(o, m, 'L_iae')):.3f}", str(n_fail(o, m)),
                                 fmt(paired(o, m, lagged, "CQL"), sign=True)]) + r" \\")
     write("factorial.tex", "\n".join(rows) + "\n")
     d = paired(o, "OracleMOReL", o, "HybridMOReL-noHALT")
-    write("factorial_true_vs_learned.tex", fmt(d, d=3, sign=True) + "\n")
+    write("factorial_true_vs_learned.tex", fmt(d, d=3, sign=True) + "%\n")
 
 
 def halt_table():
@@ -96,29 +102,55 @@ def halt_table():
                 key = {"HALT p80": "p80", "HALT p99": "p99", "no HALT": "HALT",
                        "HALT p99, data kappa": "p99 data kappa"}[m]
                 rate = np.mean([r["extra"][f"halt_rate {key}"] for r in h["runs"]])
-                cells += [fmt(t_ci(per_seed(h, m))), f"{100 * rate:.0f}\\%", str(n_fail(h, m)),
+                cells += [fmt(t_ci(per_seed(h, m))), iqm(h, m), f"{100 * rate:.0f}\\%", str(n_fail(h, m)),
                           fmt(paired(h, m, b, "CQL"), sign=True)]
             else:
-                cells += ["---"] * 4
+                cells += ["---"] * 5
         rows.append(" & ".join(cells) + r" \\")
     write("halt.tex", "\n".join(rows) + "\n")
     kap = np.mean([r["extra"]["kappa"] for r in hl["runs"]])
     kd = np.mean([r["extra"]["kappa_data"] for r in hl["runs"]])
-    write("kappa_values.tex", f"\\newcommand{{\\kappaworst}}{{{kap:,.0f}}}\n\\newcommand{{\\kappadata}}{{{kd:.0f}}}\n")
-    write("kappa_effect.tex", fmt(paired(hl, "HALT p99, data kappa", hl, "HALT p99"), sign=True) + "\n")
+    write("kappa_values.tex", f"\\newcommand{{\\kappaworst}}{{{f'{kap:,.0f}'.replace(',', '{,}')}}}\n\\newcommand{{\\kappadata}}{{{kd:.0f}}}\n")
+    write("kappa_effect.tex", fmt(paired(hl, "HALT p99, data kappa", hl, "HALT p99"), sign=True) + "%\n")
 
 
 def fresh_table():
     h, b = load("ch10_halt_lagged_fresh.json"), load("ch10_benchmark_lagged_fresh.json")
     rows = []
     for f, m, label in [(b, "BC", "BC"), (b, "CQL", "CQL"), (b, "CQL+Physics", "CQL + bounds penalty"),
-                        (h, "HALT p80", r"MOReL, $p_{80}$, worst-case $\kappa$"),
-                        (h, "HALT p99", r"MOReL, $p_{99}$, worst-case $\kappa$"),
-                        (h, "HALT p99, data kappa", r"MOReL, $p_{99}$, data $\kappa$"),
+                        (h, "HALT p80", r"MOReL-style, $p_{80}$, worst-case $\kappa$"),
+                        (h, "HALT p99", r"MOReL-style, $p_{99}$, worst-case $\kappa$"),
+                        (h, "HALT p99, data kappa", r"MOReL-style, $p_{99}$, data $\kappa$"),
                         (h, "no HALT", "model-based SAC (no HALT)")]:
         vs = "---" if m == "CQL" else fmt(paired(f, m, b, "CQL"), sign=True)
-        rows.append(" & ".join([label, fmt(t_ci(per_seed(f, m))), str(n_fail(f, m)), vs]) + r" \\")
+        rows.append(" & ".join([label, fmt(t_ci(per_seed(f, m))), iqm(f, m), str(n_fail(f, m)), vs]) + r" \\")
     write("fresh.tex", "\n".join(rows) + "\n")
+
+
+def baselines_table():
+    bs, e = load("ch10_baselines_lagged.json"), load("ch10_edge_lagged.json")
+    b = load("ch10_benchmark_lagged.json")
+    q = lambda f, m: f"${np.mean([r['extra'][f'q_data {m}'] for r in f['runs']]):.1f}$"
+    rows = []
+    for f, m, dyn, real, budget in [
+            (bs, "no HALT", "learned hybrid", "50\\%", "1$\\times$"),
+            (bs, "no HALT, 3x budget", "learned hybrid", "50\\%", "3$\\times$"),
+            (e, "true, 50% real", "true", "50\\%", "1$\\times$"),
+            (e, "true, 5% real", "true", "5\\%", "1$\\times$"),
+            (e, "true, 5% real, 3x budget", "true", "5\\%", "3$\\times$"),
+            (bs, "SAC, real data only", "none", "100\\%", "1$\\times$")]:
+        rows.append(" & ".join([dyn, real, budget, fmt(t_ci(per_seed(f, m))), str(n_fail(f, m)),
+                                fmt(paired(f, m, b, "CQL"), sign=True), q(f, m)]) + r" \\")
+    write("baselines.tex", "\n".join(rows) + "\n")
+    rows = []
+    for a in ["0.1", "0.3", "1", "3", "10"]:
+        f, m = (b, "CQL") if a == "1" else (bs, f"CQL alpha={a}")
+        vs = "---" if a == "1" else fmt(paired(f, m, b, "CQL"), sign=True)
+        rows.append(" & ".join([f"$\\alpha={a}$", fmt(t_ci(per_seed(f, m))), str(n_fail(f, m)), vs]) + r" \\")
+    write("cql_alpha.tex", "\n".join(rows) + "\n")
+    write("synthetic_effect.tex", fmt(paired(bs, "no HALT", bs, "SAC, real data only"), d=3, sign=True) + "%\n")
+    write("real_share_effect.tex", fmt(paired(e, "true, 5% real", e, "true, 50% real"), d=3, sign=True) + "%\n")
+    write("best_cql_gap.tex", fmt(paired(bs, "no HALT", bs, "CQL alpha=0.1"), d=3, sign=True) + "%\n")
 
 
 def calibration_tables():
@@ -174,5 +206,6 @@ if __name__ == "__main__":
     factorial_table()
     halt_table()
     fresh_table()
+    baselines_table()
     calibration_tables()
     rollout_figure()
