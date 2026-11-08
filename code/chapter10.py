@@ -776,12 +776,15 @@ class HybridMOReL:
     def __init__(self, state_dim: int, action_dim: int, units: Units,
                  kappa: float, n_ensemble: int = 4, hidden_dim: int = 128,
                  rollout_horizon: int = 5, epsilon_percentile: float = 80.0,
-                 device: str = 'cpu'):
+                 device: str = 'cpu', physics: bool = True):
         self.device = device
         self.epsilon_percentile = epsilon_percentile
+        # physics=False: persistence (s' = s) in place of the physics model, so
+        # the residual learns the whole increment -- a black-box ensemble.
         self.hybrid_ensemble = HybridEnsemble(
             n_models=n_ensemble, state_dim=state_dim, action_dim=action_dim,
-            physics_fn=units.physics_fn, hidden_dim=hidden_dim, device=device)
+            physics_fn=units.physics_fn if physics else (lambda s, a: s),
+            hidden_dim=hidden_dim, device=device)
         self.morel_agent = MOReeLAgent(
             state_dim, action_dim, n_ensemble=n_ensemble,
             rollout_horizon=rollout_horizon, kappa=kappa, device=device)
@@ -1241,6 +1244,99 @@ def run_edge_study(seed: int = 0, device: str = 'cpu', n_train_ep: int = 400,
     return out
 
 
+# Coverage ladder for the coverage study: (regime split, operator noise scale).
+# 'full' is the dataset of every other experiment; the others keep only normal
+# operation and shrink the operators' exploration, so the logs cover ever less
+# of what a policy evaluated from disturbed starts will visit.
+COVERAGE = {
+    'full':          ((0.60, 0.25, 0.15), 0.30),
+    'normal':        ((1.00, 0.00, 0.00), 0.30),
+    'normal, 1/3 noise':  ((1.00, 0.00, 0.00), 0.10),
+    'normal, 1/10 noise': ((1.00, 0.00, 0.00), 0.03),
+}
+
+
+def run_coverage_study(seed: int = 0, device: str = 'cpu', coverage: str = 'full',
+                       rollout_horizon: int = 5, physics: bool = True, n_train_ep: int = 400,
+                       n_morel_iters: int = 15, n_cql_epochs: int = 80, n_eval_ep: int = 20,
+                       batch_size: int = 256, quick_test: bool = False) -> Dict[str, object]:
+    """
+    One seed of the coverage study, on the Markov state: the same agents as the
+    rest of the chapter on logs of decreasing coverage, to find where some form
+    of pessimism starts to pay. Arms: SAC on real data only; model-based SAC
+    without pessimism; HALT at p80 with worst-case kappa (the original
+    configuration); HALT at p99 with kappa from the data; CQL at alpha = 1 and
+    alpha = 0.1. All model-based arms share one hybrid ensemble. With
+    physics=False the ensemble is black-box and only the model-based arms run.
+    """
+    if quick_test:
+        n_train_ep, n_morel_iters, n_cql_epochs, n_eval_ep = 40, 2, 2, 3
+    split, noise = COVERAGE[coverage]
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    env  = CoatingProcessEnv(seed=seed, lagged_flow=True)
+    S, A = env.obs_dim, CoatingProcessEnv.ACTION_DIM
+    dataset = collect_industrial_dataset(n_episodes=n_train_ep, seed=seed, lagged_flow=True,
+                                         regime_split=split, noise_scale=noise)
+    norm_dataset, s_mean, s_std = normalize_dataset(dataset)
+    units = Units(s_mean, s_std, float(dataset['rewards'].std() + 1e-8), device)
+    evaluator = IndustrialEvaluator(env, s_mean, s_std, n_eval_ep,
+                                    seed_base=8000 + 100 * seed, device=device)
+    kappa = max(100.0, 2.0 * float(np.abs(norm_dataset['rewards']).max()) / (1 - 0.99))
+    r = norm_dataset['rewards'].reshape(-1, 100)
+    g, rtg = np.zeros(len(r)), np.zeros_like(r)
+    for k in range(r.shape[1] - 1, -1, -1):
+        g = r[:, k] + 0.99 * g
+        rtg[:, k] = g
+    kappa_data = float(np.abs(rtg.min()))
+    steps = 300 if not quick_test else 20
+    out = {'seed': seed, 'results': {},
+           'extra': {'coverage': coverage, 'rollout_horizon': rollout_horizon, 'physics': physics,
+                     'kappa': kappa, 'kappa_data': kappa_data,
+                     'state_std': [float(x) for x in dataset['states'].std(0)]}}
+
+    torch.manual_seed(seed + 1)
+    hm = HybridMOReL(S, A, units, kappa=kappa, device=device, physics=physics)
+    hm.train_dynamics(norm_dataset, n_epochs=30 if not quick_test else 2, batch_size=batch_size)
+    ens = hm.hybrid_ensemble
+    eps = {'p80': ens.calibrate_epsilon(norm_dataset, percentile=80.0),
+           'p99': ens.calibrate_epsilon(norm_dataset, percentile=99.0)}
+
+    for name, model, real_ratio, epsilon, kap in [
+            ('SAC, real data only', None, 1.0, float('inf'), kappa),
+            ('no pessimism', ens, 0.5, float('inf'), kappa),
+            ('HALT p80, worst-case kappa', ens, 0.5, eps['p80'], kappa),
+            ('HALT p99, data kappa', ens, 0.5, eps['p99'], kappa_data)]:
+        if model is None and not physics:
+            continue
+        print(f"\n[seed {seed}, {coverage}, k={rollout_horizon}] {name}")
+        torch.manual_seed(seed + 1)
+        np.random.seed(seed + 1)
+        ag = MOReeLAgent(S, A, n_ensemble=4, rollout_horizon=rollout_horizon, kappa=kap,
+                         real_ratio=real_ratio, device=device)
+        ag._model_reward = units.reward_fn
+        ag.ensemble = model if model is not None else OracleDynamics(units)
+        ag.epsilon = epsilon
+        train_morel(agent=ag, dataset=norm_dataset, env=env, s_mean=s_mean, s_std=s_std,
+                    n_outer_iters=n_morel_iters, sac_steps_per_iter=steps,
+                    batch_size=batch_size, device=device, eval_every=n_morel_iters + 1)
+        out['results'][name] = evaluator.evaluate(ag)
+        out['extra'][f'q_data {name}'] = mean_q_on_data(ag, norm_dataset, device)
+        out['extra'][f'halt_rate {name}'] = float(np.mean(ag.halt_rate_history))
+
+    loader = make_dataloader(norm_dataset, batch_size, device)
+    for alpha in ((1.0, 0.1) if physics else ()):
+        name = f'CQL alpha={alpha:g}'
+        print(f"\n[seed {seed}, {coverage}] {name}")
+        torch.manual_seed(seed + 2)
+        cql = CQLAgent(S, A, alpha_cql=alpha, device=device)
+        train_cql_agent(cql, loader, n_cql_epochs)
+        out['results'][name] = evaluator.evaluate(cql)
+    for name, m in out['results'].items():
+        evaluator.print_results(f"{name} (seed {seed})", m)
+    return out
+
+
 def t_interval(values, alpha: float = 0.05):
     """Mean and Student-t confidence interval over per-seed values. With few
     seeds this is more honest than a percentile bootstrap, which undercovers."""
@@ -1274,7 +1370,12 @@ def summarize(runs: List[Dict]) -> Dict[str, Dict]:
             summary['methods'][mth][k] = {'mean': m, 'lo': lo, 'hi': hi,
                                           'min': float(np.nanmin(vals)), 'max': float(np.nanmax(vals))}
     pairs = [(a, b) for a, b in PAIRS if a in methods and b in methods]
-    if 'true, 5% real' in methods:
+    if 'no pessimism' in methods:
+        pairs = [('no pessimism', 'SAC, real data only'), ('HALT p80, worst-case kappa', 'no pessimism'),
+                 ('HALT p99, data kappa', 'no pessimism'), ('HALT p99, data kappa', 'HALT p80, worst-case kappa'),
+                 ('CQL alpha=1', 'no pessimism'), ('CQL alpha=0.1', 'no pessimism')]
+        pairs = [(a, b) for a, b in pairs if a in methods and b in methods]
+    elif 'true, 5% real' in methods:
         pairs = [('true, 5% real', 'true, 50% real'), ('true, 5% real, 3x budget', 'true, 5% real')]
     elif 'SAC, real data only' in methods:
         pairs = [('no HALT', 'SAC, real data only'), ('no HALT, 3x budget', 'no HALT')]
@@ -1328,8 +1429,14 @@ def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                    quick_test: bool = False, device: str = 'cpu',
                    lagged_flow: bool = False, oracle_ablation: bool = False,
                    halt_study: bool = False, baselines_study: bool = False,
-                   edge_study: bool = False) -> Dict:
-    if edge_study:
+                   edge_study: bool = False, coverage: Optional[str] = None,
+                   rollout_horizon: int = 5, physics: bool = True) -> Dict:
+    if coverage is not None:
+        runs = [run_coverage_study(seed=s, device=device, coverage=coverage,
+                                   rollout_horizon=rollout_horizon, physics=physics,
+                                   quick_test=quick_test)
+                for s in seeds]
+    elif edge_study:
         runs = [run_edge_study(seed=s, device=device, quick_test=quick_test) for s in seeds]
     elif baselines_study:
         runs = [run_baselines_study(seed=s, device=device, quick_test=quick_test) for s in seeds]
@@ -1350,7 +1457,7 @@ def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                  'results': {m: {k: v for k, v in res.items() if k != 'episodes'}
                              for m, res in r['results'].items()}} for r in runs]
         with open(out_path, 'w') as fh:
-            json.dump({'seeds': list(seeds), 'lagged_flow': lagged_flow or oracle_ablation or baselines_study or edge_study,
+            json.dump({'seeds': list(seeds), 'lagged_flow': lagged_flow or oracle_ablation or baselines_study or edge_study or coverage is not None,
                        'oracle_ablation': oracle_ablation,
                        'interval': '95% Student-t over per-seed means',
                        'runs': slim, 'summary': summary}, fh, indent=2)
@@ -1373,11 +1480,19 @@ if __name__ == '__main__':
                    help='SAC on real data only, no-HALT agent at 3x budget, CQL alpha grid (lagged state)')
     p.add_argument('--edge-study', action='store_true',
                    help='true dynamics without pessimism at 50% or 5% real data (lagged state)')
+    p.add_argument('--coverage', choices=list(COVERAGE), default=None,
+                   help='coverage study on logs of this coverage (lagged state)')
+    p.add_argument('--horizon', type=int, default=5, help='rollout horizon for --coverage')
+    p.add_argument('--black-box', action='store_true',
+                   help='--coverage with a black-box ensemble (no physics), model-based arms only')
     p.add_argument('--out', default=None,
                    help='default: results/ch10_benchmark{,_lagged,_oracle}.json')
     p.add_argument('--device', default='cpu')
     args = p.parse_args()
-    name = 'ch10_edge_lagged.json' if args.edge_study else \
+    name = (f"ch10_coverage_{args.coverage.replace(', ', '_').replace('/', '-').replace(' ', '_')}"
+            f"{'' if args.horizon == 5 else f'_k{args.horizon}'}"
+            f"{'_blackbox' if args.black_box else ''}.json") if args.coverage else \
+           'ch10_edge_lagged.json' if args.edge_study else \
            'ch10_baselines_lagged.json' if args.baselines_study else \
            (('ch10_halt_lagged.json' if args.lagged_flow else 'ch10_halt_logged.json')
             if args.halt_study else
@@ -1387,4 +1502,6 @@ if __name__ == '__main__':
     run_multi_seed(tuple(args.seeds), out_path=None if args.quick else out,
                    quick_test=args.quick, device=args.device, lagged_flow=args.lagged_flow,
                    oracle_ablation=args.oracle_ablation, halt_study=args.halt_study,
-                   baselines_study=args.baselines_study, edge_study=args.edge_study)
+                   baselines_study=args.baselines_study, edge_study=args.edge_study,
+                   coverage=args.coverage, rollout_horizon=args.horizon,
+                   physics=not args.black_box)

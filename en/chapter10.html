@@ -743,15 +743,79 @@
 </tbody>
 </table>
 <p>At the default α = 1, CQL is over-conservative on this task; at α = 0.1 the gap to SAC without pessimism shrinks from 0.19 to 0.02 [0.01, 0.03]. The grid was read off evaluation returns, which favours CQL. "Beats CQL" elsewhere in this chapter therefore means "beats CQL at its default α".</p>
-<p>Why does the edge-of-reach failure not appear? It needs states that rollouts reach only at their last step and on which the critic extrapolates badly. Here the logs come from noisy operators across normal operation, setpoint changes and disturbances, the state has seven bounded dimensions, and the dynamics are smooth and stable, so a five-step rollout from a dataset state plausibly stays near other dataset states whose values real transitions set. That even model-free SAC without regularization does not diverge on these data says the same thing: the task is benign for offline value learning. The distance from rollout states to the data was not measured, so this explanation is a hypothesis; its consequence is not. This case study cannot show what pessimism buys — only what a mis-sized safeguard costs.</p>
-<p>None of this means pessimism is unnecessary in general. It was unnecessary here, and not because the model was good: SAC with no model and no regularization also worked, so the data covered what the policy needed. On a task where the policy can reach regions the model gets badly wrong, an agent without any pessimism can be exploited by its own model. What the study shows is that a pessimism mechanism has to be measured like any other component, and that a deterrent sized for the worst case can cost more than the error it guards against.</p>
+<p>Why does the edge-of-reach failure not appear? It needs states that rollouts reach only at their last step and on which the critic extrapolates badly. Here the logs come from noisy operators across normal operation, setpoint changes and disturbances, the state has seven bounded dimensions, and the dynamics are smooth and stable, so a five-step rollout from a dataset state plausibly stays near other dataset states whose values real transitions set. That even model-free SAC without regularization does not diverge on these data says the same thing: the task is benign for offline value learning. The distance from rollout states to the data was not measured, so this explanation is a hypothesis; its consequence is not. On these logs, then, pessimism can only cost. To see what it buys, the logs have to be narrowed until something breaks.</p>
+<p><strong>When does pessimism pay?</strong> <code>--coverage</code> narrows the logs in three steps, keeping 40,000 transitions per seed: normal operation only, with no setpoint changes and no disturbance episodes, and then normal operation with the operators' exploration noise cut to a third and to a tenth. Evaluation still starts half of its episodes disturbed, so the narrowed logs no longer contain the states the policy must handle. <code>--horizon 20</code> lengthens the rollouts, and <code>--black-box</code> replaces the physics model with persistence, so that the residual learns the whole increment. Each cell gives the mean return over ten seeds and, in parentheses, the failing seeds (<code>ch10_coverage_*.json</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>Full logs</th>
+<th>Normal operation</th>
+<th>Normal, 1/3 noise</th>
+<th>Normal, 1/10 noise</th>
+<th>Normal, 1/10 noise, 20-step rollouts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SAC, real data only</td>
+<td>−1.25 (0)</td>
+<td>−1.27 (0)</td>
+<td>−136.9 (10)</td>
+<td>−164.8 (10)</td>
+<td>−165.0 (10)</td>
+</tr>
+<tr>
+<td>CQL, α = 1</td>
+<td>−1.41 (0)</td>
+<td>−1.35 (0)</td>
+<td>−2.00 (0)</td>
+<td>−2.94 (0)</td>
+<td>−2.94 (0)</td>
+</tr>
+<tr>
+<td>CQL, α = 0.1</td>
+<td>−1.26 (0)</td>
+<td>−1.26 (0)</td>
+<td>−1.52 (0)</td>
+<td>−2.51 (0)</td>
+<td>−2.51 (0)</td>
+</tr>
+<tr>
+<td>Model-based SAC, no pessimism</td>
+<td>−1.24 (0)</td>
+<td>−1.24 (0)</td>
+<td>−1.92 (0)</td>
+<td>−2.90 (0)</td>
+<td>−25.2 / IQM −2.86 (1)</td>
+</tr>
+<tr>
+<td>HALT p80, worst-case κ</td>
+<td>−4.52 (1)</td>
+<td>−6.17 (3)</td>
+<td>−43.1 (5)</td>
+<td>−94.0 (9)</td>
+<td>−80.0 (9)</td>
+</tr>
+<tr>
+<td>HALT p99, data κ</td>
+<td>−2.08 (0)</td>
+<td>−2.02 (0)</td>
+<td>−3.31 (1)</td>
+<td>−2.87 / IQM −2.29 (0)</td>
+<td>−2.23 (0)</td>
+</tr>
+</tbody>
+</table>
+<p>Three regimes appear. With the full logs, or with normal operation at full noise, nothing needs pessimism: SAC on the real data, model-based SAC without pessimism and CQL at α = 0.1 are within 0.03 of each other, and termination is pure cost. Once exploration is cut, model-free value learning breaks: SAC on the real data fails on every seed, its critic estimating a positive mean $Q$ on dataset states where the surviving agents estimate about −120 — the classical extrapolation error of Chapter 2 — while CQL never fails. The model-based agent without pessimism does not break at five-step rollouts: it loses return but fails on no seed, and the black-box ensemble does about as well (−3.5, no failures), so it is not the physics prior that protects it. A plausible mechanism, not isolated here, is that model rollouts give the critic targets for the policy's own actions — exactly where offline SAC overestimates. Only with narrow logs <em>and</em> 20-step rollouts does the agent without pessimism fail, on one seed of ten (−227); there HALT at the 99th percentile with $\kappa$ from the data becomes the best configuration of the study — no failures, better than no pessimism on 7 seeds of 10, level with CQL at α = 0.1 (+0.28 [−0.19, +0.76]). The worst-case $\kappa$ is the worst choice under every condition: on the narrowest logs its halt rate climbs to three quarters of all rollout steps, and it fails on eight or nine seeds of ten with either ensemble and either horizon. The full-logs column repeats the HALT study with a fresh ensemble and initialization, and its numbers differ from the table above within seed variation.</p>
+<p>None of this means pessimism is unnecessary in general. On the original logs it was unnecessary, and not because the model was good: SAC with no model and no regularization also worked. Narrower logs made it necessary for model-free learning at once and, with long rollouts, for model-based learning too; on a task where the policy can reach regions the model gets badly wrong, the balance tips further. What the study shows is that a pessimism mechanism has to be measured like any other component, and that a deterrent sized for the worst case can cost more than the error it guards against, while one sized from the data can pay where the model is used long enough to be exploited.</p>
 <h3>Reading the Results</h3>
 <p><strong>CQL improves clearly on the logging policy and on BC</strong>, with or without the lagged commands — and at its default α = 1 it is still too conservative for this task: α = 0.1 does better (see the baselines above). It removes the steady-state offsets that the proportional operators left behind: the temperature error falls by about a third and the level stays two to three times closer to its setpoint, which accounts for most of the difference in return. BC reproduces the operators, offsets included. The gain is not free on every axis: CQL tracks the filler fraction slightly worse than BC (IAE 0.026 against 0.024, a small but consistent paired difference). The reward trades filler against level, and with one actuator for both, CQL leans toward the level.</p>
 <p><strong>The constraint penalty helped a little, and only a paired comparison shows it.</strong> Side by side, the CQL+Physics and CQL intervals overlap on every metric, and neither violated a bound even from disturbed starts. Paired by seed, the penalty raises the return by about 0.05–0.07 (3–5%): clearly on the Markov state, within noise on the logged one, and with level tracking slightly better but not significantly so. A plausible mechanism, not tested here: the penalty makes the logged low-level excursions more costly, which pushes the policy to keep the tank fuller, closer to its setpoint. With a dozen paired comparisons in the table, one should expect a borderline result or two by chance, so treat this one as suggestive. It is still a useful lesson about method: overlapping intervals of two means are not evidence of no difference.</p>
 <p><strong>HybridMOReL was unstable on both versions of the state, and the ablation shows why.</strong> With five variables, nine seeds landed between −2.1 and −5.7, and one drove the level out of bounds in 62% of steps from disturbed starts. With the lagged commands, the first run had no failing seed, but the ablation repeated it on the same datasets with a different initialization and two of ten seeds failed. The cause is the termination rule as configured — a percentile threshold that halts a fifth of in-data transitions, with a penalty large enough to dominate the critic — not the hybrid model: with HALT off, the agent — then plain model-based SAC — does as well on the learned model as on the true dynamics and beats CQL — and so does plain SAC on the real data alone, so the model contributes little either way. The HALT study confirms the same cause on the five-variable state, where the physics prior is wrong on the filler loop: without HALT the model-based agent beats CQL there as well, and fresh seeds reproduce the result.</p>
 <p><strong>The calibrated $\lambda$ is about 2.2 on every seed</strong>, because the largest logged violation is always the same 0.15: the level hits zero, its physical floor, 0.15 below the lower bound. An earlier version of <code>calibrate_lambda</code> looked only at the first 2,000 transitions. The logs are ordered by regime, normal operation first, so that prefix held only the occasional small violation, and $\lambda$ swung from 2 to 73 across seeds depending on which one happened to fall into it. Two lessons follow. Compute calibration statistics on the whole dataset, or on a random sample of it, never on a prefix of logs that are sorted by anything. And a reference that comes out identical on every seed deserves a look: here it measures a saturation of the plant, not the typical size of a violation, which is why a high quantile of the violations (<code>quantile=0.95</code>) or an engineering cost is often the better reference.</p>
 <h3>What This Case Study Shows</h3>
-<p>One might expect the model-based method with a physics prior to win on reward and the penalized method to win on safety. Measured over ten seeds, with intervals and paired comparisons, the picture is less tidy and more useful: the simple conservative method won among the methods that learn from data alone; the penalty added a small gain that only a paired comparison could detect; the hybrid model-based method was unreliable as configured; and the ablations showed that its uncertainty-based termination caused the failures at every setting tried, with the true dynamics as well as with the learned ones. Without HALT the agent is model-based SAC with no pessimism, and it beat CQL at its default α on both versions of the state and on fresh seeds — but so did SAC on the real data alone, and so nearly did CQL with a smaller α. The task is benign for offline value learning: it needed neither the model nor any pessimism, so the safeguard's cost was all that remained. That is a statement about this task, not a licence to drop pessimism. Pessimism is a component like any other: measure what it does, and check that the uncertainty it relies on actually tracks the error. Before trusting a comparison like this one, check four things: that the state is Markov, or that you know what it is missing; that physical quantities are computed in physical units; that the physics model beats persistence on the variables that matter; and that the result survives several seeds when compared pairwise.</p>
+<p>One might expect the model-based method with a physics prior to win on reward and the penalized method to win on safety. Measured over ten seeds, with intervals and paired comparisons, the picture is less tidy and more useful: the simple conservative method won among the methods that learn from data alone; the penalty added a small gain that only a paired comparison could detect; the hybrid model-based method was unreliable as configured; and the ablations showed that its uncertainty-based termination caused the failures at every setting tried, with the true dynamics as well as with the learned ones. Without HALT the agent is model-based SAC with no pessimism, and it beat CQL at its default α on both versions of the state and on fresh seeds — but so did SAC on the real data alone, and so nearly did CQL with a smaller α. The original logs were benign for offline value learning: they needed neither the model nor any pessimism, so the safeguard's cost was all that remained. Narrowed logs reversed that for model-free learning, and with long rollouts for model-based learning, where HALT with $\kappa$ from the data finally paid. That is a statement about this task, not a licence to drop pessimism. Pessimism is a component like any other: measure what it does, and check that the uncertainty it relies on actually tracks the error. Before trusting a comparison like this one, check four things: that the state is Markov, or that you know what it is missing; that physical quantities are computed in physical units; that the physics model beats persistence on the variables that matter; and that the result survives several seeds when compared pairwise.</p>
 <hr />
 <h2>Engineering Decisions Revisited</h2>
 <p>Working through this case study surfaces several decisions that do not appear in benchmark papers.</p>
@@ -838,7 +902,7 @@
 <tr>
 <td>HybridMOReL</td>
 <td>Model-based, hybrid dynamics</td>
-<td>Unreliable as configured, because of HALT (failing seeds at the 80th-percentile threshold; worse than BC at the 99th); without HALT it becomes model-based SAC with no pessimism, among the best on both versions of the state and on fresh seeds — but no better than SAC on the real data alone</td>
+<td>Unreliable as configured, because of HALT (failing seeds at the 80th-percentile threshold; worse than BC at the 99th); without HALT it becomes model-based SAC with no pessimism, among the best on both versions of the state and on fresh seeds — but no better than SAC on the real data alone. On narrowed logs with 20-step rollouts, HALT with κ from the data pays; with worst-case κ it fails on most seeds</td>
 </tr>
 </tbody>
 </table>

@@ -153,6 +153,40 @@ def baselines_table():
     write("best_cql_gap.tex", fmt(paired(bs, "no HALT", bs, "CQL alpha=0.1"), d=3, sign=True) + "%\n")
 
 
+COV_ARMS = [("SAC, real data only", "SAC, real data only"),
+            ("CQL alpha=1", r"CQL, $\alpha=1$"), ("CQL alpha=0.1", r"CQL, $\alpha=0.1$"),
+            ("no pessimism", "model-based SAC, no pessimism"),
+            ("HALT p80, worst-case kappa", r"HALT $p_{80}$, worst-case $\kappa$"),
+            ("HALT p99, data kappa", r"HALT $p_{99}$, data $\kappa$")]
+
+
+def cov_cell(f, m):
+    if m not in f["runs"][0]["results"]:
+        return "---"
+    v = per_seed(f, m)
+    return f"${np.mean(v):.2f}$ / ${stats.trim_mean(v, 0.25):.2f}$ ({n_fail(f, m)})"
+
+
+def coverage_tables():
+    levels = ["full", "normal", "normal_1-3_noise", "normal_1-10_noise"]
+    fs = [load(f"ch10_coverage_{c}.json") for c in levels]
+    rows = [" & ".join([label] + [cov_cell(f, m) for f in fs]) + r" \\" for m, label in COV_ARMS]
+    write("coverage.tex", "\n".join(rows) + "\n")
+    ext = [load(f"ch10_coverage_{c}.json") for c in
+           ["full_k20", "normal_1-10_noise_k20", "full_blackbox", "normal_1-10_noise_blackbox"]]
+    rows = [" & ".join([label] + [cov_cell(f, m) for f in ext]) + r" \\" for m, label in COV_ARMS]
+    write("coverage_ext.tex", "\n".join(rows) + "\n")
+    n10, n20 = load("ch10_coverage_normal_1-10_noise.json"), load("ch10_coverage_normal_1-10_noise_k20.json")
+    nbb = load("ch10_coverage_normal_1-10_noise_blackbox.json")
+    write("cov_data_vs_cql.tex", fmt(paired(n20, "HALT p99, data kappa", n20, "CQL alpha=0.1"), sign=True) + "%\n")
+    write("cov_bb_vs_hybrid.tex", fmt(paired(nbb, "no pessimism", n10, "no pessimism"), sign=True) + "%\n")
+    d = np.array(per_seed(n20, "HALT p99, data kappa")) - np.array(per_seed(n20, "no pessimism"))
+    write("cov_data_wins.tex", f"{int((d > 0).sum())}%\n")
+    q = lambda f, m: np.mean([r["extra"][f"q_data {m}"] for r in f["runs"]])
+    write("cov_q.tex", f"\\newcommand{{\\qsacnarrow}}{{{q(n10, 'SAC, real data only'):+.1f}}}"
+          f"\\newcommand{{\\qmbnarrow}}{{{q(n10, 'no pessimism'):.0f}}}\n")
+
+
 def calibration_tables():
     o = load("ch10_benchmark_oracle.json")
     rows = []
@@ -207,5 +241,6 @@ if __name__ == "__main__":
     halt_table()
     fresh_table()
     baselines_table()
+    coverage_tables()
     calibration_tables()
     rollout_figure()

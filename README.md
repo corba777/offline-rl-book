@@ -90,6 +90,7 @@ python code/chapter10.py --oracle-ablation   # 2x2: learned vs true dynamics, HA
 python code/chapter10.py --halt-study [--lagged-flow]   # HALT at the 80th / 99th percentile, data kappa, or off
 python code/chapter10.py --baselines-study   # SAC on real data only, 3x budget, CQL alpha grid
 python code/chapter10.py --edge-study        # true dynamics without pessimism at 50% / 5% real data
+python code/chapter10.py --coverage 'normal, 1/10 noise' [--horizon 20] [--black-box]   # narrowed logs: where pessimism pays
 # fresh-seed confirmation: add --seeds 10 11 12 13 14 15 16 17 18 19 --out code/results/<name>_fresh.json
 ```
 
@@ -184,7 +185,7 @@ Every release is archived on Zenodo; the DOI [10.5281/zenodo.24045871](https://d
 }
 ```
 
-The case study of Chapter 10 is also written up as a short paper in [`paper/`](paper/): *When the Safeguard Is the Failure: Uncertainty-Based Termination in Model-Based Offline RL on a Simulated Process-Control Task*.
+The case study of Chapter 10 is also written up as a short paper in [`paper/`](paper/): *When Does the Safeguard Pay? Cost and Benefit of Uncertainty-Based Termination in Model-Based Offline RL*.
 
 ## License
 

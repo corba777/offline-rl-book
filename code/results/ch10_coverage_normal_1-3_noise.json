@@ -1,0 +1,2509 @@
+{
+  "lagged_flow": true,
+  "oracle_ablation": false,
+  "interval": "95% Student-t over per-seed means",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "coverage": "normal, 1/3 noise",
+  "rollout_horizon": 5,
+  "runs": [
+    {
+      "seed": 0,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 3875.355148315426,
+        "kappa_data": 227.11428833007812,
+        "state_std": [
+          0.03206027299165726,
+          0.03283647447824478,
+          0.021396465599536896,
+          0.008745962753891945,
+          0.05602595582604408,
+          0.04984389990568161,
+          0.04927435144782066
+        ],
+        "q_data SAC, real data only": -1.5166071653366089,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -63.13385009765625,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -3668.044921875,
+        "halt_rate HALT p80, worst-case kappa": 0.7240346684107131,
+        "q_data HALT p99, data kappa": -173.3861846923828,
+        "halt_rate HALT p99, data kappa": 0.2422887221106243
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -164.63771081082524,
+          "T_iae": 0.3825675429314375,
+          "f_iae": 0.38134363628923895,
+          "L_iae": 0.4957624335885048,
+          "T_rmse": 0.38738871015667437,
+          "f_rmse": 0.3872613126052705,
+          "L_rmse": 0.49716827084200765,
+          "da_T": 0.1601812733616295,
+          "da_f": 0.47759921993020776,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.00025,
+          "viol_rate": 0.9882499999999999,
+          "viol_severity": 0.42786502838134766,
+          "viol_max": 0.5433033108711243,
+          "reward_nominal": -164.53722164034843,
+          "reward_disturbed": -164.73819998130202,
+          "L_iae_nominal": 0.49755030545592305,
+          "viol_rate_disturbed": 0.9844999999999999,
+          "L_iae_disturbed": 0.4939745617210865
+        },
+        "no pessimism": {
+          "reward": -2.176410035931622,
+          "T_iae": 0.03677466929554937,
+          "f_iae": 0.025221855528652665,
+          "L_iae": 0.08135902051255108,
+          "T_rmse": 0.04310083230103514,
+          "f_rmse": 0.031673309964194485,
+          "L_rmse": 0.08572816832170226,
+          "da_T": 0.6090322106233077,
+          "da_f": 0.6589343751524785,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.1577459099993574,
+          "reward_disturbed": -2.195074161863886,
+          "L_iae_nominal": 0.07915786324441433,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.0835601777806878
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -48.075728911405896,
+          "T_iae": 0.10963061170428992,
+          "f_iae": 0.16689956828206776,
+          "L_iae": 0.34256510403798895,
+          "T_rmse": 0.12766661777382743,
+          "f_rmse": 0.20614799565787764,
+          "L_rmse": 0.38488595031556805,
+          "da_T": 0.4805981403301005,
+          "da_f": 0.4723636526719018,
+          "overshoot_T": 0.0008742754268304745,
+          "overshoot_f": 0.0011686270165756983,
+          "viol_rate": 0.56425,
+          "viol_severity": 0.14680691063404083,
+          "viol_max": 0.29495885968208313,
+          "reward_nominal": -48.157180105079895,
+          "reward_disturbed": -47.99427771773189,
+          "L_iae_nominal": 0.3366342112864368,
+          "viol_rate_disturbed": 0.575,
+          "L_iae_disturbed": 0.34849599678954113
+        },
+        "HALT p99, data kappa": {
+          "reward": -2.1991999060177476,
+          "T_iae": 0.04270159895718096,
+          "f_iae": 0.02562698496133089,
+          "L_iae": 0.06976113735884427,
+          "T_rmse": 0.04864135031891809,
+          "f_rmse": 0.03211139293253331,
+          "L_rmse": 0.07429750975766689,
+          "da_T": 0.5878906355635377,
+          "da_f": 0.6495882180567525,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.1904651087184903,
+          "reward_disturbed": -2.2079347033170054,
+          "L_iae_nominal": 0.0679158873707056,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.07160638734698296
+        },
+        "CQL alpha=1": {
+          "reward": -1.9817798892727296,
+          "T_iae": 0.039472964727878555,
+          "f_iae": 0.024703376628458496,
+          "L_iae": 0.05936646772548556,
+          "T_rmse": 0.046033128934783764,
+          "f_rmse": 0.031013535163649388,
+          "L_rmse": 0.06798691231819279,
+          "da_T": 0.5958741505640912,
+          "da_f": 0.6638727760472969,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.969832075787417,
+          "reward_disturbed": -1.9937277027580422,
+          "L_iae_nominal": 0.05712504076957703,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.061607894681394104
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.4661059207544895,
+          "T_iae": 0.031087698781490314,
+          "f_iae": 0.025065778084099294,
+          "L_iae": 0.03028558925539255,
+          "T_rmse": 0.037810548776741164,
+          "f_rmse": 0.0314409931720583,
+          "L_rmse": 0.040500708033787164,
+          "da_T": 0.6296469252526522,
+          "da_f": 0.6607332293930172,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.4381835176376625,
+          "reward_disturbed": -1.4940283238713163,
+          "L_iae_nominal": 0.027471865832805635,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.03309931267797946
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 3073.319435119626,
+        "kappa_data": 198.66009521484375,
+        "state_std": [
+          0.03287077695131302,
+          0.032904721796512604,
+          0.02181612141430378,
+          0.008815651759505272,
+          0.05610271915793419,
+          0.04987754672765732,
+          0.049303337931632996
+        ],
+        "q_data SAC, real data only": -3.7656826972961426,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -65.57701110839844,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -2356.379638671875,
+        "halt_rate HALT p80, worst-case kappa": 0.38700462054688506,
+        "q_data HALT p99, data kappa": -135.6280059814453,
+        "halt_rate HALT p99, data kappa": 0.2196645399649145
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -163.87725912798197,
+          "T_iae": 0.38317099863886833,
+          "f_iae": 0.37845575238019225,
+          "L_iae": 0.494449756577611,
+          "T_rmse": 0.38754032708423114,
+          "f_rmse": 0.3858494027704367,
+          "L_rmse": 0.49618812976211685,
+          "da_T": 0.16734663356777735,
+          "da_f": 0.46817961300731525,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.985,
+          "viol_severity": 0.4277814030647278,
+          "viol_max": 0.5499999523162842,
+          "reward_nominal": -163.43829994983972,
+          "reward_disturbed": -164.3162183061242,
+          "L_iae_nominal": 0.495851693123579,
+          "viol_rate_disturbed": 0.9824999999999999,
+          "L_iae_disturbed": 0.493047820031643
+        },
+        "no pessimism": {
+          "reward": -1.8996096868271706,
+          "T_iae": 0.03708168529570101,
+          "f_iae": 0.02568081236630678,
+          "L_iae": 0.05827328587323427,
+          "T_rmse": 0.04309180863303002,
+          "f_rmse": 0.033021965202685286,
+          "L_rmse": 0.06285563153224247,
+          "da_T": 0.5959296230956841,
+          "da_f": 0.6631393964699839,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.7325545441766734,
+          "reward_disturbed": -2.0666648294776677,
+          "L_iae_nominal": 0.05479368811845779,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.061752883628010735
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -9.950134582692408,
+          "T_iae": 0.043017006765305996,
+          "f_iae": 0.05012096273899077,
+          "L_iae": 0.13139524152484955,
+          "T_rmse": 0.052328540833895376,
+          "f_rmse": 0.0595929549279615,
+          "L_rmse": 0.14295993416643862,
+          "da_T": 0.6563183884994359,
+          "da_f": 0.6273406984681662,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.13949999999999999,
+          "viol_severity": 0.03482012636959553,
+          "viol_max": 0.2210872769355774,
+          "reward_nominal": -1.8005131877725944,
+          "reward_disturbed": -18.099755977612222,
+          "L_iae_nominal": 0.06916916421055794,
+          "viol_rate_disturbed": 0.279,
+          "L_iae_disturbed": 0.1936213188391412
+        },
+        "HALT p99, data kappa": {
+          "reward": -2.5876260592020115,
+          "T_iae": 0.03987958727031944,
+          "f_iae": 0.025183725006878377,
+          "L_iae": 0.09629469228535892,
+          "T_rmse": 0.04620453674898253,
+          "f_rmse": 0.032479015414972556,
+          "L_rmse": 0.0997846672725907,
+          "da_T": 0.5778407549738677,
+          "da_f": 0.67092733909709,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.427480318862945,
+          "reward_disturbed": -2.7477717995410784,
+          "L_iae_nominal": 0.09397874104976653,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.09861064352095127
+        },
+        "CQL alpha=1": {
+          "reward": -2.033818346940097,
+          "T_iae": 0.03409584742933511,
+          "f_iae": 0.024619128368794915,
+          "L_iae": 0.0674912886582315,
+          "T_rmse": 0.041287620043079024,
+          "f_rmse": 0.03158808958013708,
+          "L_rmse": 0.07789448208008243,
+          "da_T": 0.6244560232336553,
+          "da_f": 0.6837754342438279,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.00225,
+          "viol_severity": 0.0027463562786579133,
+          "viol_max": 0.09535518288612366,
+          "reward_nominal": -1.767761714255903,
+          "reward_disturbed": -2.299874979624292,
+          "L_iae_nominal": 0.06066836325824261,
+          "viol_rate_disturbed": 0.0045,
+          "L_iae_disturbed": 0.07431421405822039
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.6267497403736342,
+          "T_iae": 0.027452192616462694,
+          "f_iae": 0.024839682161808013,
+          "L_iae": 0.050164519917219874,
+          "T_rmse": 0.034115690591231894,
+          "f_rmse": 0.031991041478852685,
+          "L_rmse": 0.06002501308174788,
+          "da_T": 0.6659343434572836,
+          "da_f": 0.6755181555118357,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.4258219127950724,
+          "reward_disturbed": -1.8276775679521962,
+          "L_iae_nominal": 0.044872231677174565,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.05545680815726519
+        }
+      }
+    },
+    {
+      "seed": 2,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 3187.2364044189426,
+        "kappa_data": 209.430908203125,
+        "state_std": [
+          0.03252518177032471,
+          0.03286900743842125,
+          0.021428128704428673,
+          0.008725017309188843,
+          0.05612393468618393,
+          0.049437280744314194,
+          0.0489196740090847
+        ],
+        "q_data SAC, real data only": -3.918121099472046,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -75.15230560302734,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -2600.627685546875,
+        "halt_rate HALT p80, worst-case kappa": 0.41626881846645963,
+        "q_data HALT p99, data kappa": -158.21780395507812,
+        "halt_rate HALT p99, data kappa": 0.2507513362411652
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -45.41651575630531,
+          "T_iae": 0.22164558633267878,
+          "f_iae": 0.03602228157222271,
+          "L_iae": 0.3647030991986394,
+          "T_rmse": 0.2259709591257329,
+          "f_rmse": 0.04534515360604316,
+          "L_rmse": 0.37799298594958775,
+          "da_T": 0.45756434607592783,
+          "da_f": 0.7796099672781434,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.045173758831570224,
+          "viol_rate": 0.66125,
+          "viol_severity": 0.08382619917392731,
+          "viol_max": 0.24149519205093384,
+          "reward_nominal": -44.812718643434344,
+          "reward_disturbed": -46.020312869176266,
+          "L_iae_nominal": 0.3618046095371247,
+          "viol_rate_disturbed": 0.671,
+          "L_iae_disturbed": 0.36760158886015415
+        },
+        "no pessimism": {
+          "reward": -2.5542602795234415,
+          "T_iae": 0.042690132133662684,
+          "f_iae": 0.02560244087129831,
+          "L_iae": 0.0925952044799924,
+          "T_rmse": 0.04866096762669617,
+          "f_rmse": 0.03252244989098933,
+          "L_rmse": 0.0945690014216804,
+          "da_T": 0.5713965217959619,
+          "da_f": 0.6748507659604923,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.4695710933650843,
+          "reward_disturbed": -2.6389494656817987,
+          "L_iae_nominal": 0.09013141147792339,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.09505899748206138
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -2.435429860679142,
+          "T_iae": 0.044730228996276836,
+          "f_iae": 0.026907356604933742,
+          "L_iae": 0.04793678455799818,
+          "T_rmse": 0.05117166668688663,
+          "f_rmse": 0.034083293679348085,
+          "L_rmse": 0.06045462399777868,
+          "da_T": 0.5719657633239026,
+          "da_f": 0.6631792367341744,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.2743826007616006,
+          "reward_disturbed": -2.5964771205966826,
+          "L_iae_nominal": 0.04067906719446183,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.05519450192153454
+        },
+        "HALT p99, data kappa": {
+          "reward": -2.1987665301043307,
+          "T_iae": 0.04105159364938734,
+          "f_iae": 0.024791795507073403,
+          "L_iae": 0.0732959487438202,
+          "T_rmse": 0.048025285510949714,
+          "f_rmse": 0.03159189617822,
+          "L_rmse": 0.07635742065698428,
+          "da_T": 0.5760279051232913,
+          "da_f": 0.6806648673919653,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.127219739492284,
+          "reward_disturbed": -2.2703133207163773,
+          "L_iae_nominal": 0.07171072442829608,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.0748811730593443
+        },
+        "CQL alpha=1": {
+          "reward": -1.9550884565614979,
+          "T_iae": 0.04011658398807047,
+          "f_iae": 0.02417153898626566,
+          "L_iae": 0.052511334165930755,
+          "T_rmse": 0.04675683550012497,
+          "f_rmse": 0.03073894969360662,
+          "L_rmse": 0.06240011720780029,
+          "da_T": 0.5822701477472648,
+          "da_f": 0.6820711320501414,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.850786778499605,
+          "reward_disturbed": -2.0593901346233907,
+          "L_iae_nominal": 0.04823325699567795,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.05678941133618354
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.4416451641489403,
+          "T_iae": 0.03066817552894352,
+          "f_iae": 0.02522267960011959,
+          "L_iae": 0.0261186275780201,
+          "T_rmse": 0.03731022927727579,
+          "f_rmse": 0.03195586432613832,
+          "L_rmse": 0.03439513163526063,
+          "da_T": 0.6247228647018952,
+          "da_f": 0.6799655749507948,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.3433893271838315,
+          "reward_disturbed": -1.539901001114049,
+          "L_iae_nominal": 0.02298909445106983,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.029248160704970362
+        }
+      }
+    },
+    {
+      "seed": 3,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 3359.3879699707,
+        "kappa_data": 233.66839599609375,
+        "state_std": [
+          0.03284347802400589,
+          0.033298563212156296,
+          0.021798845380544662,
+          0.008875339291989803,
+          0.057179972529411316,
+          0.04981904849410057,
+          0.04917198419570923
+        ],
+        "q_data SAC, real data only": -2.692180633544922,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -77.47392272949219,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -2944.335693359375,
+        "halt_rate HALT p80, worst-case kappa": 0.4815211306283967,
+        "q_data HALT p99, data kappa": -171.39610290527344,
+        "halt_rate HALT p99, data kappa": 0.2526626004606947
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -159.00784473046662,
+          "T_iae": 0.3804389028146863,
+          "f_iae": 0.3605614120699465,
+          "L_iae": 0.49100389873981476,
+          "T_rmse": 0.38544938360261616,
+          "f_rmse": 0.3737058556823253,
+          "L_rmse": 0.49355354089455494,
+          "da_T": 0.17958240073618364,
+          "da_f": 0.4680940747225072,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.9744999999999999,
+          "viol_severity": 0.41784849762916565,
+          "viol_max": 0.5451029539108276,
+          "reward_nominal": -157.92542141750454,
+          "reward_disturbed": -160.09026804342867,
+          "L_iae_nominal": 0.492059475928545,
+          "viol_rate_disturbed": 0.9710000000000001,
+          "L_iae_disturbed": 0.4899483215510845
+        },
+        "no pessimism": {
+          "reward": -1.9455504704004851,
+          "T_iae": 0.03697843358963726,
+          "f_iae": 0.02727518192306161,
+          "L_iae": 0.056017550081014646,
+          "T_rmse": 0.04337796960147021,
+          "f_rmse": 0.03438236593404229,
+          "L_rmse": 0.061673752557261693,
+          "da_T": 0.5844850265436887,
+          "da_f": 0.6459988023018581,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.881493779295124,
+          "reward_disturbed": -2.0096071615058464,
+          "L_iae_nominal": 0.05422072643041611,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.05781437373161317
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -23.01006682552397,
+          "T_iae": 0.03393761043250562,
+          "f_iae": 0.06011612619459629,
+          "L_iae": 0.35027097040810623,
+          "T_rmse": 0.042109673081717466,
+          "f_rmse": 0.07325805710618064,
+          "L_rmse": 0.3724417996380093,
+          "da_T": 0.6780140137155017,
+          "da_f": 0.5936457081796536,
+          "overshoot_T": 0.00043859649122807013,
+          "overshoot_f": 0.007868980115036303,
+          "viol_rate": 0.5047500000000001,
+          "viol_severity": 0.1117938756942749,
+          "viol_max": 0.15000000596046448,
+          "reward_nominal": -22.729778902605176,
+          "reward_disturbed": -23.29035474844277,
+          "L_iae_nominal": 0.3480589139782533,
+          "viol_rate_disturbed": 0.5115000000000001,
+          "L_iae_disturbed": 0.3524830268379592
+        },
+        "HALT p99, data kappa": {
+          "reward": -2.6293718320608606,
+          "T_iae": 0.05183880682885644,
+          "f_iae": 0.02843708751723171,
+          "L_iae": 0.07114065986499189,
+          "T_rmse": 0.05746133996174548,
+          "f_rmse": 0.0357818146831038,
+          "L_rmse": 0.0727627903185696,
+          "da_T": 0.5330199886504812,
+          "da_f": 0.6372798450756307,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.598702752299141,
+          "reward_disturbed": -2.6600409118225796,
+          "L_iae_nominal": 0.07042786656320095,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.07185345316678285
+        },
+        "CQL alpha=1": {
+          "reward": -1.9924194530351087,
+          "T_iae": 0.040284615071117864,
+          "f_iae": 0.02628669733181596,
+          "L_iae": 0.04830772349983453,
+          "T_rmse": 0.0469502332729457,
+          "f_rmse": 0.03320722684399198,
+          "L_rmse": 0.05924402847727587,
+          "da_T": 0.564939291572746,
+          "da_f": 0.6645692182439147,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.9122240031603723,
+          "reward_disturbed": -2.0726149029098453,
+          "L_iae_nominal": 0.044575964987277984,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.05203948201239109
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.6294178237687447,
+          "T_iae": 0.033572645322978475,
+          "f_iae": 0.02714276454970241,
+          "L_iae": 0.03167419437691569,
+          "T_rmse": 0.03987766100213348,
+          "f_rmse": 0.03421379050530876,
+          "L_rmse": 0.04001109139589017,
+          "da_T": 0.5981439292280701,
+          "da_f": 0.651828360764805,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.5544998070283327,
+          "reward_disturbed": -1.7043358405091567,
+          "L_iae_nominal": 0.029234889075160024,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.034113499678671354
+        }
+      }
+    },
+    {
+      "seed": 4,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 2789.569854736326,
+        "kappa_data": 194.66464233398438,
+        "state_std": [
+          0.03214464709162712,
+          0.032919444143772125,
+          0.021412374451756477,
+          0.008755570277571678,
+          0.05594683811068535,
+          0.04991298168897629,
+          0.04940708354115486
+        ],
+        "q_data SAC, real data only": -3.6023988723754883,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -91.25959014892578,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -2322.401123046875,
+        "halt_rate HALT p80, worst-case kappa": 0.41616172690747155,
+        "q_data HALT p99, data kappa": -128.65907287597656,
+        "halt_rate HALT p99, data kappa": 0.1913849435857129
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -162.0999800454825,
+          "T_iae": 0.38324160012602804,
+          "f_iae": 0.3718791424632073,
+          "L_iae": 0.4918481317609548,
+          "T_rmse": 0.387298981029698,
+          "f_rmse": 0.38122689423527334,
+          "L_rmse": 0.4944678239875726,
+          "da_T": 0.17116423475115408,
+          "da_f": 0.47442961273980566,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.97725,
+          "viol_severity": 0.4254429340362549,
+          "viol_max": 0.5499999523162842,
+          "reward_nominal": -160.88124981448055,
+          "reward_disturbed": -163.3187102764845,
+          "L_iae_nominal": 0.49190726390481,
+          "viol_rate_disturbed": 0.978,
+          "L_iae_disturbed": 0.49178899961709976
+        },
+        "no pessimism": {
+          "reward": -1.9897982244117884,
+          "T_iae": 0.03802438999265431,
+          "f_iae": 0.026647592008113858,
+          "L_iae": 0.06314186986908317,
+          "T_rmse": 0.04473506346849533,
+          "f_rmse": 0.03403991768835205,
+          "L_rmse": 0.06740825966316756,
+          "da_T": 0.5856711184880181,
+          "da_f": 0.6518753495964923,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.794347172678681,
+          "reward_disturbed": -2.1852492761448956,
+          "L_iae_nominal": 0.0612220696657896,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.06506167007237672
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -3.5535463491673,
+          "T_iae": 0.05054952811598775,
+          "f_iae": 0.02661223687231541,
+          "L_iae": 0.09554168208653571,
+          "T_rmse": 0.05674838101831068,
+          "f_rmse": 0.03415008587096478,
+          "L_rmse": 0.11109749294869373,
+          "da_T": 0.5544526877584629,
+          "da_f": 0.6686180814782029,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.013750000000000002,
+          "viol_severity": 0.022093800827860832,
+          "viol_max": 0.15000000596046448,
+          "reward_nominal": -2.771432743698824,
+          "reward_disturbed": -4.3356599546357755,
+          "L_iae_nominal": 0.0851608443260193,
+          "viol_rate_disturbed": 0.027500000000000004,
+          "L_iae_disturbed": 0.10592251984705219
+        },
+        "HALT p99, data kappa": {
+          "reward": -1.6835000118706376,
+          "T_iae": 0.028029958313703522,
+          "f_iae": 0.02622625286877155,
+          "L_iae": 0.06042737451940775,
+          "T_rmse": 0.03417977848947381,
+          "f_rmse": 0.03357468541294144,
+          "L_rmse": 0.06425295459444393,
+          "da_T": 0.6366048170189486,
+          "da_f": 0.6536775352587052,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.531810547807254,
+          "reward_disturbed": -1.8351894759340213,
+          "L_iae_nominal": 0.059277578547596924,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.061577170491218566
+        },
+        "CQL alpha=1": {
+          "reward": -1.9536744287663168,
+          "T_iae": 0.03759052157402036,
+          "f_iae": 0.025007521606981754,
+          "L_iae": 0.05831194491311907,
+          "T_rmse": 0.04400254338846078,
+          "f_rmse": 0.032042631484391494,
+          "L_rmse": 0.06795326438550317,
+          "da_T": 0.5863622954582826,
+          "da_f": 0.6640606299008049,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.7300932350546645,
+          "reward_disturbed": -2.1772556224779693,
+          "L_iae_nominal": 0.05313773873448371,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.06348615109175446
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.452326476854796,
+          "T_iae": 0.031749564470350725,
+          "f_iae": 0.026415109768509866,
+          "L_iae": 0.02006919306144118,
+          "T_rmse": 0.038159525183843454,
+          "f_rmse": 0.03360524019182687,
+          "L_rmse": 0.028443672930257125,
+          "da_T": 0.6131220374010506,
+          "da_f": 0.6383002033731527,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.2728217429015785,
+          "reward_disturbed": -1.6318312108080135,
+          "L_iae_nominal": 0.017540461361408237,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.022597924761474132
+        }
+      }
+    },
+    {
+      "seed": 5,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 4955.785751342769,
+        "kappa_data": 247.2897186279297,
+        "state_std": [
+          0.03254573792219162,
+          0.033136166632175446,
+          0.02155350334942341,
+          0.00880182720720768,
+          0.05644981563091278,
+          0.04985903576016426,
+          0.04926053807139397
+        ],
+        "q_data SAC, real data only": -2.7541768550872803,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -73.2318344116211,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -4701.03662109375,
+        "halt_rate HALT p80, worst-case kappa": 0.698060165490671,
+        "q_data HALT p99, data kappa": -187.39988708496094,
+        "halt_rate HALT p99, data kappa": 0.2647342527028693
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -165.0637522920966,
+          "T_iae": 0.38545231550335884,
+          "f_iae": 0.3812537693604827,
+          "L_iae": 0.49560658710449934,
+          "T_rmse": 0.3889927910286042,
+          "f_rmse": 0.3869694247030334,
+          "L_rmse": 0.4970857697085017,
+          "da_T": 0.1689021750164966,
+          "da_f": 0.4738760014572043,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.9877499999999999,
+          "viol_severity": 0.4291388988494873,
+          "viol_max": 0.5499999523162842,
+          "reward_nominal": -165.66131836101414,
+          "reward_disturbed": -164.4661862231791,
+          "L_iae_nominal": 0.497315053999424,
+          "viol_rate_disturbed": 0.984,
+          "L_iae_disturbed": 0.49389812020957474
+        },
+        "no pessimism": {
+          "reward": -2.723119165317621,
+          "T_iae": 0.04330134919732807,
+          "f_iae": 0.026224447153508662,
+          "L_iae": 0.09840802257508041,
+          "T_rmse": 0.04937223372529482,
+          "f_rmse": 0.03302203739770945,
+          "L_rmse": 0.10156392034294184,
+          "da_T": 0.5783789975561628,
+          "da_f": 0.6535644425403822,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.5656578386900946,
+          "reward_disturbed": -2.8805804919451474,
+          "L_iae_nominal": 0.09441544348001481,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.102400601670146
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -33.117932667769495,
+          "T_iae": 0.08572079815864561,
+          "f_iae": 0.06157780391722918,
+          "L_iae": 0.485521432478461,
+          "T_rmse": 0.0921741854308111,
+          "f_rmse": 0.06930322442556092,
+          "L_rmse": 0.48697702829776873,
+          "da_T": 0.5270930365065291,
+          "da_f": 0.5669018099164511,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.9862499999999998,
+          "viol_severity": 0.1465708613395691,
+          "viol_max": 0.4312164783477783,
+          "reward_nominal": -29.725418519601227,
+          "reward_disturbed": -36.510446815937755,
+          "L_iae_nominal": 0.4841791432987666,
+          "viol_rate_disturbed": 0.9869999999999999,
+          "L_iae_disturbed": 0.4868637216581556
+        },
+        "HALT p99, data kappa": {
+          "reward": -2.303626336500747,
+          "T_iae": 0.0394300541475415,
+          "f_iae": 0.026568632207810878,
+          "L_iae": 0.08154833218827842,
+          "T_rmse": 0.046090286069963834,
+          "f_rmse": 0.03355265454003166,
+          "L_rmse": 0.08401320179277182,
+          "da_T": 0.5946934079192215,
+          "da_f": 0.6548845923472133,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.1684768752078525,
+          "reward_disturbed": -2.4387757977936415,
+          "L_iae_nominal": 0.07931986711919307,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.08377679725736378
+        },
+        "CQL alpha=1": {
+          "reward": -2.06875732113258,
+          "T_iae": 0.03733081128001211,
+          "f_iae": 0.02539543344080448,
+          "L_iae": 0.06621012184768915,
+          "T_rmse": 0.044044682903209384,
+          "f_rmse": 0.03192586186044289,
+          "L_rmse": 0.07551334715875149,
+          "da_T": 0.6091550401539092,
+          "da_f": 0.6562915366605406,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.892062461382011,
+          "reward_disturbed": -2.2454521808831487,
+          "L_iae_nominal": 0.06197553557157516,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.07044470812380313
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.488168575031159,
+          "T_iae": 0.02944465012401341,
+          "f_iae": 0.025838736511766915,
+          "L_iae": 0.031353115782141686,
+          "T_rmse": 0.035967333702547045,
+          "f_rmse": 0.03262427195606924,
+          "L_rmse": 0.04157634218909186,
+          "da_T": 0.6507795350397556,
+          "da_f": 0.6568852305451583,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.3512178742123069,
+          "reward_disturbed": -1.625119275850011,
+          "L_iae_nominal": 0.02835782504081726,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.034348406523466116
+        }
+      }
+    },
+    {
+      "seed": 6,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 3238.628387451169,
+        "kappa_data": 211.97064208984375,
+        "state_std": [
+          0.032637614756822586,
+          0.03299245238304138,
+          0.02147880755364895,
+          0.008748847059905529,
+          0.05617917329072952,
+          0.04982145503163338,
+          0.04925098270177841
+        ],
+        "q_data SAC, real data only": -4.329178333282471,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -34.88150405883789,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -2681.750732421875,
+        "halt_rate HALT p80, worst-case kappa": 0.4711024223223313,
+        "q_data HALT p99, data kappa": -156.05763244628906,
+        "halt_rate HALT p99, data kappa": 0.24130680593231318
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -160.9301386486739,
+          "T_iae": 0.38188035217523575,
+          "f_iae": 0.370253187507391,
+          "L_iae": 0.49385158114135264,
+          "T_rmse": 0.3864035428000703,
+          "f_rmse": 0.37864819287621687,
+          "L_rmse": 0.49570127492901506,
+          "da_T": 0.18874750193051087,
+          "da_f": 0.4731648490868352,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.9814999999999999,
+          "viol_severity": 0.42087921500205994,
+          "viol_max": 0.5499999523162842,
+          "reward_nominal": -159.67359584793448,
+          "reward_disturbed": -162.1866814494133,
+          "L_iae_nominal": 0.4944076933264732,
+          "viol_rate_disturbed": 0.9819999999999999,
+          "L_iae_disturbed": 0.49329546895623205
+        },
+        "no pessimism": {
+          "reward": -1.3993287954173865,
+          "T_iae": 0.025784450699388967,
+          "f_iae": 0.02719764708727599,
+          "L_iae": 0.02176317095011473,
+          "T_rmse": 0.03208503794868543,
+          "f_rmse": 0.034854700460055815,
+          "L_rmse": 0.026290531524557365,
+          "da_T": 0.6600766792477375,
+          "da_f": 0.6598879595264904,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.290132473842823,
+          "reward_disturbed": -1.5085251169919502,
+          "L_iae_nominal": 0.021283087715506556,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.0222432541847229
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -2.8768831066277927,
+          "T_iae": 0.029723947335779655,
+          "f_iae": 0.029863114431500436,
+          "L_iae": 0.06875186262652276,
+          "T_rmse": 0.038537441229088205,
+          "f_rmse": 0.03784769834973738,
+          "L_rmse": 0.091205804204687,
+          "da_T": 0.6320702359838274,
+          "da_f": 0.6382247876815716,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.01775,
+          "viol_severity": 0.011190781742334366,
+          "viol_max": 0.1499999761581421,
+          "reward_nominal": -2.1210802666522794,
+          "reward_disturbed": -3.6326859466033055,
+          "L_iae_nominal": 0.05328753666579723,
+          "viol_rate_disturbed": 0.03,
+          "L_iae_disturbed": 0.08421618858724832
+        },
+        "HALT p99, data kappa": {
+          "reward": -2.422033126943279,
+          "T_iae": 0.044504528439044934,
+          "f_iae": 0.02599898639321327,
+          "L_iae": 0.07835734283179044,
+          "T_rmse": 0.05058184900969066,
+          "f_rmse": 0.033128761119720275,
+          "L_rmse": 0.081272719751512,
+          "da_T": 0.5659081033471398,
+          "da_f": 0.6636776006238622,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.23740147681674,
+          "reward_disturbed": -2.606664777069818,
+          "L_iae_nominal": 0.07547877286374569,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.0812359127998352
+        },
+        "CQL alpha=1": {
+          "reward": -1.914459409660776,
+          "T_iae": 0.03961323558837174,
+          "f_iae": 0.024840401016175746,
+          "L_iae": 0.048915358364582065,
+          "T_rmse": 0.04630650051307298,
+          "f_rmse": 0.031834117535901964,
+          "L_rmse": 0.05821647939529452,
+          "da_T": 0.586292651071214,
+          "da_f": 0.6698093786290199,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.7600043227721471,
+          "reward_disturbed": -2.068914496549405,
+          "L_iae_nominal": 0.04465799224376678,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.05317272448539734
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.472170797472063,
+          "T_iae": 0.02627007335871457,
+          "f_iae": 0.02590431194752455,
+          "L_iae": 0.039750747621059415,
+          "T_rmse": 0.03284923659551819,
+          "f_rmse": 0.033164523214448016,
+          "L_rmse": 0.045687596361732974,
+          "da_T": 0.6676946489653734,
+          "da_f": 0.6618277015946527,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.3497842252691044,
+          "reward_disturbed": -1.5945573696750217,
+          "L_iae_nominal": 0.03623339615762234,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.04326809908449649
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 2482.9202651977516,
+        "kappa_data": 208.87159729003906,
+        "state_std": [
+          0.03265086188912392,
+          0.03305124118924141,
+          0.02148042991757393,
+          0.008757426403462887,
+          0.05638938769698143,
+          0.049636539071798325,
+          0.04911940544843674
+        ],
+        "q_data SAC, real data only": -5.394476890563965,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -42.65458297729492,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -1933.462158203125,
+        "halt_rate HALT p80, worst-case kappa": 0.4158976283313629,
+        "q_data HALT p99, data kappa": -138.0753173828125,
+        "halt_rate HALT p99, data kappa": 0.16128143703754563
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -25.16018776850542,
+          "T_iae": 0.09234812462180852,
+          "f_iae": 0.07969276671856643,
+          "L_iae": 0.186876935698092,
+          "T_rmse": 0.09680882390789995,
+          "f_rmse": 0.08714899829716019,
+          "L_rmse": 0.19670284358590198,
+          "da_T": 0.5427008368723124,
+          "da_f": 0.672526910911844,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0013513513513513514,
+          "viol_rate": 0.15425,
+          "viol_severity": 0.06252252841368318,
+          "viol_max": 0.5091435313224792,
+          "reward_nominal": -18.795273824525065,
+          "reward_disturbed": -31.525101712485775,
+          "L_iae_nominal": 0.16962021908164024,
+          "viol_rate_disturbed": 0.207,
+          "L_iae_disturbed": 0.2041336523145437
+        },
+        "no pessimism": {
+          "reward": -1.2793615221002255,
+          "T_iae": 0.022949506394565094,
+          "f_iae": 0.024676518082618715,
+          "L_iae": 0.019607846111059188,
+          "T_rmse": 0.02886680774014431,
+          "f_rmse": 0.031779370386202425,
+          "L_rmse": 0.028625737829812252,
+          "da_T": 0.7093797348726218,
+          "da_f": 0.6820081817249671,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.2336494721355848,
+          "reward_disturbed": -1.3250735720648663,
+          "L_iae_nominal": 0.017564711943268772,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.021650980278849603
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -3.1150899453787133,
+          "T_iae": 0.043344074925780275,
+          "f_iae": 0.027497224405407906,
+          "L_iae": 0.0916166008412838,
+          "T_rmse": 0.04998398473130351,
+          "f_rmse": 0.03536100602010406,
+          "L_rmse": 0.1063456865132334,
+          "da_T": 0.5877553059502635,
+          "da_f": 0.6573784065800654,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.00125,
+          "viol_severity": 0.001061726175248623,
+          "viol_max": 0.02480444312095642,
+          "reward_nominal": -2.8592387457028963,
+          "reward_disturbed": -3.3709411450545304,
+          "L_iae_nominal": 0.08289869447052481,
+          "viol_rate_disturbed": 0.0025,
+          "L_iae_disturbed": 0.1003345072120428
+        },
+        "HALT p99, data kappa": {
+          "reward": -2.2127766105870252,
+          "T_iae": 0.03890255027413366,
+          "f_iae": 0.02433790488541126,
+          "L_iae": 0.079780499830842,
+          "T_rmse": 0.04567157221983661,
+          "f_rmse": 0.03140119798891033,
+          "L_rmse": 0.08254982531226757,
+          "da_T": 0.5924153649094943,
+          "da_f": 0.6797966549025739,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.1398294425918722,
+          "reward_disturbed": -2.2857237785821782,
+          "L_iae_nominal": 0.07669650708138942,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.0828644925802946
+        },
+        "CQL alpha=1": {
+          "reward": -2.0406975020829123,
+          "T_iae": 0.041088974091410616,
+          "f_iae": 0.0235702118948102,
+          "L_iae": 0.059477460503578196,
+          "T_rmse": 0.04782209852905246,
+          "f_rmse": 0.030404862521143623,
+          "L_rmse": 0.06782353071145576,
+          "da_T": 0.5877716563532309,
+          "da_f": 0.6872858893944556,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.9592024937504902,
+          "reward_disturbed": -2.122192510415334,
+          "L_iae_nominal": 0.0553444582670927,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.06361046274006367
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.4703727874672041,
+          "T_iae": 0.029597440379858002,
+          "f_iae": 0.024111508078873155,
+          "L_iae": 0.036036670207977295,
+          "T_rmse": 0.036437635942897104,
+          "f_rmse": 0.031035135780864205,
+          "L_rmse": 0.04438567618142248,
+          "da_T": 0.6400272448620996,
+          "da_f": 0.6805895311951861,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.4085695998743177,
+          "reward_disturbed": -1.5321759750600905,
+          "L_iae_nominal": 0.03331450441479683,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.03875883600115776
+        }
+      }
+    },
+    {
+      "seed": 8,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 3257.8289031982395,
+        "kappa_data": 204.70657348632812,
+        "state_std": [
+          0.03258439153432846,
+          0.0331474132835865,
+          0.021715626120567322,
+          0.008844326250255108,
+          0.056686267256736755,
+          0.049826640635728836,
+          0.04931464046239853
+        ],
+        "q_data SAC, real data only": -1.841455101966858,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -59.430458068847656,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -3130.72314453125,
+        "halt_rate HALT p80, worst-case kappa": 0.8506132422343824,
+        "q_data HALT p99, data kappa": -132.01417541503906,
+        "halt_rate HALT p99, data kappa": 0.21483956092406162
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -163.47090331893415,
+          "T_iae": 0.38244873712658883,
+          "f_iae": 0.3782660816758871,
+          "L_iae": 0.49544796522706747,
+          "T_rmse": 0.38724575064071753,
+          "f_rmse": 0.38374273336465203,
+          "L_rmse": 0.4969772361756973,
+          "da_T": 0.1738232892658957,
+          "da_f": 0.4751273492798978,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.9887499999999998,
+          "viol_severity": 0.42407122254371643,
+          "viol_max": 0.5499999523162842,
+          "reward_nominal": -164.28801798261702,
+          "reward_disturbed": -162.65378865525128,
+          "L_iae_nominal": 0.4968393105566501,
+          "viol_rate_disturbed": 0.9864999999999998,
+          "L_iae_disturbed": 0.4940566198974848
+        },
+        "no pessimism": {
+          "reward": -1.71807978880679,
+          "T_iae": 0.031729333482682684,
+          "f_iae": 0.025894741415977474,
+          "L_iae": 0.046116545427590604,
+          "T_rmse": 0.038966222726595036,
+          "f_rmse": 0.03407292185261164,
+          "L_rmse": 0.05190245159166902,
+          "da_T": 0.6149858416305987,
+          "da_f": 0.6508489811810172,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.4497333879699,
+          "reward_disturbed": -1.9864261896436801,
+          "L_iae_nominal": 0.044536515802145,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.04769657505303621
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -234.17040184419602,
+          "T_iae": 0.5149065453265909,
+          "f_iae": 0.4470544447056599,
+          "L_iae": 0.4982883457014104,
+          "T_rmse": 0.5237867021764047,
+          "f_rmse": 0.45521471197908847,
+          "L_rmse": 0.4987651170957369,
+          "da_T": 0.4416083235747575,
+          "da_f": 0.42195001574297164,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.9952500000000001,
+          "viol_severity": 0.57689368724823,
+          "viol_max": 0.7000000476837158,
+          "reward_nominal": -231.54680086113513,
+          "reward_disturbed": -236.79400282725692,
+          "L_iae_nominal": 0.4970440354326275,
+          "viol_rate_disturbed": 0.999,
+          "L_iae_disturbed": 0.4995326559701934
+        },
+        "HALT p99, data kappa": {
+          "reward": -2.5187415042950305,
+          "T_iae": 0.04290440702885387,
+          "f_iae": 0.02628415811061859,
+          "L_iae": 0.08266324011981488,
+          "T_rmse": 0.04964644426774144,
+          "f_rmse": 0.034542134659628625,
+          "L_rmse": 0.08461439354073438,
+          "da_T": 0.5694739188016862,
+          "da_f": 0.6469315267483214,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -2.25355502681341,
+          "reward_disturbed": -2.783927981776651,
+          "L_iae_nominal": 0.08254545637965202,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.08278102385997772
+        },
+        "CQL alpha=1": {
+          "reward": -2.1211450213071656,
+          "T_iae": 0.039718232724070525,
+          "f_iae": 0.025006228975951672,
+          "L_iae": 0.05875668065622449,
+          "T_rmse": 0.04719317766547297,
+          "f_rmse": 0.03282839879183251,
+          "L_rmse": 0.06810249204030767,
+          "da_T": 0.5818018854302711,
+          "da_f": 0.6688664577316199,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0007936507936507937,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.7984532867267262,
+          "reward_disturbed": -2.443836755887605,
+          "L_iae_nominal": 0.05728277820348739,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.06023058310896159
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.7348248413996772,
+          "T_iae": 0.0315499106183648,
+          "f_iae": 0.025142072170972824,
+          "L_iae": 0.042420995183289054,
+          "T_rmse": 0.039196219867087594,
+          "f_rmse": 0.033099325978643804,
+          "L_rmse": 0.05305592576397766,
+          "da_T": 0.6155151271146357,
+          "da_f": 0.6724349054464687,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.000819672131147541,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.447472105314955,
+          "reward_disturbed": -2.022177577484399,
+          "L_iae_nominal": 0.04156845992803574,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.04327353043854237
+        }
+      }
+    },
+    {
+      "seed": 9,
+      "extra": {
+        "coverage": "normal, 1/3 noise",
+        "rollout_horizon": 5,
+        "kappa": 3295.8152770996066,
+        "kappa_data": 210.97413635253906,
+        "state_std": [
+          0.03206557035446167,
+          0.032817594707012177,
+          0.021037857979536057,
+          0.008640861138701439,
+          0.054920367896556854,
+          0.04981487616896629,
+          0.04927615448832512
+        ],
+        "q_data SAC, real data only": -4.0487189292907715,
+        "halt_rate SAC, real data only": 0.0,
+        "q_data no pessimism": -43.101280212402344,
+        "halt_rate no pessimism": 0.0,
+        "q_data HALT p80, worst-case kappa": -3166.544677734375,
+        "halt_rate HALT p80, worst-case kappa": 0.7439249004893292,
+        "q_data HALT p99, data kappa": -109.9569091796875,
+        "halt_rate HALT p99, data kappa": 0.13288160022522894
+      },
+      "results": {
+        "SAC, real data only": {
+          "reward": -159.09026971794665,
+          "T_iae": 0.37666067717224355,
+          "f_iae": 0.3671718224436045,
+          "L_iae": 0.4905404999628664,
+          "T_rmse": 0.3826623577586198,
+          "f_rmse": 0.37895767663364194,
+          "L_rmse": 0.49337179479476534,
+          "da_T": 0.2028837241764377,
+          "da_f": 0.46512719365932015,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.9722499999999998,
+          "viol_severity": 0.4210359454154968,
+          "viol_max": 0.5447622537612915,
+          "reward_nominal": -156.89333666563033,
+          "reward_disturbed": -161.28720277026295,
+          "L_iae_nominal": 0.4891766930222511,
+          "viol_rate_disturbed": 0.978,
+          "L_iae_disturbed": 0.49190430690348147
+        },
+        "no pessimism": {
+          "reward": -1.4917635058634915,
+          "T_iae": 0.0268110216513276,
+          "f_iae": 0.024348260566592218,
+          "L_iae": 0.03205768835544586,
+          "T_rmse": 0.033662171486566264,
+          "f_rmse": 0.030573346311332322,
+          "L_rmse": 0.038175966005229364,
+          "da_T": 0.6808417416891686,
+          "da_f": 0.6756671038092732,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.329632091446547,
+          "reward_disturbed": -1.653894920280436,
+          "L_iae_nominal": 0.028981973022222513,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.035133403688669206
+        },
+        "HALT p80, worst-case kappa": {
+          "reward": -70.49654057212175,
+          "T_iae": 0.09011199508160353,
+          "f_iae": 0.27075193053297697,
+          "L_iae": 0.4680024670880811,
+          "T_rmse": 0.12293380565237297,
+          "f_rmse": 0.2882598899936363,
+          "L_rmse": 0.4778425207561775,
+          "da_T": 0.5475648877533865,
+          "da_f": 0.4429494442450637,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0023132352278220046,
+          "viol_rate": 0.9267499999999999,
+          "viol_severity": 0.19855038821697235,
+          "viol_max": 0.32619553804397583,
+          "reward_nominal": -69.76605236008763,
+          "reward_disturbed": -71.22702878415585,
+          "L_iae_nominal": 0.465717023393896,
+          "viol_rate_disturbed": 0.9305000000000001,
+          "L_iae_disturbed": 0.4702879107822665
+        },
+        "HALT p99, data kappa": {
+          "reward": -12.342072215348889,
+          "T_iae": 0.06388643843680618,
+          "f_iae": 0.04937898995168507,
+          "L_iae": 0.11169126476417297,
+          "T_rmse": 0.06997375713101209,
+          "f_rmse": 0.056221162064294464,
+          "L_rmse": 0.11577557812198871,
+          "da_T": 0.5888428762417404,
+          "da_f": 0.6557824051261116,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.09425,
+          "viol_severity": 0.02205962613224983,
+          "viol_max": 0.35940229892730713,
+          "reward_nominal": -1.9961669565731426,
+          "reward_disturbed": -22.687977474124637,
+          "L_iae_nominal": 0.06677932569384575,
+          "viol_rate_disturbed": 0.1885,
+          "L_iae_disturbed": 0.15660320383450016
+        },
+        "CQL alpha=1": {
+          "reward": -1.9081255372730084,
+          "T_iae": 0.04066255280077456,
+          "f_iae": 0.023637079879641535,
+          "L_iae": 0.05109333061799407,
+          "T_rmse": 0.04747828836674417,
+          "f_rmse": 0.02965897754476552,
+          "L_rmse": 0.05994875151726296,
+          "da_T": 0.5904098295373968,
+          "da_f": 0.6760398283908209,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.7304967564356049,
+          "reward_disturbed": -2.085754318110412,
+          "L_iae_nominal": 0.044775649189949036,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.057411012046039114
+        },
+        "CQL alpha=0.1": {
+          "reward": -1.4665317571212655,
+          "T_iae": 0.03143536014407872,
+          "f_iae": 0.023961064547300338,
+          "L_iae": 0.032872473239898684,
+          "T_rmse": 0.038501536504984266,
+          "f_rmse": 0.030043829704090565,
+          "L_rmse": 0.041232245681846795,
+          "da_T": 0.6297998006327827,
+          "da_f": 0.6710745938774347,
+          "overshoot_T": 0.0,
+          "overshoot_f": 0.0,
+          "viol_rate": 0.0,
+          "viol_severity": 0.0,
+          "viol_max": 0.0,
+          "reward_nominal": -1.3177549035113771,
+          "reward_disturbed": -1.6153086107311538,
+          "L_iae_nominal": 0.028185642942786214,
+          "viol_rate_disturbed": 0.0,
+          "L_iae_disturbed": 0.03755930353701114
+        }
+      }
+    }
+  ],
+  "summary": {
+    "methods": {
+      "SAC, real data only": {
+        "reward": {
+          "mean": -136.87545622172186,
+          "lo": -175.35800980680543,
+          "hi": -98.3929026366383,
+          "min": -165.0637522920966,
+          "max": -25.16018776850542
+        },
+        "T_iae": {
+          "mean": 0.33698548374429343,
+          "lo": 0.26569064013087224,
+          "hi": 0.40828032735771463,
+          "min": 0.09234812462180852,
+          "max": 0.38545231550335884
+        },
+        "f_iae": {
+          "mean": 0.3104899852480739,
+          "lo": 0.21484093758416628,
+          "hi": 0.40613903291198156,
+          "min": 0.03602228157222271,
+          "max": 0.38134363628923895
+        },
+        "L_iae": {
+          "mean": 0.45000908889994023,
+          "lo": 0.37779155600907993,
+          "hi": 0.5222266217908006,
+          "min": 0.186876935698092,
+          "max": 0.4957624335885048
+        },
+        "T_rmse": {
+          "mean": 0.34157616271348645,
+          "lo": 0.27022584662614346,
+          "hi": 0.41292647880082944,
+          "min": 0.09680882390789995,
+          "max": 0.3889927910286042
+        },
+        "f_rmse": {
+          "mean": 0.31888556447740535,
+          "lo": 0.22332615281574514,
+          "hi": 0.41444497613906556,
+          "min": 0.04534515360604316,
+          "max": 0.3872613126052705
+        },
+        "L_rmse": {
+          "mean": 0.453920967062972,
+          "lo": 0.38406752342820083,
+          "hi": 0.5237744106977432,
+          "min": 0.19670284358590198,
+          "max": 0.49716827084200765
+        },
+        "da_T": {
+          "mean": 0.24128964157543256,
+          "lo": 0.14227527164906303,
+          "hi": 0.3403040115018021,
+          "min": 0.1601812733616295,
+          "max": 0.5427008368723124
+        },
+        "da_f": {
+          "mean": 0.5227734792073082,
+          "lo": 0.44398151003124275,
+          "hi": 0.6015654483833737,
+          "min": 0.46512719365932015,
+          "max": 0.7796099672781434
+        },
+        "overshoot_T": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "overshoot_f": {
+          "mean": 0.004677511018292157,
+          "lo": -0.005505731391718745,
+          "hi": 0.01486075342830306,
+          "min": 0.0,
+          "max": 0.045173758831570224
+        },
+        "viol_rate": {
+          "mean": 0.8670749999999998,
+          "lo": 0.6739030430190418,
+          "hi": 1.0602469569809578,
+          "min": 0.15425,
+          "max": 0.9887499999999998
+        },
+        "viol_severity": {
+          "mean": 0.35404118725098666,
+          "lo": 0.24805566482078734,
+          "hi": 0.460026709681186,
+          "min": 0.06252252841368318,
+          "max": 0.4291388988494873
+        },
+        "viol_max": {
+          "mean": 0.5133807003498078,
+          "lo": 0.4444638608877769,
+          "hi": 0.5822975398118386,
+          "min": 0.24149519205093384,
+          "max": 0.5499999523162842
+        },
+        "reward_nominal": {
+          "mean": -135.69064541473287,
+          "lo": -175.1580107098479,
+          "hi": -96.22328011961784,
+          "min": -165.66131836101414,
+          "max": -18.795273824525065
+        },
+        "reward_disturbed": {
+          "mean": -138.0602670287108,
+          "lo": -175.58843234176675,
+          "hi": -100.53210171565485,
+          "min": -164.73819998130202,
+          "max": -31.525101712485775
+        },
+        "L_iae_nominal": {
+          "mean": 0.44865323179364197,
+          "lo": 0.37242258918199633,
+          "hi": 0.5248838744052876,
+          "min": 0.16962021908164024,
+          "max": 0.49755030545592305
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.87245,
+          "lo": 0.6912391579623202,
+          "hi": 1.0536608420376796,
+          "min": 0.207,
+          "max": 0.9864999999999998
+        },
+        "L_iae_disturbed": {
+          "mean": 0.45136494600623844,
+          "lo": 0.3831456246464755,
+          "hi": 0.5195842673660014,
+          "min": 0.2041336523145437,
+          "max": 0.4940566198974848
+        }
+      },
+      "no pessimism": {
+        "reward": {
+          "mean": -1.9177281474600023,
+          "lo": -2.257017855031217,
+          "hi": -1.5784384398887874,
+          "min": -2.723119165317621,
+          "max": -1.2793615221002255
+        },
+        "T_iae": {
+          "mean": 0.03421249717324971,
+          "lo": 0.029152528685178262,
+          "hi": 0.03927246566132115,
+          "min": 0.022949506394565094,
+          "max": 0.04330134919732807
+        },
+        "f_iae": {
+          "mean": 0.02587694970034063,
+          "lo": 0.02517219685664394,
+          "hi": 0.026581702544037317,
+          "min": 0.024348260566592218,
+          "max": 0.02727518192306161
+        },
+        "L_iae": {
+          "mean": 0.056934020423516626,
+          "lo": 0.03698987490180124,
+          "hi": 0.07687816594523202,
+          "min": 0.019607846111059188,
+          "max": 0.09840802257508041
+        },
+        "T_rmse": {
+          "mean": 0.04059191152580128,
+          "lo": 0.035589043349787394,
+          "hi": 0.045594779701815163,
+          "min": 0.02886680774014431,
+          "max": 0.04937223372529482
+        },
+        "f_rmse": {
+          "mean": 0.03299423850881751,
+          "lo": 0.0320124976005777,
+          "hi": 0.03397597941705732,
+          "min": 0.030573346311332322,
+          "max": 0.034854700460055815
+        },
+        "L_rmse": {
+          "mean": 0.06187934207902642,
+          "lo": 0.042986508052536274,
+          "hi": 0.08077217610551657,
+          "min": 0.026290531524557365,
+          "max": 0.10156392034294184
+        },
+        "da_T": {
+          "mean": 0.619017749554295,
+          "lo": 0.5848381632632165,
+          "hi": 0.6531973358453735,
+          "min": 0.5713965217959619,
+          "max": 0.7093797348726218
+        },
+        "da_f": {
+          "mean": 0.6616775358263436,
+          "lo": 0.653012731895972,
+          "hi": 0.6703423397567152,
+          "min": 0.6459988023018581,
+          "max": 0.6820081817249671
+        },
+        "overshoot_T": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "overshoot_f": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "viol_rate": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "viol_severity": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "viol_max": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "reward_nominal": {
+          "mean": -1.790451776359987,
+          "lo": -2.1357962768908454,
+          "hi": -1.4451072758291286,
+          "min": -2.5656578386900946,
+          "max": -1.2336494721355848
+        },
+        "reward_disturbed": {
+          "mean": -2.0450045185600176,
+          "lo": -2.3870301049810623,
+          "hi": -1.702978932138973,
+          "min": -2.8805804919451474,
+          "max": -1.3250735720648663
+        },
+        "L_iae_nominal": {
+          "mean": 0.05463074909001588,
+          "lo": 0.035063054283743914,
+          "hi": 0.07419844389628785,
+          "min": 0.017564711943268772,
+          "max": 0.09441544348001481
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "L_iae_disturbed": {
+          "mean": 0.05923729175701738,
+          "lo": 0.03889796709145204,
+          "hi": 0.07957661642258271,
+          "min": 0.021650980278849603,
+          "max": 0.102400601670146
+        }
+      },
+      "HALT p80, worst-case kappa": {
+        "reward": {
+          "mean": -43.08017546655625,
+          "lo": -93.8428595094595,
+          "hi": 7.682508576347004,
+          "min": -234.17040184419602,
+          "max": -2.435429860679142
+        },
+        "T_iae": {
+          "mean": 0.1045672346842766,
+          "lo": -0.0003499564461673099,
+          "hi": 0.20948442581472052,
+          "min": 0.029723947335779655,
+          "max": 0.5149065453265909
+        },
+        "f_iae": {
+          "mean": 0.11674007686856784,
+          "lo": 0.016211770594302996,
+          "hi": 0.2172683831428327,
+          "min": 0.02661223687231541,
+          "max": 0.4470544447056599
+        },
+        "L_iae": {
+          "mean": 0.2579890491351237,
+          "lo": 0.12324407923073305,
+          "hi": 0.3927340190395144,
+          "min": 0.04793678455799818,
+          "max": 0.4982883457014104
+        },
+        "T_rmse": {
+          "mean": 0.1157440998614618,
+          "lo": 0.010547153838721263,
+          "hi": 0.22094104588420233,
+          "min": 0.038537441229088205,
+          "max": 0.5237867021764047
+        },
+        "f_rmse": {
+          "mean": 0.12932189180104597,
+          "lo": 0.026953503245466776,
+          "hi": 0.23169028035662517,
+          "min": 0.034083293679348085,
+          "max": 0.45521471197908847
+        },
+        "L_rmse": {
+          "mean": 0.2732975957934092,
+          "lo": 0.14048074796784887,
+          "hi": 0.4061144436189695,
+          "min": 0.06045462399777868,
+          "max": 0.4987651170957369
+        },
+        "da_T": {
+          "mean": 0.5677440783396168,
+          "lo": 0.5142637375776902,
+          "hi": 0.6212244191015435,
+          "min": 0.4416083235747575,
+          "max": 0.6780140137155017
+        },
+        "da_f": {
+          "mean": 0.5752551841698221,
+          "lo": 0.5070263565192772,
+          "hi": 0.6434840118203671,
+          "min": 0.42195001574297164,
+          "max": 0.6686180814782029
+        },
+        "overshoot_T": {
+          "mean": 0.00013128719180585446,
+          "lo": -7.989609898621542e-05,
+          "hi": 0.00034247048259792434,
+          "min": 0.0,
+          "max": 0.0008742754268304745
+        },
+        "overshoot_f": {
+          "mean": 0.0011350842359434004,
+          "lo": -0.0006453966803415363,
+          "hi": 0.002915565152228337,
+          "min": 0.0,
+          "max": 0.007868980115036303
+        },
+        "viol_rate": {
+          "mean": 0.41495,
+          "lo": 0.10465412349900016,
+          "hi": 0.7252458765009998,
+          "min": 0.0,
+          "max": 0.9952500000000001
+        },
+        "viol_severity": {
+          "mean": 0.12497821582481265,
+          "lo": 0.0002986385693763971,
+          "hi": 0.2496577930802489,
+          "min": 0.0,
+          "max": 0.57689368724823
+        },
+        "viol_max": {
+          "mean": 0.2448262631893158,
+          "lo": 0.09649669770534744,
+          "hi": 0.39315582867328414,
+          "min": 0.0,
+          "max": 0.7000000476837158
+        },
+        "reward_nominal": {
+          "mean": -41.37518782930972,
+          "lo": -92.02050805705417,
+          "hi": 9.270132398434733,
+          "min": -231.54680086113513,
+          "max": -1.8005131877725944
+        },
+        "reward_disturbed": {
+          "mean": -44.785163103802766,
+          "lo": -95.72930490591196,
+          "hi": 6.15897869830642,
+          "min": -236.79400282725692,
+          "max": -2.5964771205966826
+        },
+        "L_iae_nominal": {
+          "mean": 0.24628286342573413,
+          "lo": 0.10527447060328013,
+          "hi": 0.38729125624818816,
+          "min": 0.04067906719446183,
+          "max": 0.4970440354326275
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.4342,
+          "lo": 0.1302818441574533,
+          "hi": 0.7381181558425467,
+          "min": 0.0,
+          "max": 0.999
+        },
+        "L_iae_disturbed": {
+          "mean": 0.2696952348445135,
+          "lo": 0.14018401371314748,
+          "hi": 0.39920645597587956,
+          "min": 0.05519450192153454,
+          "max": 0.4995326559701934
+        }
+      },
+      "HALT p99, data kappa": {
+        "reward": {
+          "mean": -3.3097714132930562,
+          "lo": -5.5883187016278555,
+          "hi": -1.0312241249582574,
+          "min": -12.342072215348889,
+          "max": -1.6835000118706376
+        },
+        "T_iae": {
+          "mean": 0.04331295233458279,
+          "lo": 0.03664089146438817,
+          "hi": 0.049985013204777405,
+          "min": 0.028029958313703522,
+          "max": 0.06388643843680618
+        },
+        "f_iae": {
+          "mean": 0.028283451741002504,
+          "lo": 0.022920352048729085,
+          "hi": 0.033646551433275926,
+          "min": 0.02433790488541126,
+          "max": 0.04937898995168507
+        },
+        "L_iae": {
+          "mean": 0.08049604925073217,
+          "lo": 0.07012684600955643,
+          "hi": 0.09086525249190791,
+          "min": 0.06042737451940775,
+          "max": 0.11169126476417297
+        },
+        "T_rmse": {
+          "mean": 0.049647619972831424,
+          "lo": 0.04308131754872908,
+          "hi": 0.05621392239693377,
+          "min": 0.03417977848947381,
+          "max": 0.06997375713101209
+        },
+        "f_rmse": {
+          "mean": 0.035438471499435645,
+          "lo": 0.03012719149368287,
+          "hi": 0.04074975150518842,
+          "min": 0.03140119798891033,
+          "max": 0.056221162064294464
+        },
+        "L_rmse": {
+          "mean": 0.08356810611195299,
+          "lo": 0.07307711396299205,
+          "hi": 0.09405909826091394,
+          "min": 0.06425295459444393,
+          "max": 0.11577557812198871
+        },
+        "da_T": {
+          "mean": 0.5822717772549408,
+          "lo": 0.5634961256967383,
+          "hi": 0.6010474288131433,
+          "min": 0.5330199886504812,
+          "max": 0.6366048170189486
+        },
+        "da_f": {
+          "mean": 0.6593210584628226,
+          "lo": 0.6491299327402722,
+          "hi": 0.6695121841853731,
+          "min": 0.6372798450756307,
+          "max": 0.6806648673919653
+        },
+        "overshoot_T": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "overshoot_f": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "viol_rate": {
+          "mean": 0.009425,
+          "lo": -0.011895831259373081,
+          "hi": 0.03074583125937308,
+          "min": 0.0,
+          "max": 0.09425
+        },
+        "viol_severity": {
+          "mean": 0.002205962613224983,
+          "lo": -0.002784271513146958,
+          "hi": 0.007196196739596924,
+          "min": 0.0,
+          "max": 0.02205962613224983
+        },
+        "viol_max": {
+          "mean": 0.03594022989273071,
+          "lo": -0.045362218591724235,
+          "hi": 0.11724267837718566,
+          "min": 0.0,
+          "max": 0.35940229892730713
+        },
+        "reward_nominal": {
+          "mean": -2.1671108245183133,
+          "lo": -2.366925935894929,
+          "hi": -1.967295713141698,
+          "min": -2.598702752299141,
+          "max": -1.531810547807254
+        },
+        "reward_disturbed": {
+          "mean": -4.452432002067798,
+          "lo": -9.040660892177002,
+          "hi": 0.13579688804140488,
+          "min": -22.687977474124637,
+          "max": -1.8351894759340213
+        },
+        "L_iae_nominal": {
+          "mean": 0.07441307270973921,
+          "lo": 0.06753450816786069,
+          "hi": 0.08129163725161773,
+          "min": 0.059277578547596924,
+          "max": 0.09397874104976653
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.01885,
+          "lo": -0.023791662518746162,
+          "hi": 0.06149166251874616,
+          "min": 0.0,
+          "max": 0.1885
+        },
+        "L_iae_disturbed": {
+          "mean": 0.08657902579172513,
+          "lo": 0.06762885638520647,
+          "hi": 0.1055291951982438,
+          "min": 0.061577170491218566,
+          "max": 0.15660320383450016
+        }
+      },
+      "CQL alpha=1": {
+        "reward": {
+          "mean": -1.9969965366032192,
+          "lo": -2.046110821053478,
+          "hi": -1.9478822521529602,
+          "min": -2.1211450213071656,
+          "max": -1.9081255372730084
+        },
+        "T_iae": {
+          "mean": 0.038997433927506195,
+          "lo": 0.037490008536398986,
+          "hi": 0.040504859318613404,
+          "min": 0.03409584742933511,
+          "max": 0.041088974091410616
+        },
+        "f_iae": {
+          "mean": 0.024723761812970042,
+          "lo": 0.02414477472643889,
+          "hi": 0.025302748899501196,
+          "min": 0.0235702118948102,
+          "max": 0.02628669733181596
+        },
+        "L_iae": {
+          "mean": 0.05704417109526694,
+          "lo": 0.05223137277500696,
+          "hi": 0.061856969415526916,
+          "min": 0.04830772349983453,
+          "max": 0.0674912886582315
+        },
+        "T_rmse": {
+          "mean": 0.045787510911694626,
+          "lo": 0.04431627871234896,
+          "hi": 0.047258743111040294,
+          "min": 0.041287620043079024,
+          "max": 0.04782209852905246
+        },
+        "f_rmse": {
+          "mean": 0.03152426510198632,
+          "lo": 0.030745247750967247,
+          "hi": 0.03230328245300539,
+          "min": 0.02965897754476552,
+          "max": 0.03320722684399198
+        },
+        "L_rmse": {
+          "mean": 0.0665083405291927,
+          "lo": 0.061735062139650194,
+          "hi": 0.07128161891873522,
+          "min": 0.05821647939529452,
+          "max": 0.07789448208008243
+        },
+        "da_T": {
+          "mean": 0.5909332971122062,
+          "lo": 0.5793320647006568,
+          "hi": 0.6025345295237556,
+          "min": 0.564939291572746,
+          "max": 0.6244560232336553
+        },
+        "da_f": {
+          "mean": 0.6716642281292444,
+          "lo": 0.6643743884361016,
+          "hi": 0.6789540678223872,
+          "min": 0.6562915366605406,
+          "max": 0.6872858893944556
+        },
+        "overshoot_T": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "overshoot_f": {
+          "mean": 7.936507936507937e-05,
+          "lo": -0.0001001712033966829,
+          "hi": 0.0002589013621268416,
+          "min": 0.0,
+          "max": 0.0007936507936507937
+        },
+        "viol_rate": {
+          "mean": 0.000225,
+          "lo": -0.00028398536162959617,
+          "hi": 0.0007339853616295962,
+          "min": 0.0,
+          "max": 0.00225
+        },
+        "viol_severity": {
+          "mean": 0.00027463562786579133,
+          "lo": -0.00034663332487039073,
+          "hi": 0.0008959045806019734,
+          "min": 0.0,
+          "max": 0.0027463562786579133
+        },
+        "viol_max": {
+          "mean": 0.009535518288612366,
+          "lo": -0.01203532270896538,
+          "hi": 0.031106359286190113,
+          "min": 0.0,
+          "max": 0.09535518288612366
+        },
+        "reward_nominal": {
+          "mean": -1.8370917127824942,
+          "lo": -1.9030178222793195,
+          "hi": -1.7711656032856689,
+          "min": -1.969832075787417,
+          "max": -1.7300932350546645
+        },
+        "reward_disturbed": {
+          "mean": -2.156901360423944,
+          "lo": -2.254717826549962,
+          "hi": -2.059084894297926,
+          "min": -2.443836755887605,
+          "max": -1.9937277027580422
+        },
+        "L_iae_nominal": {
+          "mean": 0.05277767782211303,
+          "lo": 0.04794551023566038,
+          "hi": 0.05760984540856569,
+          "min": 0.044575964987277984,
+          "max": 0.06197553557157516
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.00045,
+          "lo": -0.0005679707232591923,
+          "hi": 0.0014679707232591924,
+          "min": 0.0,
+          "max": 0.0045
+        },
+        "L_iae_disturbed": {
+          "mean": 0.06131066436842084,
+          "lo": 0.056243175922606164,
+          "hi": 0.06637815281423552,
+          "min": 0.05203948201239109,
+          "max": 0.07431421405822039
+        }
+      },
+      "CQL alpha=0.1": {
+        "reward": {
+          "mean": -1.5248313884391973,
+          "lo": -1.5969727274824546,
+          "hi": -1.45269004939594,
+          "min": -1.7348248413996772,
+          "max": -1.4416451641489403
+        },
+        "T_iae": {
+          "mean": 0.030282771134525523,
+          "lo": 0.028737582792220315,
+          "hi": 0.03182795947683073,
+          "min": 0.02627007335871457,
+          "max": 0.033572645322978475
+        },
+        "f_iae": {
+          "mean": 0.025364370742067693,
+          "lo": 0.024658770344375327,
+          "hi": 0.02606997113976006,
+          "min": 0.023961064547300338,
+          "max": 0.02714276454970241
+        },
+        "L_iae": {
+          "mean": 0.034074612622335555,
+          "lo": 0.027981070245207584,
+          "hi": 0.04016815499946352,
+          "min": 0.02006919306144118,
+          "max": 0.050164519917219874
+        },
+        "T_rmse": {
+          "mean": 0.037022561744426,
+          "lo": 0.035433991561907706,
+          "hi": 0.0386111319269443,
+          "min": 0.03284923659551819,
+          "max": 0.03987766100213348
+        },
+        "f_rmse": {
+          "mean": 0.03231740163083007,
+          "lo": 0.03140950702568807,
+          "hi": 0.03322529623597207,
+          "min": 0.030043829704090565,
+          "max": 0.03421379050530876
+        },
+        "L_rmse": {
+          "mean": 0.04293134032550148,
+          "lo": 0.036594019852170166,
+          "hi": 0.04926866079883279,
+          "min": 0.028443672930257125,
+          "max": 0.06002501308174788
+        },
+        "da_T": {
+          "mean": 0.63353864566556,
+          "lo": 0.6172665209935975,
+          "hi": 0.6498107703375224,
+          "min": 0.5981439292280701,
+          "max": 0.6676946489653734
+        },
+        "da_f": {
+          "mean": 0.6649157486652506,
+          "lo": 0.6552290936939205,
+          "hi": 0.6746024036365807,
+          "min": 0.6383002033731527,
+          "max": 0.6805895311951861
+        },
+        "overshoot_T": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "overshoot_f": {
+          "mean": 8.19672131147541e-05,
+          "lo": -0.00010345550514739382,
+          "hi": 0.000267389931376902,
+          "min": 0.0,
+          "max": 0.000819672131147541
+        },
+        "viol_rate": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "viol_severity": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "viol_max": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "reward_nominal": {
+          "mean": -1.3909515015728537,
+          "lo": -1.4486490168770083,
+          "hi": -1.3332539862686992,
+          "min": -1.5544998070283327,
+          "max": -1.2728217429015785
+        },
+        "reward_disturbed": {
+          "mean": -1.6587112753055409,
+          "lo": -1.772529975668043,
+          "hi": -1.5448925749430387,
+          "min": -2.022177577484399,
+          "max": -1.4940283238713163
+        },
+        "L_iae_nominal": {
+          "mean": 0.030976837088167664,
+          "lo": 0.025074624846859433,
+          "hi": 0.036879049329475895,
+          "min": 0.017540461361408237,
+          "max": 0.044872231677174565
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "L_iae_disturbed": {
+          "mean": 0.03717238815650344,
+          "lo": 0.03077182846391104,
+          "hi": 0.04357294784909584,
+          "min": 0.022597924761474132,
+          "max": 0.05545680815726519
+        }
+      }
+    },
+    "pairs": {
+      "no pessimism - SAC, real data only": {
+        "reward": {
+          "mean": 134.95772807426184,
+          "lo": 96.49981698777675,
+          "hi": 173.41563916074693
+        },
+        "L_iae": {
+          "mean": -0.3930750684764236,
+          "lo": -0.4624574053662044,
+          "hi": -0.3236927315866428
+        },
+        "f_iae": {
+          "mean": -0.2846130355477333,
+          "lo": -0.38000988833063704,
+          "hi": -0.1892161827648296
+        },
+        "viol_rate_disturbed": {
+          "mean": -0.87245,
+          "lo": -1.0536608420376796,
+          "hi": -0.6912391579623202
+        }
+      },
+      "HALT p80, worst-case kappa - no pessimism": {
+        "reward": {
+          "mean": -41.162447319096245,
+          "lo": -91.96980113587281,
+          "hi": 9.644906497680317
+        },
+        "L_iae": {
+          "mean": 0.20105502871160713,
+          "lo": 0.06813405667990313,
+          "hi": 0.33397600074331113
+        },
+        "f_iae": {
+          "mean": 0.09086312716822721,
+          "lo": -0.009893688442033755,
+          "hi": 0.19161994277848818
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.4342,
+          "lo": 0.1302818441574533,
+          "hi": 0.7381181558425467
+        }
+      },
+      "HALT p99, data kappa - no pessimism": {
+        "reward": {
+          "mean": -1.3920432658330537,
+          "lo": -3.8032107334837564,
+          "hi": 1.0191242018176487
+        },
+        "L_iae": {
+          "mean": 0.023562028827215538,
+          "lo": -0.0019223198588353314,
+          "hi": 0.049046377513266404
+        },
+        "f_iae": {
+          "mean": 0.002406502040661871,
+          "lo": -0.0033016415163839956,
+          "hi": 0.008114645597707738
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.01885,
+          "lo": -0.023791662518746162,
+          "hi": 0.06149166251874616
+        }
+      },
+      "HALT p99, data kappa - HALT p80, worst-case kappa": {
+        "reward": {
+          "mean": 39.77040405326319,
+          "lo": -10.67559604049331,
+          "hi": 90.21640414701969
+        },
+        "L_iae": {
+          "mean": -0.17749299988439157,
+          "lo": -0.3088658844747758,
+          "hi": -0.04612011529400736
+        },
+        "f_iae": {
+          "mean": -0.08845662512756533,
+          "lo": -0.18695977235726557,
+          "hi": 0.0100465221021349
+        },
+        "viol_rate_disturbed": {
+          "mean": -0.41535,
+          "lo": -0.7043929973878342,
+          "hi": -0.12630700261216582
+        }
+      },
+      "CQL alpha=1 - no pessimism": {
+        "reward": {
+          "mean": -0.07926838914321706,
+          "lo": -0.4134903147058793,
+          "hi": 0.25495353641944524
+        },
+        "L_iae": {
+          "mean": 0.00011015067175030383,
+          "lo": -0.018580114072422788,
+          "hi": 0.018800415415923397
+        },
+        "f_iae": {
+          "mean": -0.001153187887370586,
+          "lo": -0.0015358278049874118,
+          "hi": -0.0007705479697537603
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.00045,
+          "lo": -0.0005679707232591923,
+          "hi": 0.0014679707232591924
+        }
+      },
+      "CQL alpha=0.1 - no pessimism": {
+        "reward": {
+          "mean": 0.3928967590208049,
+          "lo": 0.036823892858209695,
+          "hi": 0.7489696251834002
+        },
+        "L_iae": {
+          "mean": -0.02285940780118108,
+          "lo": -0.04600261658287795,
+          "hi": 0.0002838009805157908
+        },
+        "f_iae": {
+          "mean": -0.0005125789582729325,
+          "lo": -0.0007713239695134994,
+          "hi": -0.00025383394703236563
+        },
+        "viol_rate_disturbed": {
+          "mean": 0.0,
+          "lo": 0.0,
+          "hi": 0.0
+        }
+      }
+    }
+  }
+}
