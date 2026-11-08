@@ -5,10 +5,10 @@
   "creators": [
     {"name": "Zvyagintsev, Artem"}
   ],
-  "description": "<p>Applied notes on offline reinforcement learning, in English and Russian: behavioral cloning, off-policy evaluation, conservative and implicit value learning, policy constraints, Decision Transformers, model-based methods, physics-informed control, an industrial case study with multi-seed ablations, explainability, and tool-using LLM agents, with runnable PyTorch code for every chapter.</p><p>This archive contains the book's Markdown and HTML sources in both languages, the code, the saved experiment results and, attached to the release, the PDF of the English edition. Text and figures are licensed under CC BY 4.0; the code under MIT.</p><p>Read online: <a href=\"https://corba777.github.io/offline-rl-book/\">corba777.github.io/offline-rl-book</a></p>",
+  "description": "<p>Applied notes on offline reinforcement learning, in English and Russian: behavioral cloning, off-policy evaluation, conservative and implicit value learning, policy constraints, Decision Transformers, model-based methods, physics-informed control, an industrial case study with multi-seed ablations, explainability, and tool-using LLM agents, with runnable PyTorch code for every chapter.</p><p>This archive contains the book's Markdown and HTML sources in both languages, the code, the saved experiment results, and a short paper on the Chapter 10 case study (paper/), whose tables are generated from those results. The PDF of the English edition is attached to the GitHub release. Text and figures are licensed under CC BY 4.0; the code under MIT.</p><p>Read online: <a href=\"https://corba777.github.io/offline-rl-book/\">corba777.github.io/offline-rl-book</a></p>",
   "license": "cc-by-4.0",
   "language": "eng",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "keywords": [
     "offline reinforcement learning",
     "conservative Q-learning",
