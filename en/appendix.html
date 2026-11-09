@@ -122,9 +122,9 @@
 <tr>
 <td><strong>MOPO / MOReL</strong></td>
 <td>Model + uncertainty penalty</td>
-<td>Rich transitions; simulator-like structure helps</td>
-<td>Model bias; false confidence in ensembles</td>
-<td>Dynamics hard to learn; logs from one narrow controller</td>
+<td>Rich transitions; simulator-like structure helps; narrow logs where model-free value learning diverges (Ch. 10) — with $\kappa$ sized from the data, never the worst case</td>
+<td>Model bias; false confidence in ensembles; mis-sized termination dominating the critic (Ch. 10)</td>
+<td>Dynamics hard to learn; uncertainty does not track the error over the rollout horizon</td>
 </tr>
 <tr>
 <td><strong>FQE / DR (OPE)</strong></td>
@@ -201,7 +201,8 @@
 <ul>
 <li><strong>Original:</strong> Yu et al. (2020) MOPO <a href="https://arxiv.org/abs/2005.13239">arXiv:2005.13239</a>; Kidambi et al. (2020) MOReL <a href="https://arxiv.org/abs/2005.05951">arXiv:2005.05951</a></li>
 <li><strong>Key assumption:</strong> Learned dynamics useful in data support; uncertainty correlates with error</li>
-<li><strong>Main failure mode:</strong> Model exploitation; ensembles not calibrated OOD</li>
+<li><strong>Main failure mode:</strong> Model exploitation; ensembles not calibrated OOD; mis-sized termination — a percentile threshold halts in-distribution transitions by construction, and a worst-case $\kappa$ dominates the critic (Ch. 10)</li>
+<li><strong>Key check:</strong> The uncertainty tracks the model's error over the rollout horizon, not only one step ahead; $\kappa$ is sized from the logged returns; the same agent without pessimism, and the same learner on real data alone, are run as baselines</li>
 <li><strong>When not to use:</strong> Non-stationary plant; unmodeled confounders dominate dynamics</li>
 </ul>
 <h3>OPE: FQE / DR (Chapter 3)</h3>

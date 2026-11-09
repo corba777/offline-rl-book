@@ -28,7 +28,7 @@ This appendix is a **decision aid**, not a ranking. Use it with OPE (Chapter 3),
 | **CQL** | Pessimistic Q for OOD actions | Continuous control; need value-pessimism default | Too conservative; unstable Q / $\alpha$ tuning | BC already sufficient; reward poorly specified |
 | **IQL** | Expectile V + AWR policy | In-sample updates; avoid explicit OOD Q max | $\tau$, $\beta$ sensitivity; sparse good actions | Dataset has no better-than-behavior actions |
 | **Decision Transformer** | Sequence modeling on trajectories | Long horizons; multi-task logs; seq-model tooling | Return conditioning OOD; no Bellman credit | Small narrow dataset; need explicit constraints |
-| **MOPO / MOReL** | Model + uncertainty penalty | Rich transitions; simulator-like structure helps | Model bias; false confidence in ensembles | Dynamics hard to learn; logs from one narrow controller |
+| **MOPO / MOReL** | Model + uncertainty penalty | Rich transitions; simulator-like structure helps; narrow logs where model-free value learning diverges (Ch. 10) — with $\kappa$ sized from the data, never the worst case | Model bias; false confidence in ensembles; mis-sized termination dominating the critic (Ch. 10) | Dynamics hard to learn; uncertainty does not track the error over the rollout horizon |
 | **FQE / DR (OPE)** | Evaluate without deployment | Compare candidates offline | Extrapolation; weak coverage | High-stakes deploy with no OPE agreement |
 | **EDAC / ReBRAC** | Critic-ensemble pessimism; regularized TD3+BC | You want current strong model-free baselines (CORL, d3rlpy) | Ensemble cost (EDAC); several regularizers to tune (ReBRAC) | A simple, well-understood baseline is enough |
 | **COMBO** | CQL on real + model rollouts | Model helps but its uncertainty is untrustworthy | Model bias still leaks; CQL conservatism | No usable dynamics model |
@@ -82,7 +82,8 @@ Each block: **paper → assumption → failure mode → when not to use**.
 
 - **Original:** Yu et al. (2020) MOPO [arXiv:2005.13239](https://arxiv.org/abs/2005.13239); Kidambi et al. (2020) MOReL [arXiv:2005.05951](https://arxiv.org/abs/2005.05951)
 - **Key assumption:** Learned dynamics useful in data support; uncertainty correlates with error
-- **Main failure mode:** Model exploitation; ensembles not calibrated OOD
+- **Main failure mode:** Model exploitation; ensembles not calibrated OOD; mis-sized termination — a percentile threshold halts in-distribution transitions by construction, and a worst-case $\kappa$ dominates the critic (Ch. 10)
+- **Key check:** The uncertainty tracks the model's error over the rollout horizon, not only one step ahead; $\kappa$ is sized from the logged returns; the same agent without pessimism, and the same learner on real data alone, are run as baselines
 - **When not to use:** Non-stationary plant; unmodeled confounders dominate dynamics
 
 ### OPE: FQE / DR (Chapter 3)
