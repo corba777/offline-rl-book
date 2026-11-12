@@ -13,9 +13,12 @@ Usage (from the repo root):
     python scripts/build_pdf.py            # -> build/pdf/offline-rl-book.pdf
     python scripts/build_pdf.py --tex-only # LaTeX source only
     python scripts/build_pdf.py --epub     # -> build/epub/offline-rl-book.epub (pandoc only)
+    python scripts/build_pdf.py --cover    # PDF with the cover page in front
+    python scripts/build_pdf.py --leanpub  # -> build/leanpub/: EPUB and PDF, both with the cover
 
 The EPUB is the ebook sold on Leanpub (pay what you want, free minimum); CI
-does not build or publish it.
+does not build or publish it, nor the PDF with a cover page: the PDF on GitHub
+starts with the title page.
 """
 import argparse
 import datetime
@@ -100,17 +103,36 @@ def preprocess(text, figdir, anchor, epub=False):
     return text
 
 
+COVER = ROOT / "figures" / "readme" / "cover.svg"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(ROOT / "build" / "pdf"))
     ap.add_argument("--tex-only", action="store_true")
     ap.add_argument("--epub", action="store_true", help="build the EPUB instead of the PDF")
+    ap.add_argument("--cover", action="store_true", help="put the cover page in front of the PDF")
+    ap.add_argument("--leanpub", action="store_true",
+                    help="build the EPUB and the PDF, both with the cover, into build/leanpub/")
     args = ap.parse_args()
+    custom_out = args.out != ap.get_default("out")
+    if args.leanpub:
+        dest = Path(args.out) if custom_out else ROOT / "build" / "leanpub"
+        build_epub(dest / "epub")
+        build_pdf(dest / "pdf", cover=True)
+        for f in (dest / "epub" / "offline-rl-book.epub", dest / "epub" / "cover.png",
+                  dest / "pdf" / "offline-rl-book.pdf"):
+            shutil.copy(f, dest / f.name)
+        print(f"Leanpub files: {dest}")
+        return
     if args.epub:
-        return build_epub(Path(args.out) if args.out != ap.get_default("out") else ROOT / "build" / "epub")
+        return build_epub(Path(args.out) if custom_out else ROOT / "build" / "epub")
+    build_pdf(Path(args.out), tex_only=args.tex_only, cover=args.cover)
 
+
+def build_pdf(out, tex_only=False, cover=False):
+    """The preprint-style PDF; with cover=True, the cover page comes first."""
     need("pandoc"); need("rsvg-convert")
-    out = Path(args.out)
     if out.exists():
         shutil.rmtree(out)
     figdir = out / "figures"
@@ -130,12 +152,28 @@ def main():
     title = (HERE / "title.tex").read_text().replace("$date$", date).replace("$commit$", commit)
     (out / "title.tex").write_text(title)
     shutil.copy(HERE / "preamble.tex", out / "preamble.tex")
+    before_body = ["--include-before-body=title.tex"]
+    if cover:
+        # The 2:3 cover art, cropped to the page's aspect ratio (its background
+        # bleeds sideways), placed full-bleed before the title page. It goes in as a
+        # 300 dpi image: cairo's PDF output draws spaces with Type 3 fonts.
+        svg = COVER.read_text(encoding="utf-8")
+        w = 900 * 8.5 / 11                       # US Letter, the report class default
+        svg = svg.replace('viewBox="0 0 600 900" width="1600" height="2400"',
+                          f'viewBox="{(600 - w) / 2:.2f} 0 {w:.2f} 900" width="{w:.2f}" height="900"', 1)
+        (out / "cover.svg").write_text(svg, encoding="utf-8")
+        subprocess.run(["rsvg-convert", "-w", "2550", "-h", "3300", "-o", "cover.png", "cover.svg"],
+                       cwd=out, check=True)
+        with open(out / "preamble.tex", "a", encoding="utf-8") as fh:
+            fh.write("\n\\usepackage{pdfpages}\n")
+        (out / "cover.tex").write_text("\\includepdf[pages=1]{cover.png}\n")
+        before_body.insert(0, "--include-before-body=cover.tex")
 
     subprocess.run([
         "pandoc", "book.md", "-o", "offline-rl-book.tex", "--standalone",
         "--from", "markdown+tex_math_dollars+pipe_tables+lists_without_preceding_blankline-implicit_figures+raw_tex",
         "--top-level-division=chapter", "--number-sections", "--toc", "--toc-depth=1",
-        "--include-in-header=preamble.tex", "--include-before-body=title.tex",
+        "--include-in-header=preamble.tex", *before_body,
         "--highlight-style=tango",
         "-V", "documentclass=report", "-V", "classoption=11pt",
         "-V", "geometry:margin=1in", "-V", "colorlinks=true",
@@ -201,7 +239,7 @@ def main():
     src = re.sub(rf"(?<!baselineskip\}}\n)(?:{heading}){{2,}}", group, src)
     tex.write_text(src, encoding="utf-8")
 
-    if args.tex_only:
+    if tex_only:
         print(f"LaTeX source: {out / 'offline-rl-book.tex'}")
         return
     need("tectonic")
@@ -218,7 +256,7 @@ def build_epub(out):
     figdir.mkdir(parents=True)
     # Cover in the style of the README banner; the PNG is also what Leanpub asks for.
     subprocess.run(["rsvg-convert", "-w", "1600", "-h", "2400", "-o", str(out / "cover.png"),
-                    str(ROOT / "figures" / "readme" / "cover.svg")], check=True)
+                    str(COVER)], check=True)
     parts = [preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel), epub=True)
              for rel in CHAPTERS]
     (out / "book.md").write_text("\n\n".join(parts), encoding="utf-8")

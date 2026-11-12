@@ -122,7 +122,7 @@ GitHub Actions runs both on every push, checks that the chapter HTML was rebuilt
 ├── scripts/
 │   ├── md2html.py             # Markdown → chapter HTML
 │   ├── run_examples.py        # smoke-runs every chapter script
-│   ├── build_pdf.py           # English edition → preprint-style PDF (--epub: EPUB 3)
+│   ├── build_pdf.py           # English edition → preprint-style PDF (--epub, --leanpub)
 │   └── pdf/                   # LaTeX preamble and title page for the PDF; epub.css
 ├── .github/workflows/ci.yml   # tests, quick runs, stale-HTML check
 └── requirements.txt           # dependencies and the chapter → script map
@@ -175,9 +175,10 @@ The same chapters also build as an EPUB 3 (MathML formulas, no LaTeX needed):
 
 ```bash
 python scripts/build_pdf.py --epub     # -> build/epub/offline-rl-book.epub
+python scripts/build_pdf.py --leanpub  # -> build/leanpub/: EPUB and PDF with the cover page, cover.png
 ```
 
-The EPUB is not built by CI; it is published on [Leanpub](https://leanpub.com/offline-rl-book) with a free minimum price, so readers can get it at no cost or pay what they want to support the book. The PDF here stays free, and the text stays CC BY 4.0 in every format.
+The cover is [`figures/readme/cover.svg`](figures/readme/cover.svg). Neither the EPUB nor the PDF with a cover page is built by CI; both are published on [Leanpub](https://leanpub.com/offline-rl-book) with a free minimum price, so readers can get it at no cost or pay what they want to support the book. The PDF here stays free, and the text stays CC BY 4.0 in every format.
 
 ## How to cite
 
