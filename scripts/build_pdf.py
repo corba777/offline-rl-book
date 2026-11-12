@@ -172,6 +172,7 @@ def main():
             for f in (sub / "epub" / "offline-rl-book.epub", sub / "epub" / "cover.png",
                       sub / "pdf" / "offline-rl-book.pdf"):
                 shutil.copy(f, sub / f.name)
+            (sub / "toc.html").write_text(leanpub_toc(lang), encoding="utf-8")
             print(f"Leanpub files ({lang}): {sub}")
         return
     if args.epub:
@@ -179,6 +180,27 @@ def main():
         return build_epub(out, lang=args.lang)
     out = Path(args.out) if custom_out or args.lang == "en" else ROOT / "build" / "pdf-ru"
     build_pdf(out, tex_only=args.tex_only, cover=args.cover, lang=args.lang)
+
+
+def leanpub_toc(lang="en"):
+    """Table of contents for the Leanpub landing page, in Leanpub's own markup:
+    chapters and their sections, numbered as in the PDF (appendix A, A.1, ...).
+    The per-chapter reference lists are left out."""
+    import html
+    skip = {"References", "Литература", "Ссылки"}
+    items = []
+    for k, rel in enumerate(chapters(lang), start=1):
+        text = re.sub(r"```.*?```", "", (ROOT / rel).read_text(encoding="utf-8"), flags=re.S)
+        title = re.search(r"^# (?:Chapter \d+|Appendix|Глава \d+|Приложение): (.*)$", text, flags=re.M).group(1)
+        title = title[:1].upper() + title[1:]
+        num = "A" if rel.endswith("appendix.md") else str(k)
+        subs = [f'      <li>\n        <span class="section-number">{num}.{j} </span>{html.escape(h.strip())}\n      </li>'
+                for j, h in enumerate(re.findall(r"^## (.+)$", text, flags=re.M), start=1)
+                if h.strip() not in skip]
+        sub = ("\n    <ul>\n" + "\n".join(subs) + "\n    </ul>") if subs else ""
+        items.append(f'  <li>\n    <span class="section-number">{num}{"" if num == "A" else "."} </span>'
+                     f'{html.escape(title)}{sub}\n  </li>')
+    return '<ul class="toc no-parts">\n' + "\n".join(items) + "\n</ul>\n"
 
 
 def build_pdf(out, tex_only=False, cover=False, raster_svg=False, lang="en"):
