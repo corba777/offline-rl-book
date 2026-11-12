@@ -159,6 +159,10 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
     shutil.copy(HERE / "preamble.tex", out / "preamble.tex")
     before_body = ["--include-before-body=title.tex"]
     if cover:
+        # The cover marks the ebook edition (Leanpub): no "A Preprint" label there.
+        (out / "title.tex").write_text(title.replace("A Preprint\\quad--\\quad ", ""))
+        pre = (out / "preamble.tex").read_text()
+        (out / "preamble.tex").write_text(pre.replace("\\quad--\\quad A Preprint", ""))
         # The 2:3 cover art, cropped to the page's aspect ratio (its background
         # bleeds sideways), placed full-bleed before the title page. It goes in as a
         # 300 dpi image: cairo's PDF output draws spaces with Type 3 fonts.
@@ -268,17 +272,28 @@ def build_epub(out):
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
                             capture_output=True, text=True).stdout.strip() or "unknown"
     date = datetime.date.today().isoformat()
+    # Title page: where the free, citable version lives, as on the PDF's title page.
+    doi = "10.5281/zenodo.24045871"
+    (out / "meta.yaml").write_text(f"""---
+title: "Offline RL: From Theory to Industrial Practice"
+subtitle: "Applied learning notes on offline deep reinforcement learning"
+author: "Artem Zvyagintsev"
+lang: en
+date: "{date}"
+description: "Built from commit {commit}. Free online at {SITE}/offline-rl-book/"
+rights: |
+  Text and figures: CC BY 4.0. Code: MIT.\\
+  Free online: <{SITE}/offline-rl-book/>\\
+  Source and code: <https://github.com/corba777/offline-rl-book>\\
+  DOI: [{doi}](https://doi.org/{doi})\\
+  Built from commit {commit}.
+---
+""", encoding="utf-8")
     subprocess.run([
-        "pandoc", "book.md", "-o", "offline-rl-book.epub", "--to", "epub3",
+        "pandoc", "book.md", "-o", "offline-rl-book.epub", "--to", "epub3", "--metadata-file=meta.yaml",
         "--from", "markdown+tex_math_dollars+pipe_tables+lists_without_preceding_blankline-implicit_figures",
         "--math-method=mathml", "--toc", "--toc-depth=2", "--number-sections", "--split-level=1",
         "--syntax-highlighting=tango", "--css", str(HERE / "epub.css"), "--epub-cover-image", "cover.png",
-        "--metadata", "title=Offline RL: From Theory to Industrial Practice",
-        "--metadata", "author=Artem Zvyagintsev",
-        "--metadata", "lang=en",
-        "--metadata", f"date={date}",
-        "--metadata", "rights=Text and figures: CC BY 4.0. Code: MIT.",
-        "--metadata", f"description=Built from commit {commit}. Free online at {SITE}/offline-rl-book/",
     ], cwd=out, check=True)
     print(f"EPUB: {out / 'offline-rl-book.epub'}")
 
