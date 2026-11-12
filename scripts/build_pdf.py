@@ -340,7 +340,8 @@ def about_text(lang="en"):
     """The abstract on the PDF's title page, as plain text: one source for both formats."""
     tex = (HERE / LANG[lang]["title_tex"]).read_text(encoding="utf-8")
     body = re.search(r"\\begin\{quote\}(.*?)\\end\{quote\}", tex, flags=re.S).group(1)
-    return " ".join(body.split()).replace("~---", "\u00a0—").replace("---", "—")
+    paras = [" ".join(p.split()) for p in re.split(r"\n\s*\n", body) if p.strip()]
+    return "\n\n".join(paras).replace("~---", "\u00a0—").replace("---", "—")
 
 
 def build_epub(out, lang="en"):
