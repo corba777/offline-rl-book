@@ -45,8 +45,9 @@ def chapter_id(rel):
     return "appendix" if stem == "appendix" else "ch" + stem.removeprefix("chapter")
 
 
-def preprocess(text, figdir, anchor, epub=False):
-    """Turn one chapter's Markdown into pandoc-friendly Markdown for LaTeX (or EPUB)."""
+def preprocess(text, figdir, anchor, epub=False, raster_svg=False):
+    """Turn one chapter's Markdown into pandoc-friendly Markdown for LaTeX (or EPUB).
+    raster_svg: diagrams as 300 dpi PNGs instead of vector PDFs (see build_pdf)."""
     text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.S)                  # front matter
     text = re.sub(r"^# (?:Chapter \d+|Appendix): (.*)$", rf"# \1 {{#{anchor}}}", text, count=1, flags=re.M)
     text = re.sub(r"^---\s*$", "", text, flags=re.M)                          # horizontal rules
@@ -85,11 +86,12 @@ def preprocess(text, figdir, anchor, epub=False):
             dst.write_text(re.sub(r'font-family="[^"]*"', 'font-family="DejaVu Sans, Helvetica, Arial, sans-serif"',
                                   src.read_text(encoding="utf-8")), encoding="utf-8")
         elif src.suffix == ".svg":
-            dst = figdir / (src.parent.name + "_" + src.stem + ".pdf")
+            dst = figdir / (src.parent.name + "_" + src.stem + (".png" if raster_svg else ".pdf"))
             # One sans font for every diagram, whatever the build machine has installed.
             svg = re.sub(r'font-family="[^"]*"', 'font-family="DejaVu Sans, Helvetica, Arial, sans-serif"',
                          src.read_text(encoding="utf-8"))
-            subprocess.run(["rsvg-convert", "-f", "pdf", "-o", str(dst)], input=svg.encode(), check=True)
+            fmt = ["-f", "png", "-w", "1900"] if raster_svg else ["-f", "pdf"]  # ~300 dpi at 95% width
+            subprocess.run(["rsvg-convert", *fmt, "-o", str(dst)], input=svg.encode(), check=True)
         else:
             dst = figdir / (src.parent.name + "_" + src.name)
             shutil.copy(src, dst)
@@ -119,7 +121,7 @@ def main():
     if args.leanpub:
         dest = Path(args.out) if custom_out else ROOT / "build" / "leanpub"
         build_epub(dest / "epub")
-        build_pdf(dest / "pdf", cover=True)
+        build_pdf(dest / "pdf", cover=True, raster_svg=True)
         for f in (dest / "epub" / "offline-rl-book.epub", dest / "epub" / "cover.png",
                   dest / "pdf" / "offline-rl-book.pdf"):
             shutil.copy(f, dest / f.name)
@@ -130,8 +132,11 @@ def main():
     build_pdf(Path(args.out), tex_only=args.tex_only, cover=args.cover)
 
 
-def build_pdf(out, tex_only=False, cover=False):
-    """The preprint-style PDF; with cover=True, the cover page comes first."""
+def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
+    """The preprint-style PDF; with cover=True, the cover page comes first.
+    raster_svg=True renders the diagrams as images: newer cairo versions draw the
+    spaces of SVG text with empty Type 3 glyphs. Used for the Leanpub PDF built
+    locally; CI keeps vector diagrams."""
     need("pandoc"); need("rsvg-convert")
     if out.exists():
         shutil.rmtree(out)
@@ -140,7 +145,7 @@ def build_pdf(out, tex_only=False, cover=False):
 
     parts = []
     for rel in CHAPTERS:
-        md = preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel))
+        md = preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel), raster_svg=raster_svg)
         if rel.endswith("appendix.md"):
             md = "\n```{=latex}\n\\appendix\n```\n\n" + md
         parts.append(md)
