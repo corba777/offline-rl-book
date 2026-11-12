@@ -29,6 +29,7 @@
   <a href="https://corba777.github.io/offline-rl-book/">Read (EN)</a> ·
   <a href="https://corba777.github.io/offline-rl-book/ru/">Читать (RU)</a> ·
   <a href="https://github.com/corba777/offline-rl-book/releases/download/pdf/offline-rl-book.pdf">PDF</a> ·
+  <a href="https://leanpub.com/offline-rl-book">Ebook (Leanpub)</a> ·
   <a href="#contents">Contents</a> ·
   <a href="#run-the-examples">Run the examples</a> ·
   <a href="#repository-layout">Layout</a> ·
@@ -121,8 +122,8 @@ GitHub Actions runs both on every push, checks that the chapter HTML was rebuilt
 ├── scripts/
 │   ├── md2html.py             # Markdown → chapter HTML
 │   ├── run_examples.py        # smoke-runs every chapter script
-│   ├── build_pdf.py           # English edition → preprint-style PDF
-│   └── pdf/                   # LaTeX preamble and title page for the PDF
+│   ├── build_pdf.py           # English edition → preprint-style PDF (--epub: EPUB 3)
+│   └── pdf/                   # LaTeX preamble and title page for the PDF; epub.css
 ├── .github/workflows/ci.yml   # tests, quick runs, stale-HTML check
 └── requirements.txt           # dependencies and the chapter → script map
 ```
@@ -169,6 +170,14 @@ python scripts/build_pdf.py            # -> build/pdf/offline-rl-book.pdf
 ```
 
 `build/pdf/` also holds the LaTeX source and its figures, which is what arXiv expects for a TeX-built paper. The styling lives in `scripts/pdf/`. CI rebuilds the PDF on every push to `main` and publishes it at a permanent link: [offline-rl-book.pdf](https://github.com/corba777/offline-rl-book/releases/download/pdf/offline-rl-book.pdf). Each CI run also keeps the PDF with its LaTeX source as an artifact (*offline-rl-book-pdf*).
+
+The same chapters also build as an EPUB 3 (MathML formulas, no LaTeX needed):
+
+```bash
+python scripts/build_pdf.py --epub     # -> build/epub/offline-rl-book.epub
+```
+
+The EPUB is not built by CI; it is published on [Leanpub](https://leanpub.com/offline-rl-book) with a free minimum price, so readers can get it at no cost or pay what they want to support the book. The PDF here stays free, and the text stays CC BY 4.0 in every format.
 
 ## How to cite
 

@@ -12,6 +12,10 @@ Requires pandoc, tectonic and rsvg-convert (brew install pandoc tectonic librsvg
 Usage (from the repo root):
     python scripts/build_pdf.py            # -> build/pdf/offline-rl-book.pdf
     python scripts/build_pdf.py --tex-only # LaTeX source only
+    python scripts/build_pdf.py --epub     # -> build/epub/offline-rl-book.epub (pandoc only)
+
+The EPUB is the ebook sold on Leanpub (pay what you want, free minimum); CI
+does not build or publish it.
 """
 import argparse
 import datetime
@@ -38,8 +42,8 @@ def chapter_id(rel):
     return "appendix" if stem == "appendix" else "ch" + stem.removeprefix("chapter")
 
 
-def preprocess(text, figdir, anchor):
-    """Turn one chapter's Markdown into pandoc-friendly Markdown for LaTeX."""
+def preprocess(text, figdir, anchor, epub=False):
+    """Turn one chapter's Markdown into pandoc-friendly Markdown for LaTeX (or EPUB)."""
     text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.S)                  # front matter
     text = re.sub(r"^# (?:Chapter \d+|Appendix): (.*)$", rf"# \1 {{#{anchor}}}", text, count=1, flags=re.M)
     text = re.sub(r"^---\s*$", "", text, flags=re.M)                          # horizontal rules
@@ -58,11 +62,26 @@ def preprocess(text, figdir, anchor):
     # GitHub-style ```math fences (Chapter 2) become display math.
     text = re.sub(r"^```math\n(.*?)\n```$", lambda m: "$$" + m.group(1).strip() + "$$",
                   text, flags=re.S | re.M)
+    if epub:
+        # pandoc's MathML writer rejects \Bigl( ... \Bigr) and \bigl| ... \bigr| (\left/\right pairs
+        # render the same delimiters), and turns \tfrac into a <mfrac displaystyle> that EPUB 3
+        # validators reject (\frac reads the same on a phone screen).
+        def mathml_safe(chunk):
+            chunk = re.sub(r"\\[Bb]igl\b", r"\\left", chunk)
+            chunk = re.sub(r"\\[Bb]igr\b", r"\\right", chunk)
+            return re.sub(r"\\[td]frac\b", r"\\frac", chunk)
+        parts = re.split(r"(```.*?```|`[^`\n]*`)", text, flags=re.S)
+        text = "".join(p if i % 2 else mathml_safe(p) for i, p in enumerate(parts))
 
     def figure(m):
         alt, path = m.group(1), m.group(2)
         src = (ROOT / "en" / path).resolve()
-        if src.suffix == ".svg":
+        if src.suffix == ".svg" and epub:
+            # EPUB 3 readers render SVG; keep it vector, with the same font substitution.
+            dst = figdir / (src.parent.name + "_" + src.name)
+            dst.write_text(re.sub(r'font-family="[^"]*"', 'font-family="DejaVu Sans, Helvetica, Arial, sans-serif"',
+                                  src.read_text(encoding="utf-8")), encoding="utf-8")
+        elif src.suffix == ".svg":
             dst = figdir / (src.parent.name + "_" + src.stem + ".pdf")
             # One sans font for every diagram, whatever the build machine has installed.
             svg = re.sub(r'font-family="[^"]*"', 'font-family="DejaVu Sans, Helvetica, Arial, sans-serif"',
@@ -71,7 +90,7 @@ def preprocess(text, figdir, anchor):
         else:
             dst = figdir / (src.parent.name + "_" + src.name)
             shutil.copy(src, dst)
-        return f"![{alt}](figures/{dst.name}){{width=95%}}"
+        return f"![{alt}](figures/{dst.name})" + ("" if epub else "{width=95%}")
 
     text = re.sub(r"!\[([^\]]*)\]\((\.\./figures/[^)]+)\)", figure, text)
     # Links to other chapters jump inside the PDF; other site links stay absolute.
@@ -85,7 +104,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(ROOT / "build" / "pdf"))
     ap.add_argument("--tex-only", action="store_true")
+    ap.add_argument("--epub", action="store_true", help="build the EPUB instead of the PDF")
     args = ap.parse_args()
+    if args.epub:
+        return build_epub(Path(args.out) if args.out != ap.get_default("out") else ROOT / "build" / "epub")
 
     need("pandoc"); need("rsvg-convert")
     out = Path(args.out)
@@ -185,6 +207,37 @@ def main():
     need("tectonic")
     subprocess.run(["tectonic", "--keep-logs", "offline-rl-book.tex"], cwd=out, check=True)
     print(f"PDF: {out / 'offline-rl-book.pdf'}")
+
+
+def build_epub(out):
+    """EPUB 3 of the English edition: same chapters, MathML for formulas, SVG figures."""
+    need("pandoc"); need("rsvg-convert")
+    if out.exists():
+        shutil.rmtree(out)
+    figdir = out / "figures"
+    figdir.mkdir(parents=True)
+    # Cover in the style of the README banner; the PNG is also what Leanpub asks for.
+    subprocess.run(["rsvg-convert", "-w", "1600", "-h", "2400", "-o", str(out / "cover.png"),
+                    str(ROOT / "figures" / "readme" / "cover.svg")], check=True)
+    parts = [preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel), epub=True)
+             for rel in CHAPTERS]
+    (out / "book.md").write_text("\n\n".join(parts), encoding="utf-8")
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                            capture_output=True, text=True).stdout.strip() or "unknown"
+    date = datetime.date.today().isoformat()
+    subprocess.run([
+        "pandoc", "book.md", "-o", "offline-rl-book.epub", "--to", "epub3",
+        "--from", "markdown+tex_math_dollars+pipe_tables+lists_without_preceding_blankline-implicit_figures",
+        "--math-method=mathml", "--toc", "--toc-depth=2", "--number-sections", "--split-level=1",
+        "--syntax-highlighting=tango", "--css", str(HERE / "epub.css"), "--epub-cover-image", "cover.png",
+        "--metadata", "title=Offline RL: From Theory to Industrial Practice",
+        "--metadata", "author=Artem Zvyagintsev",
+        "--metadata", "lang=en",
+        "--metadata", f"date={date}",
+        "--metadata", "rights=Text and figures: CC BY 4.0. Code: MIT.",
+        "--metadata", f"description=Built from commit {commit}. Free online at {SITE}/offline-rl-book/",
+    ], cwd=out, check=True)
+    print(f"EPUB: {out / 'offline-rl-book.epub'}")
 
 
 if __name__ == "__main__":

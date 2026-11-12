@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900" width="1600" height="2400" font-family="Inter, system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+  <!-- Ebook cover (2:3) in the style of banner.svg: same palette, same diagram. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f1d3a"/>
+      <stop offset="1" stop-color="#17305c"/>
+    </linearGradient>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7cb4ff"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="600" height="900" fill="url(#bg)"/>
+
+  <!-- Title block -->
+  <text x="56" y="178" font-size="80" font-weight="700" fill="#f3f6fc">Offline RL</text>
+  <rect x="58" y="206" width="72" height="4" rx="2" fill="#7cb4ff"/>
+  <text x="58" y="262" font-size="34" fill="#dfe6f3">From Theory to</text>
+  <text x="58" y="304" font-size="34" fill="#dfe6f3">Industrial Practice</text>
+
+  <!-- The banner's diagram, scaled up -->
+  <g transform="translate(45,392) scale(1.34) translate(-490,-30)">
+    <!-- Plant / environment -->
+    <rect x="490" y="36" width="132" height="56" rx="9" fill="#1e3766" stroke="#5d7fb8" stroke-width="1.4"/>
+    <text x="556" y="61" font-size="14" font-weight="600" text-anchor="middle" fill="#f3f6fc">plant</text>
+    <text x="556" y="79" font-size="11.5" text-anchor="middle" fill="#a8b6d0">the environment</text>
+
+    <!-- Recorded earlier: plant -> log -->
+    <line x1="556" y1="93" x2="556" y2="121" stroke="#7cb4ff" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="566" y="111" font-size="11" fill="#a8b6d0">operators, in the past</text>
+
+    <!-- Log of historical actions -->
+    <rect x="490" y="124" width="132" height="78" rx="8" fill="#1a2f58" stroke="#5d7fb8" stroke-width="1.2"/>
+    <g font-size="11.5" fill="#dfe6f3" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+      <text x="512" y="141">s</text><text x="544" y="141" fill="#ffc46b">a</text><text x="572" y="141">r</text><text x="602" y="141">s′</text>
+    </g>
+    <line x1="498" y1="147" x2="614" y2="147" stroke="#5d7fb8" stroke-width="1"/>
+    <g fill="#2c4a82">
+      <rect x="501" y="153" width="22" height="9" rx="2"/><rect x="533" y="153" width="22" height="9" rx="2" fill="#8a6a33"/><rect x="561" y="153" width="22" height="9" rx="2"/><rect x="591" y="153" width="22" height="9" rx="2"/>
+      <rect x="501" y="167" width="22" height="9" rx="2"/><rect x="533" y="167" width="22" height="9" rx="2" fill="#8a6a33"/><rect x="561" y="167" width="22" height="9" rx="2"/><rect x="591" y="167" width="22" height="9" rx="2"/>
+      <rect x="501" y="181" width="22" height="9" rx="2"/><rect x="533" y="181" width="22" height="9" rx="2" fill="#8a6a33"/><rect x="561" y="181" width="22" height="9" rx="2"/><rect x="591" y="181" width="22" height="9" rx="2"/>
+    </g>
+    <text x="556" y="218" font-size="11" text-anchor="middle" fill="#a8b6d0">logged operator actions</text>
+
+    <!-- Learn from the log: log -> policy -->
+    <line x1="624" y1="163" x2="726" y2="163" stroke="#7cb4ff" stroke-width="2.2" marker-end="url(#arr)"/>
+    <text x="675" y="154" font-size="11" text-anchor="middle" fill="#a8b6d0">learn from logs</text>
+
+    <!-- Policy -->
+    <rect x="730" y="134" width="140" height="58" rx="9" fill="#2563eb"/>
+    <text x="800" y="160" font-size="14" font-weight="600" text-anchor="middle" fill="#ffffff">policy</text>
+    <text x="800" y="179" font-size="12.5" text-anchor="middle" fill="#dbe8ff" font-style="italic">π(a | s)</text>
+
+    <!-- No live trials while learning: policy -/-> plant -->
+    <path d="M800,132 L800,64 L626,64" fill="none" stroke="#f08a5d" stroke-width="2" stroke-dasharray="6 5"/>
+    <g stroke="#f08a5d" stroke-width="2.6" stroke-linecap="round">
+      <line x1="706" y1="56" x2="722" y2="72"/><line x1="722" y1="56" x2="706" y2="72"/>
+    </g>
+    <text x="714" y="46" font-size="11" text-anchor="middle" fill="#f6b59a">no trial actions while learning</text>
+  </g>
+
+  <!-- Tagline -->
+  <text x="58" y="738" font-size="20" fill="#a8b6d0">Learning control policies from logged data —</text>
+  <text x="58" y="766" font-size="20" fill="#a8b6d0">without live experiments on the plant.</text>
+
+  <!-- Author -->
+  <rect x="58" y="808" width="484" height="1" fill="#3a5486"/>
+  <text x="58" y="852" font-size="26" font-weight="600" fill="#f3f6fc">Artem Zvyagintsev</text>
+</svg>
