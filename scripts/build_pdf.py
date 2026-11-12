@@ -159,8 +159,10 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
     shutil.copy(HERE / "preamble.tex", out / "preamble.tex")
     before_body = ["--include-before-body=title.tex"]
     if cover:
-        # The cover marks the ebook edition (Leanpub): no "A Preprint" label there.
-        (out / "title.tex").write_text(title.replace("A Preprint\\quad--\\quad ", ""))
+        # The cover marks the ebook edition (Leanpub): no "A Preprint" label, and
+        # the abstract reads as a book's "About this book".
+        (out / "title.tex").write_text(title.replace("A Preprint\\quad--\\quad ", "")
+                                       .replace("\\textbf{Abstract}", "\\textbf{About this book}"))
         pre = (out / "preamble.tex").read_text()
         (out / "preamble.tex").write_text(pre.replace("\\quad--\\quad A Preprint", ""))
         # The 2:3 cover art, cropped to the page's aspect ratio (its background
@@ -256,6 +258,13 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
     print(f"PDF: {out / 'offline-rl-book.pdf'}")
 
 
+def about_text():
+    """The abstract on the PDF's title page, as plain text: one source for both editions."""
+    tex = (HERE / "title.tex").read_text(encoding="utf-8")
+    body = re.search(r"\\begin\{quote\}(.*?)\\end\{quote\}", tex, flags=re.S).group(1)
+    return " ".join(body.split())
+
+
 def build_epub(out):
     """EPUB 3 of the English edition: same chapters, MathML for formulas, SVG figures."""
     need("pandoc"); need("rsvg-convert")
@@ -268,6 +277,8 @@ def build_epub(out):
                     str(COVER)], check=True)
     parts = [preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel), epub=True)
              for rel in CHAPTERS]
+    # Same text as "About this book" in the Leanpub PDF, right after the title page.
+    parts.insert(0, "# About this book {.unnumbered .unlisted}\n\n" + about_text())
     (out / "book.md").write_text("\n\n".join(parts), encoding="utf-8")
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
                             capture_output=True, text=True).stdout.strip() or "unknown"
