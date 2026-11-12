@@ -8,14 +8,14 @@ Kumar et al., "Conservative Q-Learning for Offline Reinforcement Learning", Neur
 arXiv:2006.04779
 
 Contents:
-    1. ThermalProcessEnv  — toy industrial environment (asphalt-inspired)
-    2. Dataset collection — noisy PID behavior policy
-    3. QNetwork           — double-Q critic
-    4. GaussianPolicy     — SAC-style stochastic actor
-    5. compute_cql_loss() — TD loss + CQL penalty
-    6. CQLAgent           — full training loop with optional auto-alpha
-    7. BCAgent            — behavioral cloning baseline
-    8. run_comparison()   — train all, compare performance
+    1. ThermalProcessEnv  – toy industrial environment (asphalt-inspired)
+    2. Dataset collection – noisy PID behavior policy
+    3. QNetwork           – double-Q critic
+    4. GaussianPolicy     – SAC-style stochastic actor
+    5. compute_cql_loss() – TD loss + CQL penalty
+    6. CQLAgent           – full training loop with optional auto-alpha
+    7. BCAgent            – behavioral cloning baseline
+    8. run_comparison()   – train all, compare performance
 
 Usage:
     python cql.py
@@ -40,8 +40,8 @@ class ThermalProcessEnv:
     """
     Toy thermal coating process (asphalt-manufacturing-inspired).
 
-    State:  [temperature, filler_pct, viscosity]  — all in [0, 1]
-    Action: [heat_delta, flow_delta]               — in [-1, 1]
+    State:  [temperature, filler_pct, viscosity]  – all in [0, 1]
+    Action: [heat_delta, flow_delta]               – in [-1, 1]
 
     Dynamics (discrete-time, first-order):
         T_{t+1}      = alpha_T * T_t + beta_T * heat_input + noise
@@ -107,7 +107,7 @@ class ThermalProcessEnv:
 # ============================================================================
 
 def pid_action(state, T_target, f_target):
-    """Proportional control — behavior policy."""
+    """Proportional control – behavior policy."""
     T, f, _ = state
     return np.array([
         np.clip(2.0 * (T_target - T), -1, 1),
@@ -118,7 +118,7 @@ def pid_action(state, T_target, f_target):
 def collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0):
     """
     Collect transitions using a noisy PID (suboptimal behavior policy).
-    noise_scale=0.3 gives mixed-quality data — some good, some bad trajectories.
+    noise_scale=0.3 gives mixed-quality data – some good, some bad trajectories.
     """
     env = ThermalProcessEnv(seed=seed)
     S, A, R, S2, D = [], [], [], [], []
@@ -242,7 +242,7 @@ def compute_cql_loss(Q, Q_tgt, Q_other_tgt, policy,
 
     Note: Kumar et al. (2020) write (1/2)*TD_loss in their derivation.
     The factor is absorbed by the learning rate and alpha in practice,
-    so we omit it here — consistent with most open-source implementations.
+    so we omit it here – consistent with most open-source implementations.
 
     CQL_penalty = E_s[ log ∫ exp Q(s,a) da ] - E_{s,a~D}[ Q(s,a) ]
 
@@ -518,7 +518,7 @@ def run_comparison(quick=False):
     print(f"{'Method':<20} {'Reward':>12}  {'T err':>8}  {'f err':>8}")
     print("-" * 60)
     print(f"{'Noisy PID (data)':<20} {np.mean(pid_r):>8.2f}±{np.std(pid_r):.2f}"
-          f"  {'—':>8}  {'—':>8}")
+          f"  {'–':>8}  {'–':>8}")
     for name, res in [("BC", bc_res), ("CQL (α=1.0)", cql_res), ("CQL (auto α)", auto_res)]:
         print(f"{name:<20} {res['reward_mean']:>8.2f}±{res['reward_std']:.2f}"
               f"  {res['T_err']:>8.4f}  {res['f_err']:>8.4f}")

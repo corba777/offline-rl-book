@@ -19,7 +19,7 @@ in-distribution because z ≈ s1. Under intervention (z=0.9, s1=0.2), it
 predicts high next_s1; the causal model (s1, a) predicts correctly.
 
 Two models:
-  - "Correlation" model: predicts next_s1 from (s2, z, a) — z as proxy for s1.
+  - "Correlation" model: predicts next_s1 from (s2, z, a) – z as proxy for s1.
   - "Causal" model: predicts next_s1 from (s1, a) only.
 
 Usage (from repo root):
@@ -53,7 +53,7 @@ def main():
     z = s1 + 0.15 * rng.standard_normal(n)
     z = np.clip(z, 0, 1)
 
-    # Correlation model: does not see s1, uses (s2, z, a) — learns z as proxy for s1
+    # Correlation model: does not see s1, uses (s2, z, a) – learns z as proxy for s1
     X_corr = np.column_stack([s2, z, a])
     # Causal model: uses true causal parents (s1, a)
     X_causal = np.column_stack([s1, a])
@@ -79,7 +79,7 @@ def main():
     s1_int, s2_int, z_int, a_int = 0.2, 0.5, 0.9, 0.5
     true_next_s1_int = true_next_s1(np.array([s1_int]), np.array([a_int]))[0]
 
-    # Correlation model gets (s2, z, a) — no s1; it will predict high because z=0.9
+    # Correlation model gets (s2, z, a) – no s1; it will predict high because z=0.9
     x_corr_int   = np.array([[1, s2_int, z_int, a_int]])
     x_causal_int = np.array([[1, s1_int, a_int]])
     pred_corr_int   = (x_corr_int @ w_corr)[0]

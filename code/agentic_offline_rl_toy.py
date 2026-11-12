@@ -205,7 +205,7 @@ def q_greedy_action(
     """Return None to abstain when no supported valid action exists.
 
     With `tie_rng`, ties in Q are broken at random instead of by the order of
-    ACTIONS — unseen actions all share the default Q = 0, so which one wins is
+    ACTIONS – unseen actions all share the default Q = 0, so which one wins is
     decided by the tie-break, not by evidence.
     """
     valid = valid_actions(state)
@@ -388,7 +388,7 @@ def run_experiment(label: str, mul_in_support: bool, seed: int = 42) -> None:
 
 
 def main() -> None:
-    print("Toy calculator agent — offline RL from logged tool traces")
+    print("Toy calculator agent – offline RL from logged tool traces")
     print("=" * 60)
     run_experiment("good coverage (mul in logs)", mul_in_support=True)
     run_experiment("no multiplication support", mul_in_support=False)
@@ -396,7 +396,7 @@ def main() -> None:
     print("  Good coverage: FQI can match or beat BC by stitching successful traces.")
     print("  No mul support: constrained FQI never selects an unlogged tool;")
     print("  naive FQI rates every unlogged tool at Q = 0 and picks among them by")
-    print("  tie-break — sometimes mul (right), sometimes estimate (wrong).")
+    print("  tie-break – sometimes mul (right), sometimes estimate (wrong).")
 
 
 if __name__ == "__main__":

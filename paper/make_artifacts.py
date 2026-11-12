@@ -105,7 +105,7 @@ def halt_table():
                 cells += [fmt(t_ci(per_seed(h, m))), iqm(h, m), f"{100 * rate:.0f}\\%", str(n_fail(h, m)),
                           fmt(paired(h, m, b, "CQL"), sign=True)]
             else:
-                cells += ["---"] * 5
+                cells += ["--"] * 5
         rows.append(" & ".join(cells) + r" \\")
     write("halt.tex", "\n".join(rows) + "\n")
     kap = np.mean([r["extra"]["kappa"] for r in hl["runs"]])
@@ -122,7 +122,7 @@ def fresh_table():
                         (h, "HALT p99", r"MOReL-style, $p_{99}$, worst-case $\kappa$"),
                         (h, "HALT p99, data kappa", r"MOReL-style, $p_{99}$, data $\kappa$"),
                         (h, "no HALT", "model-based SAC (no HALT)")]:
-        vs = "---" if m == "CQL" else fmt(paired(f, m, b, "CQL"), sign=True)
+        vs = "--" if m == "CQL" else fmt(paired(f, m, b, "CQL"), sign=True)
         rows.append(" & ".join([label, fmt(t_ci(per_seed(f, m))), iqm(f, m), str(n_fail(f, m)), vs]) + r" \\")
     write("fresh.tex", "\n".join(rows) + "\n")
 
@@ -145,7 +145,7 @@ def baselines_table():
     rows = []
     for a in ["0.1", "0.3", "1", "3", "10"]:
         f, m = (b, "CQL") if a == "1" else (bs, f"CQL alpha={a}")
-        vs = "---" if a == "1" else fmt(paired(f, m, b, "CQL"), sign=True)
+        vs = "--" if a == "1" else fmt(paired(f, m, b, "CQL"), sign=True)
         rows.append(" & ".join([f"$\\alpha={a}$", fmt(t_ci(per_seed(f, m))), str(n_fail(f, m)), vs]) + r" \\")
     write("cql_alpha.tex", "\n".join(rows) + "\n")
     write("synthetic_effect.tex", fmt(paired(bs, "no HALT", bs, "SAC, real data only"), d=3, sign=True) + "%\n")
@@ -162,7 +162,7 @@ COV_ARMS = [("SAC, real data only", "SAC, real data only"),
 
 def cov_cell(f, m):
     if m not in f["runs"][0]["results"]:
-        return "---"
+        return "--"
     v = per_seed(f, m)
     return f"${np.mean(v):.2f}$ / ${stats.trim_mean(v, 0.25):.2f}$ ({n_fail(f, m)})"
 

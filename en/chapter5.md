@@ -14,17 +14,17 @@ permalink: "/offline-rl-book/en/chapter5/"
 
 # Chapter 5: Implicit Q-Learning (IQL)
 
-> *"The best action in your dataset might not be the best action possible — but it's the best you can safely trust. IQL learns to find it without ever leaving the data."*
+> *"The best action in your dataset might not be the best action possible – but it's the best you can safely trust. IQL learns to find it without ever leaving the data."*
 
 ---
 
-## What CQL Got Right — and What It Didn't
+## What CQL Got Right – and What It Didn't
 
 CQL solved the extrapolation error problem by explicitly penalizing Q-values for OOD actions. It works well, but it has a subtle weakness: **the policy update still requires sampling actions from the current policy** to compute the Q-values used in the actor loss.
 
-These policy actions may themselves be OOD — especially early in training when the policy hasn't converged. CQL's Q-function will correctly push them down, but gradient signal still flows through OOD action evaluations, which can destabilize training.
+These policy actions may themselves be OOD – especially early in training when the policy hasn't converged. CQL's Q-function will correctly push them down, but gradient signal still flows through OOD action evaluations, which can destabilize training.
 
-**Implicit Q-Learning (IQL)** — Kostrikov et al., ICLR 2022 — takes a more radical approach: **never query Q(s, a) for any action outside the dataset**. Every update — including the Q-update, the V-update, and the policy extraction — uses only $(s, a)$ pairs that appear in the data.
+**Implicit Q-Learning (IQL)** – Kostrikov et al., ICLR 2022 – takes a more radical approach: **never query Q(s, a) for any action outside the dataset**. Every update – including the Q-update, the V-update, and the policy extraction – uses only $(s, a)$ pairs that appear in the data.
 
 This sounds impossible. How do you learn that some actions are better than others if you never compare them? The answer is expectile regression.
 
@@ -36,13 +36,13 @@ IQL introduces a **state value function** $V(s)$ as an intermediary. The key ins
 
 $$V(s) \approx \mathbb{E}_{\tau}\left[ Q(s, a) \right]_{\text{upper expectile}}$$
 
-Instead of fitting $V(s) = \max_a Q(s, a)$ (which requires OOD queries), IQL fits $V(s)$ to the **upper $\tau$-expectile** of $Q(s, a)$ over dataset actions. With $\tau > 0.5$, this biases $V$ toward the better actions in the data — without ever leaving the dataset.
+Instead of fitting $V(s) = \max_a Q(s, a)$ (which requires OOD queries), IQL fits $V(s)$ to the **upper $\tau$-expectile** of $Q(s, a)$ over dataset actions. With $\tau > 0.5$, this biases $V$ toward the better actions in the data – without ever leaving the dataset.
 
 The three-step training loop:
 
 1. **V-update**: fit $V(s)$ to the $\tau$-expectile of $\min(Q_1, Q_2)(s, a)$ for dataset $(s, a)$
 2. **Q-update**: standard TD backup, but using $V(s')$ instead of $\max_{a'} Q(s', a')$
-3. **Policy extraction**: weighted behavior cloning — imitate dataset actions, weighted by $\exp(\beta \cdot A(s,a))$ where $A = Q - V$
+3. **Policy extraction**: weighted behavior cloning – imitate dataset actions, weighted by $\exp(\beta \cdot A(s,a))$ where $A = Q - V$
 
 No policy sampling anywhere. No OOD action queries. Fully in-sample.
 
@@ -61,8 +61,8 @@ where the **expectile loss** (asymmetric L2 loss) is:
 $$L_\tau(u) = |\tau - \mathbf{1}[u < 0]| \cdot u^2 = \begin{cases} \tau \cdot u^2 & \text{if } u \geq 0 \\ (1-\tau) \cdot u^2 & \text{if } u < 0 \end{cases}$$
 
 At $\tau = 0.5$: standard MSE, estimate converges to the mean.
-At $\tau \to 1.0$: estimate converges to the maximum (for a bounded distribution, its essential supremum — the largest value that has positive probability).
-At $\tau = 0.7$ (IQL default): estimate lies between the mean and the maximum — biased toward higher values.
+At $\tau \to 1.0$: estimate converges to the maximum (for a bounded distribution, its essential supremum – the largest value that has positive probability).
+At $\tau = 0.7$ (IQL default): estimate lies between the mean and the maximum – biased toward higher values.
 
 This is the entire trick: by choosing $\tau > 0.5$, we make $V(s)$ approximate the value of a **better-than-average** action at state $s$, using only the actions present in the dataset.
 
@@ -72,7 +72,7 @@ This is the entire trick: by choosing $\tau > 0.5$, we make $V(s)$ approximate t
 
 $$\mathcal{L}_V(\psi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ L_\tau\!\left(\min(Q_{\theta_1}, Q_{\theta_2})(s,a) - V_\psi(s)\right) \right]$$
 
-No next states, no policy — just $(s, a)$ pairs from the dataset.
+No next states, no policy – just $(s, a)$ pairs from the dataset.
 
 **Q loss** (TD with $V$ as next-state value):
 
@@ -84,15 +84,15 @@ Here $V_\psi$ is the current V-network: IQL needs no separate target copy of $V$
 
 $$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \exp\!\left(\beta \cdot \left(Q(s,a) - V(s)\right)\right) \cdot \| \pi_\phi(s) - a \|^2 \right]$$
 
-where $A(s,a) = Q(s,a) - V(s)$ is the **advantage** of dataset action $a$ over the baseline $V(s)$. With $\tau = 0.5$ that baseline is the mean value of the logged actions at $s$; with $\tau > 0.5$ it is an upper expectile of their values, so only actions better than most logged ones get a positive advantage. The exponential weights upweight high-advantage actions and downweight low-advantage ones — effectively extracting the best actions from the data.
+where $A(s,a) = Q(s,a) - V(s)$ is the **advantage** of dataset action $a$ over the baseline $V(s)$. With $\tau = 0.5$ that baseline is the mean value of the logged actions at $s$; with $\tau > 0.5$ it is an upper expectile of their values, so only actions better than most logged ones get a positive advantage. The exponential weights upweight high-advantage actions and downweight low-advantage ones – effectively extracting the best actions from the data.
 
 ### Why This Works: The Connection to Pessimism
 
-IQL achieves implicit pessimism through $V$. Since $V(s)$ is trained on dataset actions only, it captures the value of those actions — not of arbitrary OOD actions. The Q-update uses $V(s')$ as the next-state target, so the TD backup never extrapolates to unseen actions.
+IQL achieves implicit pessimism through $V$. Since $V(s)$ is trained on dataset actions only, it captures the value of those actions – not of arbitrary OOD actions. The Q-update uses $V(s')$ as the next-state target, so the TD backup never extrapolates to unseen actions.
 
 Why fit a separate $V$ instead of taking an expectile of the TD target $r + \gamma V(s')$ directly? Because that target mixes two kinds of randomness: the choice of action and the randomness of the next state. An expectile over targets would also be optimistic about lucky transitions, crediting actions that merely happened to land in good states. Fitting $V(s)$ to an expectile of $Q(s, a)$ over dataset actions, and backing up $Q$ with an ordinary mean-squared TD loss, keeps the optimism over actions and adds none over transition noise (Kostrikov et al., 2022).
 
-The advantage $A(s,a) = Q(s,a) - V(s)$ measures how much better action $a$ is compared to what the behavior policy typically does at $s$. High-advantage actions are the "hidden gems" in the data — moments when the behavior policy happened to do something unusually good.
+The advantage $A(s,a) = Q(s,a) - V(s)$ measures how much better action $a$ is compared to what the behavior policy typically does at $s$. High-advantage actions are the "hidden gems" in the data – moments when the behavior policy happened to do something unusually good.
 
 ---
 
@@ -102,14 +102,14 @@ The advantage $A(s,a) = Q(s,a) - V(s)$ measures how much better action $a$ is co
 
 ### Networks
 
-IQL uses three networks: `ValueNetwork` (state-only), `QNetwork` (state + action), and `DeterministicPolicy`. Note that IQL uses a **deterministic** policy — the stochastic actor from CQL is not needed because policy extraction is done via weighted regression, not entropy maximization:
+IQL uses three networks: `ValueNetwork` (state-only), `QNetwork` (state + action), and `DeterministicPolicy`. Note that IQL uses a **deterministic** policy – the stochastic actor from CQL is not needed because policy extraction is done via weighted regression, not entropy maximization:
 
 ```python
 class ValueNetwork(nn.Module):
     """
-    V(s) — state value function.
+    V(s) – state value function.
     IQL learns this via expectile regression, not Bellman backup.
-    No action input — this is the key architectural difference from Q(s,a).
+    No action input – this is the key architectural difference from Q(s,a).
     """
     def __init__(self, state_dim: int, hidden_dim: int = 256):
         super().__init__()
@@ -124,7 +124,7 @@ class ValueNetwork(nn.Module):
 
 
 class QNetwork(nn.Module):
-    """Q(s,a) — action-value function (double-Q as in CQL)."""
+    """Q(s,a) – action-value function (double-Q as in CQL)."""
     def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
         super().__init__()
         self.net = nn.Sequential(
@@ -143,7 +143,7 @@ class DeterministicPolicy(nn.Module):
 
     IQL extracts the policy via advantage-weighted regression (AWR):
     minimize E[exp(beta * A(s,a)) * ||pi(s) - a||^2] over dataset actions.
-    No need for a stochastic policy — we weight dataset actions by their advantage.
+    No need for a stochastic policy – we weight dataset actions by their advantage.
     """
     def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
         super().__init__()
@@ -163,7 +163,7 @@ class DeterministicPolicy(nn.Module):
 
 ### Expectile Loss
 
-The core primitive — a 7-line function that replaces `max_a Q(s', a')`:
+The core primitive – a 7-line function that replaces `max_a Q(s', a')`:
 
 ```python
 def expectile_loss(pred: torch.Tensor, target: torch.Tensor,
@@ -175,13 +175,13 @@ def expectile_loss(pred: torch.Tensor, target: torch.Tensor,
         L_tau(u) = |tau - 1(u < 0)| * u^2
 
     When u > 0 (pred < target, i.e., V underestimates Q):
-        weight = tau          (e.g. 0.7 — penalize underestimation more)
+        weight = tau          (e.g. 0.7 – penalize underestimation more)
     When u < 0 (pred > target, i.e., V overestimates Q):
-        weight = 1 - tau      (e.g. 0.3 — penalize overestimation less)
+        weight = 1 - tau      (e.g. 0.3 – penalize overestimation less)
 
     At tau=0.5 this is standard MSE.
     At tau->1.0 this approximates the maximum (V -> max Q).
-    IQL uses tau in [0.5, 0.9] — asymmetric toward upper quantile.
+    IQL uses tau in [0.5, 0.9] – asymmetric toward upper quantile.
 
     This is the entire magic of IQL: instead of max_a Q(s',a'),
     we fit V(s) to the upper expectile of Q(s, a_data).
@@ -193,7 +193,7 @@ def expectile_loss(pred: torch.Tensor, target: torch.Tensor,
     return (weight * u.pow(2)).mean()
 ```
 
-At `tau=0.7`: underestimation is penalized 2.3× more than overestimation, pushing the estimate upward — toward the better actions in the dataset.
+At `tau=0.7`: underestimation is penalized 2.3× more than overestimation, pushing the estimate upward – toward the better actions in the dataset.
 
 ### Value Update
 
@@ -209,7 +209,7 @@ def iql_value_loss(V: ValueNetwork,
     Target: min(Q1_tgt(s,a), Q2_tgt(s,a)) for dataset (s,a) pairs.
     V(s) is pushed toward the tau-expectile of this target.
 
-    No next states, no policy sampling — fully in-sample.
+    No next states, no policy sampling – fully in-sample.
     """
     with torch.no_grad():
         q_target = torch.min(Q1_tgt(states, actions), Q2_tgt(states, actions))
@@ -237,7 +237,7 @@ def iql_q_loss(Q: QNetwork,
                dones: torch.Tensor,
                gamma: float = 0.99) -> Tuple[torch.Tensor, dict]:
     """
-    Q-network update via standard TD backup — using live V(s') instead of max_a Q(s',a').
+    Q-network update via standard TD backup – using live V(s') instead of max_a Q(s',a').
 
     TD target: r + gamma * V(s')
     """
@@ -255,7 +255,7 @@ def iql_q_loss(Q: QNetwork,
     }
 ```
 
-Compare this to CQL's Q-update: there, `v_next` required `policy.sample(next_states)` followed by `Q_target(next_states, next_actions)`. Here it's a single forward pass through live `V` — no action sampling at all.
+Compare this to CQL's Q-update: there, `v_next` required `policy.sample(next_states)` followed by `Q_target(next_states, next_actions)`. Here it's a single forward pass through live `V` – no action sampling at all.
 
 ### Policy Extraction via AWR
 
@@ -280,7 +280,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
     - beta controls how selective we are (higher = more selective)
 
     The exp weights are clipped to avoid numerical instability.
-    No environment interaction, no OOD actions — pure in-sample regression.
+    No environment interaction, no OOD actions – pure in-sample regression.
     """
     with torch.no_grad():
         q_val = torch.min(Q1(states, actions), Q2(states, actions))
@@ -363,9 +363,9 @@ tau=0.9   V =  0.58    toward the maximum
 True Q values: [-0.8, -0.3, 0.1, 0.4, 0.9]   (mean 0.06, median 0.10)
 ```
 
-Expectiles are the squared-loss counterpart of quantiles: $\tau = 0.5$ gives the mean, not the median, and as $\tau \to 1$ the estimate approaches the maximum. At `tau=0.7`, $V(s)$ sits above three of the five dataset actions but below the top two. This means $A(s, a) = Q(s,a) - V(s)$ is positive only for the top actions — exactly the ones the policy should imitate.
+Expectiles are the squared-loss counterpart of quantiles: $\tau = 0.5$ gives the mean, not the median, and as $\tau \to 1$ the estimate approaches the maximum. At `tau=0.7`, $V(s)$ sits above three of the five dataset actions but below the top two. This means $A(s, a) = Q(s,a) - V(s)$ is positive only for the top actions – exactly the ones the policy should imitate.
 
-The figure traces the whole curve $V(\tau)$ for these five values (`code/chapter1_5_8_figures.py`). It rises smoothly from the worst dataset action toward the best, passes through the mean at $\tau = 0.5$, and never leaves the range of values actually present in the data — which is why IQL can be optimistic without querying a single unseen action.
+The figure traces the whole curve $V(\tau)$ for these five values (`code/chapter1_5_8_figures.py`). It rises smoothly from the worst dataset action toward the best, passes through the mean at $\tau = 0.5$, and never leaves the range of values actually present in the data – which is why IQL can be optimistic without querying a single unseen action.
 
 ![The tau-expectile of five dataset Q-values as a function of tau, with the mean and the IQL default marked](../figures/ch5/expectiles.png)
 
@@ -376,14 +376,14 @@ The figure traces the whole curve $V(\tau)$ for these five values (`code/chapter
 | | CQL | IQL |
 |---|---|---|
 | OOD queries | Penalized via logsumexp | Never made |
-| Q-update | TD with policy sampling at $s'$ | TD with $V(s')$ — no sampling |
+| Q-update | TD with policy sampling at $s'$ | TD with $V(s')$ – no sampling |
 | Policy update | Maximize $Q(s, \pi(s))$ | Weighted regression on dataset actions |
 | Policy type | Stochastic (Gaussian) | Deterministic |
 | Extra network | None | $V(s)$ value function |
 | Key hyperparameter | $\alpha$ (CQL strength) | $\tau$ (expectile) + $\beta$ (AWR temperature) |
 | Training stability | Can be sensitive to $\alpha$ | Generally more stable |
 
-The fundamental difference: CQL is **active** about pessimism — it explicitly penalizes OOD values. IQL is **passive** — it simply never asks about OOD values at all.
+The fundamental difference: CQL is **active** about pessimism – it explicitly penalizes OOD values. IQL is **passive** – it simply never asks about OOD values at all.
 
 ---
 
@@ -391,16 +391,16 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 **$\tau$ (expectile)**: Controls how optimistic $V(s)$ is about in-dataset actions.
 
-- `tau=0.5`: $V \approx$ the mean of Q under the behavior policy. This is one-step policy improvement — evaluate $\pi_\beta$, then reweight its actions by advantage (Brandfonbrener et al., 2021) — and it is usually still better than BC when advantages are informative
+- `tau=0.5`: $V \approx$ the mean of Q under the behavior policy. This is one-step policy improvement – evaluate $\pi_\beta$, then reweight its actions by advantage (Brandfonbrener et al., 2021) – and it is usually still better than BC when advantages are informative
 - `tau=0.7`: Default. Good for medium-quality datasets
 - `tau=0.9`: Aggressive. Use when dataset contains clearly good and bad actions, and you want the policy to strongly prefer the good ones
-- `tau>0.95`: Can cause instability — $V$ approaches $\max Q$, which is hard to fit stably
+- `tau>0.95`: Can cause instability – $V$ approaches $\max Q$, which is hard to fit stably
 
 **$\beta$ (AWR temperature)**: Controls how selective the policy extraction is.
 
-- `beta=0.1`: Nearly uniform weights — policy ≈ BC
+- `beta=0.1`: Nearly uniform weights – policy ≈ BC
 - `beta=3.0`: Default. Moderately selective
-- `beta=10.0`: Very selective — policy imitates only the top few actions per batch
+- `beta=10.0`: Very selective – policy imitates only the top few actions per batch
 - Large $\beta$ can cause the policy to overfit to a handful of transitions
 
 **Rule of thumb**: if the dataset is high-quality and dense, use higher $\tau$ and $\beta$. If the dataset is noisy or sparse, use lower values.
@@ -413,7 +413,7 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 **Monitor $V$-$Q$ gap.** Log `v_q_gap = E[Q(s,a) - V(s)]` over dataset pairs. For $\tau > 0.5$, $V(s)$ should generally lie above the mean dataset-action $Q$ at that state and below the best dataset actions, so `v_q_gap` will often be **slightly negative**. If it becomes strongly **positive**, $V$ is too low / too conservative. If it becomes very negative, $\tau$ may be too high or $Q$ may be overestimated.
 
-**Use target Q-networks in the value update.** The expectile target uses `Q1_tgt` and `Q2_tgt`, not the live Q-networks being updated in the same step — this matches the IQL reference implementation.
+**Use target Q-networks in the value update.** The expectile target uses `Q1_tgt` and `Q2_tgt`, not the live Q-networks being updated in the same step – this matches the IQL reference implementation.
 
 **IQL converges faster than CQL** on dense datasets because the V-update is very stable (no OOD action sampling, no logsumexp approximation). On sparse datasets they are comparable.
 
@@ -423,7 +423,7 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 
 ## Limitations
 
-**Cannot improve on the best action seen in a state.** At any single state, IQL's policy imitates a weighted set of dataset actions, so it cannot invent a better action there. Across states it can still stitch: Q is learned with TD, so good segments of different trajectories combine. Two caveats remain. The weighted MSE averages the weighted actions, and when several distinct good actions exist, that average may be an action nobody took — an OOD action. CQL and model-based methods (Chapter 8) can in principle extrapolate further, at a corresponding risk.
+**Cannot improve on the best action seen in a state.** At any single state, IQL's policy imitates a weighted set of dataset actions, so it cannot invent a better action there. Across states it can still stitch: Q is learned with TD, so good segments of different trajectories combine. Two caveats remain. The weighted MSE averages the weighted actions, and when several distinct good actions exist, that average may be an action nobody took – an OOD action. CQL and model-based methods (Chapter 8) can in principle extrapolate further, at a corresponding risk.
 
 **Two hyperparameters to tune.** $\tau$ and $\beta$ interact. A higher $\tau$ raises $V$ and therefore lowers $A = Q - V$, so fewer actions keep a positive advantage; $\beta$ then sets how sharply those few are preferred. Tuning the pair takes more effort than tuning CQL's single $\alpha$.
 
@@ -437,15 +437,15 @@ The fundamental difference: CQL is **active** about pessimism — it explicitly 
 |---|---|
 | Data required | $(s, a, r, s')$ with rewards |
 | Core idea | Expectile regression for $V(s)$; TD with $V(s')$; AWR policy |
-| OOD queries | Never — fully in-sample |
+| OOD queries | Never – fully in-sample |
 | Theoretical backing | Implicit pessimism via $V$ trained on dataset actions |
 | Key hyperparameters | $\tau$ (expectile, 0.5–0.9) and $\beta$ (AWR temperature) |
 | Compared to CQL | More stable; no OOD sampling; deterministic policy |
 | Limitation | Cannot extrapolate beyond dataset actions |
 
-IQL represents the cleanest solution to offline RL among the model-free methods: the pessimism is structural — baked into the architecture — rather than algorithmic. It is the method of choice when training stability matters more than aggressive improvement over the behavior policy.
+IQL represents the cleanest solution to offline RL among the model-free methods: the pessimism is structural – baked into the architecture – rather than algorithmic. It is the method of choice when training stability matters more than aggressive improvement over the behavior policy.
 
-Chapter 6 completes the model-free picture from the policy side, with policy-constraint methods (TD3+BC, AWAC), and Chapter 7 drops the Bellman backup altogether with Decision Transformers. The step beyond model-free methods is to learn a model of the world and use it to generate synthetic data. This allows offline RL to reason about transitions never seen in the dataset — at the cost of model error. That is the subject of Chapter 8.
+Chapter 6 completes the model-free picture from the policy side, with policy-constraint methods (TD3+BC, AWAC), and Chapter 7 drops the Bellman backup altogether with Decision Transformers. The step beyond model-free methods is to learn a model of the world and use it to generate synthetic data. This allows offline RL to reason about transitions never seen in the dataset – at the cost of model error. That is the subject of Chapter 8.
 
 ---
 

@@ -1,5 +1,5 @@
 """
-extrapolation_error.py — Chapter 2: The Offline RL Problem
+extrapolation_error.py – Chapter 2: The Offline RL Problem
 ===========================================================
 Demonstrates OOD overestimation in vanilla Q-learning trained on a
 restricted offline dataset.
@@ -178,7 +178,7 @@ def measure_ood_overestimation(
 
 def main() -> None:
     print("=" * 60)
-    print("Chapter 2 — Extrapolation Error Demo")
+    print("Chapter 2 – Extrapolation Error Demo")
     print("=" * 60)
 
     # 1. build dataset with restricted actions

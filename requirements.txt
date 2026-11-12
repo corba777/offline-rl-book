@@ -1,4 +1,4 @@
-# Offline RL Book — dependencies for chapter code under code/
+# Offline RL Book – dependencies for chapter code under code/
 #
 # Chapter → script map (from repo root: python code/<script>):
 #   Ch1:  behavioral_cloning.py; chapter1_5_8_figures.py (figures for Ch.1, 5, 8)

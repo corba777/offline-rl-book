@@ -65,21 +65,21 @@
 </blockquote>
 <hr />
 <h2>Why Physics?</h2>
-<p>Chapters 4–8 treated the world as a black box: we fed in states and actions, observed next states and rewards, and let neural networks figure out the rest. For benchmark tasks like MuJoCo locomotion this is fine — the environment is a simulation, data is plentiful, and there are no hard physical constraints that must hold.</p>
+<p>Chapters 4–8 treated the world as a black box: we fed in states and actions, observed next states and rewards, and let neural networks figure out the rest. For benchmark tasks like MuJoCo locomotion this is fine – the environment is a simulation, data is plentiful, and there are no hard physical constraints that must hold.</p>
 <p>Industrial processes are different. Three things distinguish them:</p>
-<p><strong>Data is scarce and narrow.</strong> A manufacturing line runs in a small region of its theoretical operating envelope — the operator keeps it there deliberately. An offline dataset from six months of normal operation may contain almost no examples of the process near its physical limits. Any model that tries to reason about those regions is extrapolating.</p>
+<p><strong>Data is scarce and narrow.</strong> A manufacturing line runs in a small region of its theoretical operating envelope – the operator keeps it there deliberately. An offline dataset from six months of normal operation may contain almost no examples of the process near its physical limits. Any model that tries to reason about those regions is extrapolating.</p>
 <p><strong>Physical laws are partially known.</strong> For most industrial systems, engineers know a great deal: conservation of mass and energy, thermodynamic relationships, transport phenomena, first-order dynamics. This knowledge is imperfect (real systems have unmeasured disturbances, aging equipment, composition variation) but it is not zero. Ignoring it wastes a free source of information.</p>
-<p><strong>Violations of physics are costly.</strong> A policy that violates a mass balance might command an impossible setpoint. A model that predicts temperature decreasing when heat is added is not just inaccurate — it will produce a control policy that actively damages the process.</p>
+<p><strong>Violations of physics are costly.</strong> A policy that violates a mass balance might command an impossible setpoint. A model that predicts temperature decreasing when heat is added is not just inaccurate – it will produce a control policy that actively damages the process.</p>
 <p>Physics-informed offline RL exploits known structure in three places:</p>
 <ol>
-<li><strong>Reward shaping</strong> — encode physical constraints as soft penalties in the reward signal</li>
-<li><strong>Hybrid dynamics model</strong> — replace the pure black-box ensemble with a model that respects known physics exactly and learns the unknown residual</li>
-<li><strong>Constraint-based policy</strong> — embed hard constraints directly into policy optimization (brief treatment, as this overlaps with safe RL)</li>
+<li><strong>Reward shaping</strong> – encode physical constraints as soft penalties in the reward signal</li>
+<li><strong>Hybrid dynamics model</strong> – replace the pure black-box ensemble with a model that respects known physics exactly and learns the unknown residual</li>
+<li><strong>Constraint-based policy</strong> – embed hard constraints directly into policy optimization (brief treatment, as this overlaps with safe RL)</li>
 </ol>
 <hr />
 <h2>Part I: Physics as Reward Shaping</h2>
 <h3>The Idea</h3>
-<p>The simplest way to use physics: add penalty terms to the reward whenever the system violates known constraints. This works with <em>any</em> offline RL algorithm — CQL, IQL, MOPO — without changing the algorithm itself.</p>
+<p>The simplest way to use physics: add penalty terms to the reward whenever the system violates known constraints. This works with <em>any</em> offline RL algorithm – CQL, IQL, MOPO – without changing the algorithm itself.</p>
 <p>For a process with state $s = (x_1, \ldots, x_n)$ and known constraint $g(s) \leq 0$:</p>
 <p><div class="math-display">$$\tilde{r}(s, a, s') = r(s, a) - \lambda \cdot \max\bigl(0,\ g(s')\bigr)$$</div></p>
 <p>The $\max(0, \cdot)$ activates the penalty only when the constraint is violated; inside the feasible region it contributes nothing. $\lambda$ controls the trade-off between reward maximization and constraint satisfaction.</p>
@@ -138,7 +138,7 @@
         <span class="k">return</span> <span class="n">r</span>
 </code></pre></div>
 
-<p><strong>Example constraint — first-order dynamics consistency:</strong></p>
+<p><strong>Example constraint – first-order dynamics consistency:</strong></p>
 <p>A first-order process with known time constant $\tau$ and gain $K$ satisfies:</p>
 <p><div class="math-display">$$x_{t+1} \approx x_t + \frac{\Delta t}{\tau}(K \cdot u_t - x_t)$$</div></p>
 <p>If the learned model's prediction deviates significantly from this, the deviation is a constraint violation:</p>
@@ -158,9 +158,9 @@
 
 <h3>Choosing $\lambda$</h3>
 <p>The penalty weight $\lambda$ has the same role as $\alpha$ in CQL: too small and violations persist; too large and the policy becomes overly conservative, ignoring the reward signal.</p>
-<p>The book's code calibrates $\lambda$ with <code>calibrate_lambda</code> in <code>physics_informed.py</code>, which Chapter 10 reuses. It compares two per-step quantities measured on the dataset — the average reward magnitude $\overline{|r|}$ and a reference violation $C_{ref}$, the largest violation in the whole dataset (or, with <code>quantile=0.95</code>, a high quantile of the violations, which one outlier cannot move; and a small tolerance, with a warning, if there are none) — and sets</p>
+<p>The book's code calibrates $\lambda$ with <code>calibrate_lambda</code> in <code>physics_informed.py</code>, which Chapter 10 reuses. It compares two per-step quantities measured on the dataset – the average reward magnitude $\overline{|r|}$ and a reference violation $C_{ref}$, the largest violation in the whole dataset (or, with <code>quantile=0.95</code>, a high quantile of the violations, which one outlier cannot move; and a small tolerance, with a warning, if there are none) – and sets</p>
 <p><div class="math-display">$$\lambda = k \cdot \frac{\overline{|r|}}{C_{ref}}, \qquad k = 10 \text{ by default},$$</div></p>
-<p>so that a violation of size $C_{ref}$ costs as much as $k$ average steps of reward. The units work out: $\lambda g$ is a reward whatever the units of $g$. If $g$ is measured in different units, $\lambda$ rescales inversely and the penalty does not change; if rewards are scaled up, $\lambda$ scales up with them. This is still a heuristic, not a guarantee — $k$ encodes how bad a violation is relative to ordinary tracking error, which is an engineering judgment.</p>
+<p>so that a violation of size $C_{ref}$ costs as much as $k$ average steps of reward. The units work out: $\lambda g$ is a reward whatever the units of $g$. If $g$ is measured in different units, $\lambda$ rescales inversely and the penalty does not change; if rewards are scaled up, $\lambda$ scales up with them. This is still a heuristic, not a guarantee – $k$ encodes how bad a violation is relative to ordinary tracking error, which is an engineering judgment.</p>
 <div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">calibrate_lambda</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">constraint_fn</span><span class="p">,</span> <span class="n">base_reward_fn</span><span class="p">,</span>
                      <span class="n">cost_ratio</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cpu'</span><span class="p">):</span>
     <span class="c1"># The whole dataset: logs are often sorted by regime, and a prefix can miss</span>
@@ -181,13 +181,13 @@
 <p>In Chapter 8, the dynamics ensemble is a pure neural network: it learns $\hat{T}(s' | s, a)$ entirely from data. This works well when:
 - The dataset covers the state-action space densely
 - The model is evaluated near the training distribution</p>
-<p>Outside the data support, a pure black-box model will extrapolate in whatever direction its weights happen to point — which often violates physics. The epistemic uncertainty from ensemble disagreement partially guards against this, but it cannot distinguish "uncertain because data is sparse" from "uncertain because the model is physically wrong."</p>
+<p>Outside the data support, a pure black-box model will extrapolate in whatever direction its weights happen to point – which often violates physics. The epistemic uncertainty from ensemble disagreement partially guards against this, but it cannot distinguish "uncertain because data is sparse" from "uncertain because the model is physically wrong."</p>
 <p>A <strong>hybrid model</strong> splits the prediction into two parts:</p>
 <p><div class="math-display">$$s'_{hybrid} = \underbrace{f_{phys}(s, a)}_{\text{known physics}} + \underbrace{f_{NN}(s, a; \theta)}_{\text{learned residual}}$$</div></p>
-<p>The physics component $f_{phys}$ is an analytical function derived from domain knowledge — it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong. One practical trap: $f_{phys}$ is written in physical units, while the networks usually train on normalized states. Apply the physics to de-normalized states and re-normalize its output before adding the residual; Chapter 10's <code>Units</code> helper does exactly this, and skipping it makes the physics prior silently wrong.</p>
+<p>The physics component $f_{phys}$ is an analytical function derived from domain knowledge – it is exact (by assumption) but incomplete (it misses unmodeled effects, disturbances, nonlinearities). The neural residual $f_{NN}$ learns what the physics gets wrong. One practical trap: $f_{phys}$ is written in physical units, while the networks usually train on normalized states. Apply the physics to de-normalized states and re-normalize its output before adding the residual; Chapter 10's <code>Units</code> helper does exactly this, and skipping it makes the physics prior silently wrong.</p>
 <h3>Why This Helps Offline RL</h3>
-<p><strong>Better extrapolation — if the residual is kept small.</strong> The physics component provides a principled prediction even where data is sparse. A plain MLP residual, however, does not shrink to zero away from the data: like any neural network with SiLU or ReLU units, it extrapolates in whatever direction its weights happen to point. To get the intended fallback to physics, make the residual distance-aware — penalize its magnitude, or scale it down as inputs move away from the training data.</p>
-<p><strong>Smaller residuals = easier learning.</strong> If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model tends to converge faster and generalize better — provided the physics is structurally right.</p>
+<p><strong>Better extrapolation – if the residual is kept small.</strong> The physics component provides a principled prediction even where data is sparse. A plain MLP residual, however, does not shrink to zero away from the data: like any neural network with SiLU or ReLU units, it extrapolates in whatever direction its weights happen to point. To get the intended fallback to physics, make the residual distance-aware – penalize its magnitude, or scale it down as inputs move away from the training data.</p>
+<p><strong>Smaller residuals = easier learning.</strong> If the physics model captures 80% of the dynamics, the neural network only needs to learn the remaining 20%. With the same dataset size, the residual model tends to converge faster and generalize better – provided the physics is structurally right.</p>
 <p><strong>Uncertainty: a caveat rather than a gain.</strong> Ensemble disagreement now measures uncertainty about the residual only. Every member shares the same <code>physics_fn</code>, so where the physics itself is wrong the members agree, and the ensemble reports low uncertainty exactly where it should report high. Combined with MOReL's HALT threshold, this can extend the KNOWN region into places where the model is wrong. Ensembling over physics parameters (for example, sampling $\tau$ and $K$ from plausible ranges) or distance-aware residuals reduce the problem.</p>
 <h3>Formalization</h3>
 <p>Let $f_{phys}(s, a)$ be the known physics model (deterministic, no parameters). The residual network predicts a Gaussian over the residual:</p>
@@ -280,7 +280,7 @@
 </code></pre></div>
 
 <h3>Building a Hybrid Ensemble</h3>
-<p>The ensemble from Chapter 8 is straightforwardly extended — each model in the ensemble is a <code>HybridDynamicsNet</code> sharing the same <code>physics_fn</code>:</p>
+<p>The ensemble from Chapter 8 is straightforwardly extended – each model in the ensemble is a <code>HybridDynamicsNet</code> sharing the same <code>physics_fn</code>:</p>
 <div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">HybridEnsemble</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Ensemble of hybrid dynamics models sharing the same physics component.</span>
@@ -300,7 +300,7 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">train_ensemble</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dataset</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">n_epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
                        <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span> <span class="n">log_every</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""Bootstrap training — identical structure to Chapter 8 ensemble."""</span>
+<span class="w">        </span><span class="sd">"""Bootstrap training – identical structure to Chapter 8 ensemble."""</span>
         <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">])</span>
         <span class="n">s</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'states'</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
         <span class="n">a</span>  <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'actions'</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
@@ -357,7 +357,7 @@
     <span class="k">return</span> <span class="n">coverage</span>
 </code></pre></div>
 
-<p>Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations — $1 - \sigma_{res}/\sigma_{inc}$, with $\sigma_{inc}$ the standard deviation of the increment, would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. It uses centered variances, so a constant bias of the physics does not count against it: that answers "how much is left for the residual", which absorbs a constant offset easily. To judge the physics on its own against persistence, compare mean squared errors instead. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network — and its extrapolation — carries the weight.</p>
+<p>Two choices in this diagnostic matter. It uses a ratio of variances, not of standard deviations – $1 - \sigma_{res}/\sigma_{inc}$, with $\sigma_{inc}$ the standard deviation of the increment, would report 60% for a model that actually explains 84% of the variance. And it measures the increment $s' - s$ rather than $s'$ itself: for slow processes $s'$ is mostly $s$, so even the trivial model $s' = s$ would "explain" most of the variance of $s'$. Read the result as skill over persistence. It uses centered variances, so a constant bias of the physics does not count against it: that answers "how much is left for the residual", which absorbs a constant offset easily. To judge the physics on its own against persistence, compare mean squared errors instead. There is no universal threshold; what matters is which dimensions the physics leaves poorly explained, because that is where the residual network – and its extrapolation – carries the weight.</p>
 <hr />
 <h2>Part III: Constraint-Based Policy (Brief)</h2>
 <h3>Hard vs Soft Constraints</h3>
@@ -378,7 +378,7 @@
 <p>Not every offline RL problem benefits equally from physics. The value of physical knowledge depends on three factors:</p>
 <p><strong>Data coverage.</strong> The sparser the dataset, the more physics helps. A dataset covering 20% of the operating envelope leaves 80% where only physics can guide the model.</p>
 <p><strong>Physics accuracy.</strong> A first-principles model that captures 90% of the dynamics is highly valuable. An analytical model that captures only 30% may still cause problems if its errors are systematic (i.e., confidently wrong in a predictable way). Validate the physics model on a held-out subset before trusting it.</p>
-<p><strong>Which constraints are about what.</strong> Mass and energy conservation are exact (up to measurement error), but they constrain the <em>model</em>, not the policy: no action can make mass disappear, so they belong in the structure of the dynamics model or in checks on its predictions. Hard constraints on the <em>policy</em> are operating limits — temperature bounds, equipment ratings, tank levels. Empirical correlations (viscosity–temperature–composition) are approximate; use them as soft penalties or as initial guesses for the neural residual.</p>
+<p><strong>Which constraints are about what.</strong> Mass and energy conservation are exact (up to measurement error), but they constrain the <em>model</em>, not the policy: no action can make mass disappear, so they belong in the structure of the dynamics model or in checks on its predictions. Hard constraints on the <em>policy</em> are operating limits – temperature bounds, equipment ratings, tank levels. Empirical correlations (viscosity–temperature–composition) are approximate; use them as soft penalties or as initial guesses for the neural residual.</p>
 <div class="codehilite"><pre><span></span><code>                    Physics Knowledge Available
                     None         Partial       Strong
                    ┌────────────┬─────────────┬──────────────┐
@@ -388,10 +388,10 @@ Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
                    └────────────┴─────────────┴──────────────┘
 </code></pre></div>
 
-<p>"Hybrid + CQL" means a model-based method whose pessimism lives in the value function rather than in an uncertainty penalty, such as COMBO (<a href="https://arxiv.org/abs/2102.08363">Yu et al., 2021</a>): CQL trained on real transitions plus rollouts of the hybrid model, with Q-values pushed down on the synthetic ones. It is the natural choice when the hybrid ensemble's uncertainty cannot be trusted because its members share the physics. The bottom-left cell (dense data, no physics) is the D4RL benchmark — the standard suite of offline datasets for MuJoCo-style simulated control, where Chapters 4–8 shine. Industrial settings typically live in the top row, with sparse data, and in one of its two right-hand cells: partial or strong physics knowledge.</p>
+<p>"Hybrid + CQL" means a model-based method whose pessimism lives in the value function rather than in an uncertainty penalty, such as COMBO (<a href="https://arxiv.org/abs/2102.08363">Yu et al., 2021</a>): CQL trained on real transitions plus rollouts of the hybrid model, with Q-values pushed down on the synthetic ones. It is the natural choice when the hybrid ensemble's uncertainty cannot be trusted because its members share the physics. The bottom-left cell (dense data, no physics) is the D4RL benchmark – the standard suite of offline datasets for MuJoCo-style simulated control, where Chapters 4–8 shine. Industrial settings typically live in the top row, with sparse data, and in one of its two right-hand cells: partial or strong physics knowledge.</p>
 <hr />
 <h2>Further Directions</h2>
-<p><strong>Koopman operator methods.</strong> Nonlinear dynamics become linear in a suitable latent space — the Koopman eigenspace. If this space can be learned or approximated, the dynamics model simplifies enormously: linear prediction, linear uncertainty propagation, and tractable optimal control. Active research area; not yet standardized for offline RL.</p>
+<p><strong>Koopman operator methods.</strong> Nonlinear dynamics become linear in a suitable latent space – the Koopman eigenspace. If this space can be learned or approximated, the dynamics model simplifies enormously: linear prediction, linear uncertainty propagation, and tractable optimal control. Active research area; not yet standardized for offline RL.</p>
 <p><strong>Gaussian Processes.</strong> GPs offer exact uncertainty quantification and naturally incorporate physical structure through kernel design. They are computationally expensive for large datasets but highly effective when data is very scarce (hundreds of transitions rather than thousands).</p>
 <p><strong>Physics-informed neural networks (PINNs).</strong> Instead of a residual model, enforce physics equations as a regularization loss during neural network training. A PINN predicting the wrong sign for a known derivative can be penalized during training. Compatible with any architecture.</p>
 <p><strong>Structured state spaces.</strong> If the physics dictates a specific state-space structure (e.g., a mass-spring-damper Lagrangian system), neural networks can be constrained to architectures that respect this structure (Hamiltonian or Lagrangian neural networks). Very effective when the structural assumption holds; brittle when it doesn't.</p>
@@ -428,7 +428,7 @@ Coverage  ↓        │  (Ch. 1)   │ + MOReL     │ + MOReL      │
 </tr>
 </tbody>
 </table>
-<p>Physics-informed methods are not a replacement for offline RL algorithms — they are a layer on top. Reward shaping plugs into CQL or IQL without modifying a line of algorithm code. The hybrid model replaces the ensemble in MOPO or MOReL while keeping everything else intact. The combination of a physically grounded dynamics model with a pessimistic offline RL algorithm (MOReL + hybrid ensemble) is the natural architecture for industrial settings where data is sparse but domain knowledge is rich.</p>
+<p>Physics-informed methods are not a replacement for offline RL algorithms – they are a layer on top. Reward shaping plugs into CQL or IQL without modifying a line of algorithm code. The hybrid model replaces the ensemble in MOPO or MOReL while keeping everything else intact. The combination of a physically grounded dynamics model with a pessimistic offline RL algorithm (MOReL + hybrid ensemble) is the natural architecture for industrial settings where data is sparse but domain knowledge is rich.</p>
 <p>Chapter 10 works through an industrial case study showing how these pieces fit together in practice.</p>
 <hr />
 <h2>References</h2>

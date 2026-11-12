@@ -1,23 +1,23 @@
 """
 physics_informed.py
 ===================
-Physics-Informed Offline RL — complete implementation for Chapter 9.
+Physics-Informed Offline RL – complete implementation for Chapter 9.
 "Offline RL: From Theory to Industrial Practice"
 
 Three modular components, each usable independently:
 
-  Part I  — PhysicsRewardWrapper  : soft constraint penalties in reward
-  Part II — HybridDynamicsNet     : physics prior + learned residual
+  Part I  – PhysicsRewardWrapper  : soft constraint penalties in reward
+  Part II – HybridDynamicsNet     : physics prior + learned residual
              HybridEnsemble       : drop-in for Chapter 8 DynamicsEnsemble
-  Part III— LagrangianPolicyOptimizer : hard constraints via primal-dual
+  Part III– LagrangianPolicyOptimizer : hard constraints via primal-dual
 
 All three components are designed to wrap existing Chapter 4–8 algorithms
 without modification. See run_demo() at the bottom for a complete example.
 
 References:
-  Altman (1999) — Constrained Markov Decision Processes
-  Banerjee et al. (2023) — Survey on Physics Informed RL
-  Paternain et al. (2019) — Constrained RL Has Zero Duality Gap
+  Altman (1999) – Constrained Markov Decision Processes
+  Banerjee et al. (2023) – Survey on Physics Informed RL
+  Paternain et al. (2019) – Constrained RL Has Zero Duality Gap
 """
 
 import numpy as np
@@ -32,7 +32,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 
 # ============================================================================
-# 1. TOY ENVIRONMENT — generic continuous process
+# 1. TOY ENVIRONMENT – generic continuous process
 # ============================================================================
 
 class ContinuousProcessEnv:
@@ -40,15 +40,15 @@ class ContinuousProcessEnv:
     Generic continuous industrial process for demonstration.
 
     Anonymized three-variable process:
-      s = (x0, x1, x2)   — three state variables
-      a = (u0, u1)        — two control inputs
+      s = (x0, x1, x2)   – three state variables
+      a = (u0, u1)        – two control inputs
 
     True dynamics (unknown to the agent):
       x0: first-order with tau=15, K=0.9, plus nonlinear cross-coupling
       x1: first-order with tau=8,  K=0.7, plus transport delay effect
       x2: derived from x0, x1 via empirical relationship + noise
 
-    Physics model (known to the agent — approximate):
+    Physics model (known to the agent – approximate):
       x0: first-order with tau=15, K=0.9  (good, 90% coverage)
       x1: first-order with tau=8,  K=0.7  (good, 85% coverage)
       x2: linear combination              (rough, 60% coverage)
@@ -115,7 +115,7 @@ def collect_offline_dataset(
     """
     Collect offline dataset from a noisy proportional controller.
 
-    The behavior policy is suboptimal and covers only part of the state space —
+    The behavior policy is suboptimal and covers only part of the state space –
     typical of historical industrial logs.
     """
     env = ContinuousProcessEnv(noise_std=0.02, seed=seed)
@@ -168,7 +168,7 @@ def normalize_dataset(dataset: Dict) -> Tuple[Dict, np.ndarray, np.ndarray]:
 
 
 # ============================================================================
-# 3. PART I — PHYSICS REWARD SHAPING
+# 3. PART I – PHYSICS REWARD SHAPING
 # ============================================================================
 
 class PhysicsRewardWrapper:
@@ -340,7 +340,7 @@ def monotone_constraint(state: torch.Tensor,
 
 
 # ============================================================================
-# 4. PART II — HYBRID DYNAMICS MODEL
+# 4. PART II – HYBRID DYNAMICS MODEL
 # ============================================================================
 
 class HybridDynamicsNet(nn.Module):
@@ -351,7 +351,7 @@ class HybridDynamicsNet(nn.Module):
         mean_next_state = f_phys(state, action) + f_NN(state, action; θ)
         log_var         = f_logvar(state, action; θ)   [residual uncertainty]
 
-    The physics term is computed with torch.no_grad() — no gradient flows
+    The physics term is computed with torch.no_grad() – no gradient flows
     through it. Only the residual parameters θ are trained.
 
     Training loss = NLL of next_state under predicted Gaussian.
@@ -616,7 +616,7 @@ class HybridEnsemble:
 
 
 # ============================================================================
-# 5. PART III — LAGRANGIAN POLICY OPTIMIZER
+# 5. PART III – LAGRANGIAN POLICY OPTIMIZER
 # ============================================================================
 
 class QNetwork(nn.Module):
@@ -882,7 +882,7 @@ def visualize_hybrid_vs_blackbox(hybrid_ensemble: HybridEnsemble,
 
 
 # ============================================================================
-# 7. DEMO — full pipeline
+# 7. DEMO – full pipeline
 # ============================================================================
 
 def run_demo(device: str = 'cpu', quick: bool = False) -> None:
@@ -891,10 +891,10 @@ def run_demo(device: str = 'cpu', quick: bool = False) -> None:
       1. Collect offline dataset from noisy PID controller
       2. Build physics-penalized reward (Part I)
       3. Train hybrid ensemble and compare to physics alone (Part II)
-      4. Set up Lagrangian optimizer (Part III — setup only, not full training)
+      4. Set up Lagrangian optimizer (Part III – setup only, not full training)
     """
     print("=" * 65)
-    print("Physics-Informed Offline RL — Chapter 9 Demo")
+    print("Physics-Informed Offline RL – Chapter 9 Demo")
     print("=" * 65)
 
     STATE_DIM  = 3
@@ -998,9 +998,9 @@ def run_demo(device: str = 'cpu', quick: bool = False) -> None:
     # ── Summary ────────────────────────────────────────────────────────────
     print("\n" + "=" * 65)
     print("Demo complete. Files saved:")
-    print("  reward_shaping.png       — Part I visualization")
-    print("  hybrid_vs_physics.png    — Part II: hybrid vs physics alone")
-    print("  lagrangian_history.png   — Part III (generated during training)")
+    print("  reward_shaping.png       – Part I visualization")
+    print("  hybrid_vs_physics.png    – Part II: hybrid vs physics alone")
+    print("  lagrangian_history.png   – Part III (generated during training)")
     print("=" * 65)
 
 

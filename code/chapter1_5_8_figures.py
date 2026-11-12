@@ -3,9 +3,9 @@ chapter1_5_8_figures.py
 =======================
 Illustrative figures for Chapters 1, 5 and 8 (numpy + matplotlib only).
 
-  figures/ch1/bc_drift.png         — compounding error of behavioral cloning
-  figures/ch5/expectiles.png       — expectiles of five dataset Q-values
-  figures/ch8/penalty_geometry.png — MOPO's soft vs MOReL's hard pessimism
+  figures/ch1/bc_drift.png         – compounding error of behavioral cloning
+  figures/ch5/expectiles.png       – expectiles of five dataset Q-values
+  figures/ch8/penalty_geometry.png – MOPO's soft vs MOReL's hard pessimism
 
 Usage (from repo root):
     python code/chapter1_5_8_figures.py
@@ -101,7 +101,7 @@ def expectiles():
     curve = np.array([expectile(q, t) for t in taus])
 
     fig, ax = plt.subplots(figsize=(7.2, 3.8), dpi=150)
-    style(ax, r"expectile level  $\tau$", r"$V(s)$ — the $\tau$-expectile")
+    style(ax, r"expectile level  $\tau$", r"$V(s)$ – the $\tau$-expectile")
     for v in q:
         ax.axhline(v, color=MUTED, lw=0.8, ls=":", alpha=0.7)
     ax.text(1.0, q[-1], " best dataset action", va="center", fontsize=8.5, color=MUTED)

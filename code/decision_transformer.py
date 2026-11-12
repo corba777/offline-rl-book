@@ -8,15 +8,15 @@ Chen et al., "Decision Transformer: Reinforcement Learning via Sequence Modeling
 arXiv:2106.01345
 
 Idea: treat offline RL as sequence modeling. Condition on (return-to-go, state, action) history;
-predict next action. No Q-function, no Bellman backup — supervised learning on trajectory chunks.
+predict next action. No Q-function, no Bellman backup – supervised learning on trajectory chunks.
 
 Contents:
-    1. ThermalProcessEnv     — same toy environment as other chapters
+    1. ThermalProcessEnv     – same toy environment as other chapters
     2. Dataset → trajectories with return-to-go (R_t)
-    3. DecisionTransformer  — GPT-style causal transformer over (R, s, a) tokens
+    3. DecisionTransformer  – GPT-style causal transformer over (R, s, a) tokens
     4. Training: sample (traj, t), get chunk, predict a_t with MSE loss
     5. Eval: feed target return R*, autoregressively generate actions, update R each step
-    6. run_demo() — train and evaluate
+    6. run_demo() – train and evaluate
 
 Usage:
     python decision_transformer.py
@@ -233,7 +233,7 @@ class DecisionTransformer(nn.Module):
         """
         R_chunk: (B, context_len, 1)
         S_chunk: (B, context_len, state_dim)
-        A_chunk: (B, context_len, action_dim) — last position can be dummy for target
+        A_chunk: (B, context_len, action_dim) – last position can be dummy for target
         """
         B, L, _ = R_chunk.shape
         tokens = torch.cat([R_chunk, S_chunk, A_chunk], dim=-1)
@@ -319,7 +319,7 @@ def evaluate_dt(env, model, target_return, s_mean, s_std, rtg_scale, context_len
 # ============================================================================
 
 def main(quick=False):
-    print("Decision Transformer (Chapter 7) — Offline RL via sequence modeling")
+    print("Decision Transformer (Chapter 7) – Offline RL via sequence modeling")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     state_dim, action_dim = 3, 2
     context_len = 20

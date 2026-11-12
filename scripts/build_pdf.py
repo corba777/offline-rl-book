@@ -39,7 +39,7 @@ DOI = "10.5281/zenodo.24045871"
 # What differs between the English and the Russian edition.
 LANG = {
     "en": dict(title="Offline RL: From Theory to Industrial Practice",
-               subtitle="Applied learning notes on offline deep reinforcement learning",
+               subtitle="Practical notes on offline deep reinforcement learning",
                title_tex="title.tex", cover="cover.svg", cover_label="Cover",
                site=f"{SITE}/offline-rl-book/", about="About this book", toc="Contents",
                date=lambda d: d.strftime("%B %-d, %Y"),
@@ -47,7 +47,7 @@ LANG = {
                        "Free online: <{site}>", "Source and code: <https://github.com/corba777/offline-rl-book>",
                        "DOI: [{doi}](https://doi.org/{doi})", "Built from commit {commit}."]),
     "ru": dict(title="Offline RL: от теории к промышленной практике",
-               subtitle="Прикладные учебные заметки по offline deep RL",
+               subtitle="Практические заметки об offline deep RL",
                title_tex="title_ru.tex", cover="cover_ru.svg", cover_label="Обложка",
                site=f"{SITE}/offline-rl-book/ru/", about="Об этой книге", toc="Содержание",
                date=lambda d: f"{d.day} {RU_MONTHS[d.month - 1]} {d.year} г.",
@@ -341,7 +341,7 @@ def about_text(lang="en"):
     tex = (HERE / LANG[lang]["title_tex"]).read_text(encoding="utf-8")
     body = re.search(r"\\begin\{quote\}(.*?)\\end\{quote\}", tex, flags=re.S).group(1)
     paras = [" ".join(p.split()) for p in re.split(r"\n\s*\n", body) if p.strip()]
-    return "\n\n".join(paras).replace("~---", "\u00a0—").replace("---", "—")
+    return "\n\n".join(paras).replace("~--", "\u00a0–").replace("--", "–")
 
 
 def build_epub(out, lang="en"):

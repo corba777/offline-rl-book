@@ -10,9 +10,9 @@ permalink: "/offline-rl-book/"
 
 <p class="byline">Created and maintained by <strong>Artem Zvyagintsev</strong></p>
 
-<p class="disclaimer">Applied learning notes on offline deep reinforcement learning — not an authoritative textbook. The material summarizes algorithms, implementation patterns, and practical caveats; linked code is educational scaffolding.</p>
+<p class="disclaimer">Practical notes, not an exhaustive textbook: algorithms, implementation patterns and practical caveats, with code written for learning rather than production.</p>
 
-A practical guide to offline reinforcement learning — for practitioners who know ML and want to apply RL to real-world systems without live experiments.
+A practical guide to offline reinforcement learning – for practitioners who know ML and want to apply RL to real-world systems without live experiments.
 
 Each chapter: **idea → formalization → code → limitations**.
 

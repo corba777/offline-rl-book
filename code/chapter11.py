@@ -1,7 +1,7 @@
 """
 chapter11.py
 ===========
-Explainability in Offline RL — SHAP-based analysis of trained agents.
+Explainability in Offline RL – SHAP-based analysis of trained agents.
 Chapter 11 of "Offline RL: From Theory to Industrial Practice"
 
 This chapter answers a question that every industrial deployment eventually
@@ -9,16 +9,16 @@ faces: *why* did the agent choose this action at this moment?
 
 Three complementary explanations are computed for a trained CQL agent:
 
-  1. Q-function SHAP  — why does the agent VALUE a particular (state, action)?
+  1. Q-function SHAP  – why does the agent VALUE a particular (state, action)?
      "What state features make this action look good to the critic?"
 
-  2. Policy SHAP      — why does the agent CHOOSE a particular action?
+  2. Policy SHAP      – why does the agent CHOOSE a particular action?
      "What state features drive the choice of heat_input and flow_input?"
 
-  3. Dynamics SHAP    — why does the model PREDICT a particular next state?
+  3. Dynamics SHAP    – why does the model PREDICT a particular next state?
      "What inputs most influence the temperature/filler/level predictions?"
 
-Each explanation answers a different question. They do not always agree —
+Each explanation answers a different question. They do not always agree –
 a state feature can strongly affect the Q-function without strongly affecting
 the policy, if the Q-function is flat in that direction. Understanding these
 discrepancies is as informative as the explanations themselves.
@@ -30,7 +30,7 @@ Implementation strategy:
   - For multi-output models (policy, dynamics) we explain each output separately
   - Visualization: summary plots, dependence plots, force plots (single instance)
 
-Imports (not reimplemented — same as previous chapters):
+Imports (not reimplemented – same as previous chapters):
   Ch3: CQLAgent, QNetwork, GaussianPolicy, BCAgent  from cql.py
   Ch5: DynamicsEnsemble                             from morel.py
   Ch7: CoatingProcessEnv, collect_industrial_dataset,
@@ -87,15 +87,15 @@ SA_NAMES     = STATE_NAMES + ACTION_NAMES   # for Q-function (state + action inp
 
 
 # ============================================================================
-# 1. WRAPPERS — make neural networks callable as numpy functions for SHAP
+# 1. WRAPPERS – make neural networks callable as numpy functions for SHAP
 # ============================================================================
 
 class QFunctionWrapper:
     """
     Wrap QNetwork as a numpy-in / numpy-out function for SHAP.
 
-    Input:  X ∈ R^{n × (state_dim + action_dim)}  — concatenated [state, action]
-    Output: q ∈ R^n                                — scalar Q-value per sample
+    Input:  X ∈ R^{n × (state_dim + action_dim)}  – concatenated [state, action]
+    Output: q ∈ R^n                                – scalar Q-value per sample
 
     SHAP KernelExplainer calls this function many times with small batches;
     wrapping in torch.no_grad() and batching is essential for performance.
@@ -124,11 +124,11 @@ class PolicyWrapper:
     """
     Wrap GaussianPolicy as a numpy-in / numpy-out function for SHAP.
 
-    Input:  S ∈ R^{n × state_dim}   — normalized state
-    Output: A ∈ R^{n × action_dim}  — deterministic mean action
+    Input:  S ∈ R^{n × state_dim}   – normalized state
+    Output: A ∈ R^{n × action_dim}  – deterministic mean action
 
     We explain the deterministic mean action (not sampled) so that SHAP
-    values are stable across calls — stochastic outputs would give noisy
+    values are stable across calls – stochastic outputs would give noisy
     SHAP estimates.
     """
 
@@ -176,10 +176,10 @@ class DynamicsWrapper:
     """
     Wrap DynamicsEnsemble as a numpy-in / numpy-out function for SHAP.
 
-    Input:  X ∈ R^{n × (state_dim + action_dim)}  — concatenated [state, action]
-    Output: s_next ∈ R^{n × state_dim}            — ensemble mean next state
+    Input:  X ∈ R^{n × (state_dim + action_dim)}  – concatenated [state, action]
+    Output: s_next ∈ R^{n × state_dim}            – ensemble mean next state
 
-    We explain the ensemble mean prediction — the expected next state.
+    We explain the ensemble mean prediction – the expected next state.
     Uncertainty is analyzed separately (see explain_uncertainty).
     """
 
@@ -236,7 +236,7 @@ class DynamicsSingleOutputWrapper:
 
 
 # ============================================================================
-# 2. EXPLAINER — manages background, computes and stores SHAP values
+# 2. EXPLAINER – manages background, computes and stores SHAP values
 # ============================================================================
 
 class OfflineRLExplainer:
@@ -244,15 +244,15 @@ class OfflineRLExplainer:
     SHAP-based explainability for a trained Offline RL agent.
 
     Computes three families of SHAP values:
-      1. q_shap     — SHAP values for Q1(s, a): what features drive Q-value?
-      2. policy_shap — SHAP values for π(s): what state features drive actions?
-      3. dynamics_shap — SHAP values for f̂(s, a): what inputs drive next-state?
+      1. q_shap     – SHAP values for Q1(s, a): what features drive Q-value?
+      2. policy_shap – SHAP values for π(s): what state features drive actions?
+      3. dynamics_shap – SHAP values for f̂(s, a): what inputs drive next-state?
 
     All use KernelExplainer (model-agnostic):
       - Works on any differentiable or non-differentiable black-box function
       - Approximates SHAP values via weighted linear regression on masked inputs
       - Slower than TreeExplainer or DeepExplainer, but makes no architecture
-        assumptions — important when comparing Q-function vs policy vs dynamics
+        assumptions – important when comparing Q-function vs policy vs dynamics
 
     Background dataset:
       A representative sample from the offline dataset used as the SHAP
@@ -283,7 +283,7 @@ class OfflineRLExplainer:
         self.S          = CoatingProcessEnv.STATE_DIM
         self.A          = CoatingProcessEnv.ACTION_DIM
 
-        # Build background dataset — representative sample
+        # Build background dataset – representative sample
         n     = len(dataset['states'])
         idx   = np.random.default_rng(42).choice(n, size=min(n_background, n),
                                                    replace=False)
@@ -328,7 +328,7 @@ class OfflineRLExplainer:
     def explain_policy(self, states: np.ndarray,
                        n_samples: int = 'auto') -> List[np.ndarray]:
         """
-        Compute SHAP values for π(state) — one array per action dimension.
+        Compute SHAP values for π(state) – one array per action dimension.
 
         Returns list of length action_dim, each element: (n_explain, state_dim)
         shap_values[0][i, j] = contribution of state feature j to action 0
@@ -353,7 +353,7 @@ class OfflineRLExplainer:
                          state_indices: Optional[List[int]] = None,
                          n_samples: int = 'auto') -> Dict[int, np.ndarray]:
         """
-        Compute SHAP values for f̂(state, action) — one array per predicted dim.
+        Compute SHAP values for f̂(state, action) – one array per predicted dim.
 
         state_indices: which next-state dimensions to explain.
                        Default: [0, 1, 4] (temperature, filler, level).
@@ -392,17 +392,17 @@ class OfflineRLExplainer:
 
         n_explain:    number of instances to explain
         n_background: passed to KernelExplainer (more = more accurate, slower)
-        n_samples:    SHAP nsamples parameter — number of masked coalitions
+        n_samples:    SHAP nsamples parameter – number of masked coalitions
                       evaluated per instance. 100 is a good default;
                       use 50 for fast exploration, 500+ for publication.
 
         Returns dict with keys:
-          'states'         — the explained states (normalized)
-          'actions'        — the explained actions
-          'q_shap'         — SHAP values for Q1 (n, state_dim + action_dim)
-          'policy_shap'    — list of SHAP arrays, one per action dim
-          'dynamics_shap'  — dict {state_idx: shap array}
-          'q_base'         — mean Q on background (scalar baseline)
+          'states'         – the explained states (normalized)
+          'actions'        – the explained actions
+          'q_shap'         – SHAP values for Q1 (n, state_dim + action_dim)
+          'policy_shap'    – list of SHAP arrays, one per action dim
+          'dynamics_shap'  – dict {state_idx: shap array}
+          'q_base'         – mean Q on background (scalar baseline)
         """
         n   = len(self.dataset['states'])
         idx = np.random.default_rng(0).choice(
@@ -600,7 +600,7 @@ def plot_force_single(q_shap_row: np.ndarray,
                       instance_label: str = 'Instance',
                       save_path: Optional[str] = None) -> None:
     """
-    Force plot for a single instance — horizontal waterfall chart.
+    Force plot for a single instance – horizontal waterfall chart.
 
     Shows how each feature pushes the Q-value up (positive SHAP, blue)
     or down (negative SHAP, red) from the baseline Q_base to the final Q.
@@ -651,7 +651,7 @@ def plot_shap_dependence(shap_values: np.ndarray,
     """
     Dependence plot: SHAP value of feature_idx vs its raw value.
 
-    Colored by interaction_idx if provided — reveals interaction effects.
+    Colored by interaction_idx if provided – reveals interaction effects.
     Example: SHAP(temperature) vs temperature, colored by filler_frac.
     If the coloring is systematic (all-blue or all-red on one side),
     there is an interaction between temperature and filler_frac in the Q-function.
@@ -682,7 +682,7 @@ def plot_shap_dependence(shap_values: np.ndarray,
 
 
 # ============================================================================
-# 4. SUMMARY STATISTICS — text output for the chapter
+# 4. SUMMARY STATISTICS – text output for the chapter
 # ============================================================================
 
 def print_shap_summary(results: Dict,
@@ -694,7 +694,7 @@ def print_shap_summary(results: Dict,
     formatted for inclusion in an operator report or chapter discussion.
     """
     print("\n" + "=" * 58)
-    print("  CHAPTER 11 — SHAP ANALYSIS SUMMARY")
+    print("  CHAPTER 11 – SHAP ANALYSIS SUMMARY")
     print("=" * 58)
 
     # Q-function top features
@@ -739,7 +739,7 @@ def print_shap_summary(results: Dict,
 
 
 # ============================================================================
-# 5. CONSISTENCY CHECK — do Q, policy, and dynamics agree?
+# 5. CONSISTENCY CHECK – do Q, policy, and dynamics agree?
 # ============================================================================
 
 def check_explanation_consistency(results: Dict) -> Dict[str, float]:
@@ -855,7 +855,7 @@ def print_consistency_report(metrics: Dict[str, float]) -> None:
 
 
 # ============================================================================
-# 6. TRAINING UTILITIES (minimal — reuse from Chapter 10)
+# 6. TRAINING UTILITIES (minimal – reuse from Chapter 10)
 # ============================================================================
 
 def train_cql_for_shap(device: str = 'cpu',
@@ -935,7 +935,7 @@ def run_shap_analysis(device:     str  = 'cpu',
         n_explain = 20; n_background = 20; n_samples = 20
 
     print("=" * 58)
-    print("Chapter 11: Explainability in Offline RL — SHAP Analysis")
+    print("Chapter 11: Explainability in Offline RL – SHAP Analysis")
     print("=" * 58)
 
     # Train

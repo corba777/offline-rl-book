@@ -150,7 +150,7 @@ def train_bc(
 
             optimizer.zero_grad()
             loss.backward()
-            # Gradient clipping — helps with stability on real-world noisy data
+            # Gradient clipping – helps with stability on real-world noisy data
             torch.nn.utils.clip_grad_norm_(policy.parameters(), max_norm=1.0)
             optimizer.step()
             epoch_loss += loss.item()
@@ -289,7 +289,7 @@ def demo_compounding_error(horizon: int = 50, n_trials: int = 20):
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("Behavioral Cloning — Compounding Error Demo")
+    print("Behavioral Cloning – Compounding Error Demo")
     print("=" * 60)
     print()
 

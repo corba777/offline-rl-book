@@ -1,7 +1,7 @@
 """
 chapter10.py
 ===========
-Industrial Applications of Offline RL — complete case study.
+Industrial Applications of Offline RL – complete case study.
 Chapter 10 of "Offline RL: From Theory to Industrial Practice"
 
 This file integrates algorithms from Chapters 1–6 into a single
@@ -73,26 +73,26 @@ except ImportError:
 
 
 # ============================================================================
-# 1. ENVIRONMENT — THERMAL COATING PROCESS
+# 1. ENVIRONMENT – THERMAL COATING PROCESS
 # ============================================================================
 
 class CoatingProcessEnv:
     """
-    Anonymized thermal coating process — industrial case study for Chapter 10.
+    Anonymized thermal coating process – industrial case study for Chapter 10.
 
     Extends ThermalProcessEnv from Chapters 1–5 to 5 state variables,
     representative of a real multi-variable continuous manufacturing process.
 
     State (5 variables, all normalized to [0, 1]):
-      s[0]  temperature     — process temperature in the coating zone
-      s[1]  filler_fraction — fraction of filler material in the blend
-      s[2]  viscosity       — blend viscosity (nonlinear fn of T and filler)
-      s[3]  density         — bulk material density
-      s[4]  level           — surge tank level (integrating: no self-regulation)
+      s[0]  temperature     – process temperature in the coating zone
+      s[1]  filler_fraction – fraction of filler material in the blend
+      s[2]  viscosity       – blend viscosity (nonlinear fn of T and filler)
+      s[3]  density         – bulk material density
+      s[4]  level           – surge tank level (integrating: no self-regulation)
 
     Actions (2 variables):
-      a[0]  heat_input  — heater setpoint delta, in [-1, 1]
-      a[1]  flow_input  — filler flow rate delta, in [-1, 1]
+      a[0]  heat_input  – heater setpoint delta, in [-1, 1]
+      a[1]  flow_input  – filler flow rate delta, in [-1, 1]
 
     True dynamics (unknown to agent):
       temperature:     first-order, tau=12, K=0.85, cross-coupling with filler
@@ -246,7 +246,7 @@ class CoatingProcessEnv:
 
 
 # ============================================================================
-# 2. DATASET COLLECTION — INDUSTRIAL OPERATING REGIMES
+# 2. DATASET COLLECTION – INDUSTRIAL OPERATING REGIMES
 # ============================================================================
 
 def collect_industrial_dataset(
@@ -359,7 +359,7 @@ def make_dataloader(dataset: Dict,
 
 
 # ============================================================================
-# 3. EVALUATION — INDUSTRIAL METRICS
+# 3. EVALUATION – INDUSTRIAL METRICS
 # ============================================================================
 
 class IndustrialEvaluator:
@@ -367,13 +367,13 @@ class IndustrialEvaluator:
     Evaluate a trained policy with industrial-relevant metrics, per episode.
 
     For temperature (T) and filler fraction (f):
-      iae          — mean |x - x*| per step (integrated absolute error / T)
-      rmse         — root-mean-square error from setpoint
-      da           — directional accuracy, counted ONLY on steps where the
+      iae          – mean |x - x*| per step (integrated absolute error / T)
+      rmse         – root-mean-square error from setpoint
+      da           – directional accuracy, counted ONLY on steps where the
                      previous error exceeds a noise band (k * noise_std). Inside
                      the band the sign of the error is set by noise, and a
                      perfect regulator would score ~50%.
-      overshoot    — fraction of those steps where the variable crosses the
+      overshoot    – fraction of those steps where the variable crosses the
                      setpoint and lands more than one band beyond it
     For the level: iae and rmse.
     Constraints: violation rate (fraction of steps with any bound violated)
@@ -600,8 +600,8 @@ def rollout_error_analysis(ensemble, units: 'Units', norm_dataset: Dict, policy,
     Multi-step error of the hybrid model against the true noise-free dynamics,
     from the same start states. Open loop: both follow the same logged action
     sequence. Closed loop: the trained policy acts on its own trajectory in
-    each — on the model's predicted states in one, on the true states in the
-    other — which is what MOReL's synthetic rollouts look like. For each
+    each – on the model's predicted states in one, on the true states in the
+    other – which is what MOReL's synthetic rollouts look like. For each
     horizon k: RMS error over the five process variables (normalized units),
     the mean uncertainty u at step k, the share of rollouts whose u has
     exceeded epsilon by step k (where MOReL would have halted), and the rank
@@ -878,7 +878,7 @@ def plot_episode_trajectory(
 
     t   = np.arange(len(T_h))
     fig, axes = plt.subplots(4, 1, figsize=(11, 10), sharex=True)
-    fig.suptitle(f'Episode trajectory — {agent_name}', fontsize=12)
+    fig.suptitle(f'Episode trajectory – {agent_name}', fontsize=12)
 
     for ax, hist, tgt, lo, hi, name, col in [
         (axes[0], T_h, env.T_TARGET,     *env.BOUNDS[0], 'Temperature',     '#4472c4'),
@@ -982,7 +982,7 @@ def run_oracle_ablation(seed: int = 0, device: str = 'cpu', n_train_ep: int = 40
     """
     One seed of the oracle ablation, on the Markov (lagged) state: the same
     MOReL policy optimizer (SAC, rollout horizon, reward, budget, policy
-    initialization) trained in a 2x2 design — learned hybrid or true
+    initialization) trained in a 2x2 design – learned hybrid or true
     noise-free dynamics, with HALT driven by the hybrid ensemble's uncertainty
     or with no HALT. Also measures how well that uncertainty predicts the
     model's one-step error and how the error grows over multi-step rollouts.
@@ -1058,7 +1058,7 @@ def run_halt_study(seed: int = 0, device: str = 'cpu', lagged_flow: bool = True,
     """
     One seed of the HALT study: one hybrid ensemble, then the same MOReL agent
     (same policy initialization, SAC budget, kappa) with three termination
-    rules — epsilon at the 80th percentile of the ensemble's uncertainty on the
+    rules – epsilon at the 80th percentile of the ensemble's uncertainty on the
     data, at the 99th, or no HALT. On the lagged state the first arm repeats
     HybridMOReL of the oracle ablation exactly.
     """
@@ -1410,7 +1410,7 @@ def print_summary(summary) -> None:
     methods = summary['methods']
     names = list(methods.keys())
     print("\n" + "=" * 100)
-    print("  CHAPTER 10 — mean over seeds [95% t-interval]")
+    print("  CHAPTER 10 – mean over seeds [95% t-interval]")
     print("=" * 100)
     print(f"{'Metric':16}" + "".join(f"{n:>21}" for n in names))
     for key, label, fmt in rows:

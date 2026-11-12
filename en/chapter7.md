@@ -20,9 +20,9 @@ permalink: "/offline-rl-book/en/chapter7/"
 
 ## A Different Paradigm
 
-Chapters 2–6 all shared the same backbone: a **value function** (Q or V) and a **policy**, trained with Bellman backups or policy gradients. The central challenge was extrapolation error — the value function is wrong for OOD actions — and we addressed it with pessimism (CQL, IQL) or policy constraints (TD3+BC, AWAC).
+Chapters 2–6 all shared the same backbone: a **value function** (Q or V) and a **policy**, trained with Bellman backups or policy gradients. The central challenge was extrapolation error – the value function is wrong for OOD actions – and we addressed it with pessimism (CQL, IQL) or policy constraints (TD3+BC, AWAC).
 
-**Decision Transformer (DT)** — Chen et al., NeurIPS 2021 — takes a different view. It treats **offline RL as sequence modeling**: given a trajectory prefix (past states, actions, and a summary of future return), predict the next action. There is **no Q-function**, **no Bellman backup**, and **no policy gradient**. The "policy" is the conditional distribution of actions given context; training is **supervised learning** on sequences from the dataset.
+**Decision Transformer (DT)** – Chen et al., NeurIPS 2021 – takes a different view. It treats **offline RL as sequence modeling**: given a trajectory prefix (past states, actions, and a summary of future return), predict the next action. There is **no Q-function**, **no Bellman backup**, and **no policy gradient**. The "policy" is the conditional distribution of actions given context; training is **supervised learning** on sequences from the dataset.
 
 This sidesteps extrapolation error in a structural way: the model never evaluates $\max_{a'} Q(s', a')$ over OOD actions, because there is no Q. It only ever predicts actions conditioned on inputs that appear in the data (state and return-to-go sequences). The tradeoff is that long-horizon credit assignment is learned implicitly from the data, not from TD; and the choice of conditioning (e.g. return-to-go) matters a lot.
 
@@ -40,9 +40,9 @@ where $R_t$ is the **return-to-go** at time $t$: the sum of rewards from $t$ onw
 2. **Past actions** $a_1, \ldots, a_{t-1}$
 3. **Return-to-go** $R_1, \ldots, R_t$ (the desired or observed cumulative future reward from each step)
 
-At **test time**, we choose a **target return** $R^*$ (e.g. the 90th percentile of returns in the dataset) and feed the model the same trajectory prefix plus $R^*$ as the current return-to-go. The model then generates actions that, in training data, were associated with that high return. No value function, no $\max_a$ — just autoregressive action prediction.
+At **test time**, we choose a **target return** $R^*$ (e.g. the 90th percentile of returns in the dataset) and feed the model the same trajectory prefix plus $R^*$ as the current return-to-go. The model then generates actions that, in training data, were associated with that high return. No value function, no $\max_a$ – just autoregressive action prediction.
 
-**Why this avoids extrapolation error:** The model is never asked to evaluate an action it hasn't seen in a similar context. It only predicts the next action given (state history, action history, return-to-go). During training all of these come from the dataset. At test time, however, we choose the target return ourselves, and a state paired with an ambitious return-to-go may be a combination the data never contained — the conditioning-sensitivity problem discussed under Limitations. The "policy" is implicit: high return-to-go → actions that led to high return in the data.
+**Why this avoids extrapolation error:** The model is never asked to evaluate an action it hasn't seen in a similar context. It only predicts the next action given (state history, action history, return-to-go). During training all of these come from the dataset. At test time, however, we choose the target return ourselves, and a state paired with an ambitious return-to-go may be a combination the data never contained – the conditioning-sensitivity problem discussed under Limitations. The "policy" is implicit: high return-to-go → actions that led to high return in the data.
 
 ---
 
@@ -77,7 +77,7 @@ DT uses a **GPT-style transformer** with causal masking:
 
 $$\mathcal{L} = -\mathbb{E}_{\tau \sim \mathcal{D}} \left[ \sum_{t=1}^{T} \log \pi_\theta(a_t \mid R_{1:t}, s_{1:t}, a_{1:t-1}) \right]$$
 
-For continuous actions, the model usually outputs a Gaussian mean (and optionally log-std); the loss is MSE on the mean (or full Gaussian NLL). No rewards in the loss — only states, actions, and return-to-go. The return-to-go is a **label** that tells the model "in this context, we want behavior that achieved this return." So the same state sequence can appear with different $R_t$ in different chunks (from different trajectories), and the model learns to map (context, desired return) → action.
+For continuous actions, the model usually outputs a Gaussian mean (and optionally log-std); the loss is MSE on the mean (or full Gaussian NLL). No rewards in the loss – only states, actions, and return-to-go. The return-to-go is a **label** that tells the model "in this context, we want behavior that achieved this return." So the same state sequence can appear with different $R_t$ in different chunks (from different trajectories), and the model learns to map (context, desired return) → action.
 
 ### At Test Time
 
@@ -96,7 +96,7 @@ So we **condition on the desired return** and let the model autoregressively gen
 
 ### Token Embedding and Model
 
-Chunks are built in `ChunkDataset`: for each (trajectory, timestep $t$) we form padded arrays of length `context_len` for return-to-go, states, and actions (actions up to $t-1$; we predict $a_t$). The model concatenates $(R, s, a)$ per timestep into a single token, embeds with one linear layer, adds positional embedding, and runs a causal transformer. *Note:* canonical DT (Chen et al.) embeds $R_t$, $s_t$, and $a_t$ as **three separate tokens** per timestep ($3K$ positions for context $K$); this book uses one fused token per step for simplicity. With fused tokens the contract matters: the token at the last position carries $R_t$ and $s_t$ but a zero in place of $a_t$, so the action being predicted is never an input. `code/test_decision_transformer.py` checks this — changing the target action leaves every input of its chunk unchanged — because a leak here would show up as a suspiciously low training loss and nothing else. Since the reduced architecture differs from the original, "simplified Decision Transformer" is the more accurate name for it.
+Chunks are built in `ChunkDataset`: for each (trajectory, timestep $t$) we form padded arrays of length `context_len` for return-to-go, states, and actions (actions up to $t-1$; we predict $a_t$). The model concatenates $(R, s, a)$ per timestep into a single token, embeds with one linear layer, adds positional embedding, and runs a causal transformer. *Note:* canonical DT (Chen et al.) embeds $R_t$, $s_t$, and $a_t$ as **three separate tokens** per timestep ($3K$ positions for context $K$); this book uses one fused token per step for simplicity. With fused tokens the contract matters: the token at the last position carries $R_t$ and $s_t$ but a zero in place of $a_t$, so the action being predicted is never an input. `code/test_decision_transformer.py` checks this – changing the target action leaves every input of its chunk unchanged – because a leak here would show up as a suspiciously low training loss and nothing else. Since the reduced architecture differs from the original, "simplified Decision Transformer" is the more accurate name for it.
 
 ```python
 class DecisionTransformer(nn.Module):
@@ -153,7 +153,7 @@ Training loop: sample a batch from `ChunkDataset`; forward pass; loss = MSE(pred
 
 **No theoretical guarantee.** DT does not provide a lower bound or safety guarantee. It is a powerful and flexible sequence model that avoids extrapolation by construction but does not have the same formal guarantees as CQL or MOPO.
 
-**Stochastic environments.** Return-conditioning has a deeper problem when outcomes are noisy, as in most industrial processes. A high return in the logs may reflect luck — a favorable disturbance — rather than good actions, so conditioning on a high return teaches the model to imitate whatever happened to precede lucky outcomes (Paster et al., 2022). Brandfonbrener et al. (2022) characterize when return-conditioned supervised learning can work at all, and Dichotomy of Control (Yang et al., 2023) conditions on a latent that separates what the agent controls from what it does not.
+**Stochastic environments.** Return-conditioning has a deeper problem when outcomes are noisy, as in most industrial processes. A high return in the logs may reflect luck – a favorable disturbance – rather than good actions, so conditioning on a high return teaches the model to imitate whatever happened to precede lucky outcomes (Paster et al., 2022). Brandfonbrener et al. (2022) characterize when return-conditioned supervised learning can work at all, and Dichotomy of Control (Yang et al., 2023) conditions on a latent that separates what the agent controls from what it does not.
 
 ---
 
@@ -168,7 +168,7 @@ Training loop: sample a batch from `ChunkDataset`; forward pass; loss = MSE(pred
 | Key hyperparameters | Context length, target return $R^*$, return normalization |
 | Implementation | Transformer (GPT-style, causal mask) |
 
-Decision Transformers offer a clean alternative to value-based offline RL: no Bellman backup, no extrapolation over actions, and a single supervised objective. They are well-suited to settings where you have long trajectories, multi-task or diverse data, and existing sequence-model infrastructure. For continuous control on a single task — especially when you want conservative value estimates (CQL's lower bound), fully in-sample updates (IQL), or uncertainty-aware synthetic data — CQL and IQL (Chapters 4–5) and model-based methods (Chapter 8) remain the default choice.
+Decision Transformers offer a clean alternative to value-based offline RL: no Bellman backup, no extrapolation over actions, and a single supervised objective. They are well-suited to settings where you have long trajectories, multi-task or diverse data, and existing sequence-model infrastructure. For continuous control on a single task – especially when you want conservative value estimates (CQL's lower bound), fully in-sample updates (IQL), or uncertainty-aware synthetic data – CQL and IQL (Chapters 4–5) and model-based methods (Chapter 8) remain the default choice.
 
 Chapter 8 turns to **model-based** offline RL: learning a dynamics model and using it to generate synthetic data with uncertainty-aware penalties (MOPO, MOReL).
 

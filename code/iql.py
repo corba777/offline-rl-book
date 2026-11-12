@@ -8,19 +8,19 @@ Kostrikov et al., "Offline Reinforcement Learning with Implicit Q-Learning", ICL
 arXiv:2110.06169
 
 Key idea: learn a value function V(s) via expectile regression, then extract
-a policy that maximizes advantage A(s,a) = Q(s,a) - V(s) — without ever
+a policy that maximizes advantage A(s,a) = Q(s,a) - V(s) – without ever
 querying the policy during Q-updates. This keeps all updates fully in-sample.
 
 Contents:
-    1. ThermalProcessEnv     — same toy environment as Chapter 4
-    2. Dataset collection    — noisy PID behavior policy
-    3. ValueNetwork          — V(s) critic
-    4. QNetwork              — Q(s,a) critic (double-Q)
-    5. DeterministicPolicy   — simple MLP actor
-    6. expectile_loss()      — asymmetric L2 (core of IQL)
-    7. IQLAgent              — full training loop
-    8. BCAgent               — behavioral cloning baseline (as in Chapter 4)
-    9. run_comparison()      — BC vs CQL-style vs IQL comparison
+    1. ThermalProcessEnv     – same toy environment as Chapter 4
+    2. Dataset collection    – noisy PID behavior policy
+    3. ValueNetwork          – V(s) critic
+    4. QNetwork              – Q(s,a) critic (double-Q)
+    5. DeterministicPolicy   – simple MLP actor
+    6. expectile_loss()      – asymmetric L2 (core of IQL)
+    7. IQLAgent              – full training loop
+    8. BCAgent               – behavioral cloning baseline (as in Chapter 4)
+    9. run_comparison()      – BC vs CQL-style vs IQL comparison
 
 Usage:
     python iql.py
@@ -37,15 +37,15 @@ from typing import Tuple, Dict, Optional
 
 
 # ============================================================================
-# 1. ENVIRONMENT  (identical to cql.py — reused for consistency)
+# 1. ENVIRONMENT  (identical to cql.py – reused for consistency)
 # ============================================================================
 
 class ThermalProcessEnv:
     """
     Toy thermal coating process (asphalt-manufacturing-inspired).
 
-    State:  [temperature, filler_pct, viscosity]  — all in [0, 1]
-    Action: [heat_delta, flow_delta]               — in [-1, 1]
+    State:  [temperature, filler_pct, viscosity]  – all in [0, 1]
+    Action: [heat_delta, flow_delta]               – in [-1, 1]
     """
 
     def __init__(self, T_target=0.6, f_target=0.5, max_steps=200,
@@ -142,9 +142,9 @@ def normalize_dataset(dataset):
 
 class ValueNetwork(nn.Module):
     """
-    V(s) — state value function.
+    V(s) – state value function.
     IQL learns this via expectile regression, not Bellman backup.
-    No action input — this is the key architectural difference from Q(s,a).
+    No action input – this is the key architectural difference from Q(s,a).
     """
     def __init__(self, state_dim: int, hidden_dim: int = 256):
         super().__init__()
@@ -159,7 +159,7 @@ class ValueNetwork(nn.Module):
 
 
 class QNetwork(nn.Module):
-    """Q(s,a) — action-value function (double-Q as in CQL)."""
+    """Q(s,a) – action-value function (double-Q as in CQL)."""
     def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
         super().__init__()
         self.net = nn.Sequential(
@@ -178,7 +178,7 @@ class DeterministicPolicy(nn.Module):
 
     IQL extracts the policy via advantage-weighted regression (AWR):
     minimize E[exp(beta * A(s,a)) * ||pi(s) - a||^2] over dataset actions.
-    No need for a stochastic policy — we weight dataset actions by their advantage.
+    No need for a stochastic policy – we weight dataset actions by their advantage.
     """
     def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
         super().__init__()
@@ -209,13 +209,13 @@ def expectile_loss(pred: torch.Tensor, target: torch.Tensor,
         L_tau(u) = |tau - 1(u < 0)| * u^2
 
     When u > 0 (pred < target, i.e., V underestimates Q):
-        weight = tau          (e.g. 0.7 — penalize underestimation more)
+        weight = tau          (e.g. 0.7 – penalize underestimation more)
     When u < 0 (pred > target, i.e., V overestimates Q):
-        weight = 1 - tau      (e.g. 0.3 — penalize overestimation less)
+        weight = 1 - tau      (e.g. 0.3 – penalize overestimation less)
 
     At tau=0.5 this is standard MSE.
     At tau->1.0 this approximates the maximum (V -> max Q).
-    IQL uses tau in [0.5, 0.9] — asymmetric toward upper quantile.
+    IQL uses tau in [0.5, 0.9] – asymmetric toward upper quantile.
 
     This is the entire magic of IQL: instead of max_a Q(s',a'),
     we fit V(s) to the upper expectile of Q(s, a_data).
@@ -238,7 +238,7 @@ def iql_value_loss(V: ValueNetwork,
     Target: min(Q1_tgt(s,a), Q2_tgt(s,a)) for dataset (s,a) pairs.
     V(s) is pushed toward the tau-expectile of this target.
 
-    No next states, no policy sampling — fully in-sample.
+    No next states, no policy sampling – fully in-sample.
     """
     with torch.no_grad():
         q_target = torch.min(Q1_tgt(states, actions), Q2_tgt(states, actions))
@@ -261,7 +261,7 @@ def iql_q_loss(Q: QNetwork,
                dones: torch.Tensor,
                gamma: float = 0.99) -> Tuple[torch.Tensor, dict]:
     """
-    Q-network update via standard TD backup — using live V(s') instead of max_a Q(s',a').
+    Q-network update via standard TD backup – using live V(s') instead of max_a Q(s',a').
 
     TD target: r + gamma * V(s')
     """
@@ -319,7 +319,7 @@ def iql_policy_loss(policy: DeterministicPolicy,
     beta * (max A - min A) is large most of them underflow to zero. The returned
     'ess' (effective sample size / batch size) shows how many samples carry
     the update.
-    No environment interaction, no OOD actions — pure in-sample regression.
+    No environment interaction, no OOD actions – pure in-sample regression.
     """
     with torch.no_grad():
         q_val = torch.min(Q1(states, actions), Q2(states, actions))
@@ -386,7 +386,7 @@ class IQLAgent:
                   list(self.Q2_tgt.parameters())):
             p.requires_grad_(False)
 
-        # Optimizers — separate for each network
+        # Optimizers – separate for each network
         self.v_opt  = optim.Adam(self.V.parameters(),      lr=3e-4)
         self.q_opt  = optim.Adam(list(self.Q1.parameters()) +
                                  list(self.Q2.parameters()), lr=3e-4)
@@ -441,7 +441,7 @@ class IQLAgent:
 # ============================================================================
 
 class BCAgent:
-    """Behavioral Cloning — deterministic MSE policy."""
+    """Behavioral Cloning – deterministic MSE policy."""
 
     def __init__(self, state_dim, action_dim, hidden_dim=256, device='cpu'):
         self.device = device
@@ -594,9 +594,9 @@ def run_comparison(quick=False):
     print(f"{'Method':<28} {'Reward':>12}  {'T err':>8}  {'f err':>8}")
     print("-" * 60)
     print(f"{'Clean PID (oracle)':<28} {np.mean(pid_r):>8.2f}±{np.std(pid_r):.2f}"
-          f"  {'—':>8}  {'—':>8}")
+          f"  {'–':>8}  {'–':>8}")
     print(f"{'Noisy PID (behavior data)':<28} {np.mean(noisy_r):>8.2f}±{np.std(noisy_r):.2f}"
-          f"  {'—':>8}  {'—':>8}")
+          f"  {'–':>8}  {'–':>8}")
     for name, res in [("BC", bc_res),
                       ("IQL (τ=0.7, β=3.0)", iql_res),
                       ("IQL (τ=0.9, β=5.0)", agg_res)]:

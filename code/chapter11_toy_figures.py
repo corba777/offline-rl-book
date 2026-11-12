@@ -34,7 +34,7 @@ os.makedirs(FIG_DIR, exist_ok=True)
 def toy_q_function(X: np.ndarray) -> np.ndarray:
     """
     Toy Q(s, a) with known structure for illustration.
-    Input X: (n, 3) — [state_1, state_2, action]
+    Input X: (n, 3) – [state_1, state_2, action]
     Q = 2.0*s1 - 1.0*s2 + 0.5*a  (s1 pushes Q up, s2 down, action smaller effect).
     So we expect SHAP to attribute: s1 positive when s1 high, s2 negative when s2 high.
     """
@@ -149,7 +149,7 @@ def plot_toy_beeswarm(data: dict, save_path: str) -> None:
 
 
 # =============================================================================
-# Toy policy: π(s) → a — which state feature drives the action?
+# Toy policy: π(s) → a – which state feature drives the action?
 # =============================================================================
 
 def toy_policy(S: np.ndarray) -> np.ndarray:
@@ -234,7 +234,7 @@ def plot_policy_waterfall(data: dict, instance_idx: int = 0, save_path: str = No
 
 
 # =============================================================================
-# Toy dynamics: f(s, a) → s' — which input drives the predicted next state?
+# Toy dynamics: f(s, a) → s' – which input drives the predicted next state?
 # =============================================================================
 
 def toy_dynamics_next_s1(X: np.ndarray) -> np.ndarray:

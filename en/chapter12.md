@@ -20,7 +20,7 @@ permalink: "/offline-rl-book/en/chapter12/"
 
 ## Why This Chapter Exists
 
-Most current LLM agent training is still closer to **SFT**, **DPO**, **rejection sampling**, or **online RL** than to classical offline RL. That is not a criticism — those pipelines work well when pairwise preferences, live feedback, or cheap rollouts are available.
+Most current LLM agent training is still closer to **SFT**, **DPO**, **rejection sampling**, or **online RL** than to classical offline RL. That is not a criticism – those pipelines work well when pairwise preferences, live feedback, or cheap rollouts are available.
 
 However, once agent execution traces are logged as **state–action–reward trajectories**, the problem becomes naturally compatible with the offline RL framing from Chapters 1–3:
 
@@ -38,7 +38,7 @@ The difference from classical control benchmarks such as MuJoCo or the D4RL offl
 | **Episode** | Fixed horizon rollout | Multi-turn interaction |
 | **Policy** | MLP / actor network | LLM or LLM router over tools |
 
-States are high-dimensional and partially observed; the action space is enormous and structured; rewards are often **sparse** and **delayed**; credit assignment spans many reasoning and tool steps. These are the same failure modes as offline deep RL — extrapolation, distribution shift, and overoptimistic value estimates — but with messier observations and weaker simulators.
+States are high-dimensional and partially observed; the action space is enormous and structured; rewards are often **sparse** and **delayed**; credit assignment spans many reasoning and tool steps. These are the same failure modes as offline deep RL – extrapolation, distribution shift, and overoptimistic value estimates – but with messier observations and weaker simulators.
 
 This chapter maps the **ideas** from the rest of the book onto agentic AI. It does **not** claim that CQL, IQL, or TD3+BC drop into LangChain unchanged. It explains what transfers, what must be adapted, and what infrastructure (logging, verifiers, replay) must exist first.
 
@@ -55,7 +55,7 @@ An agent trace is a trajectory $\tau = (s_0, a_0, r_0, s_1, \ldots, s_T)$ where 
 - environment / tool feedback,
 - scalar or programmatic reward signals.
 
-**Behavioral cloning on successful traces** (SFT on ReAct-style demonstrations) is the default baseline — analogous to Chapter 1. Frameworks such as [AgentGym](https://agentgym.github.io/) ([Xi et al., 2024](https://arxiv.org/abs/2406.04151)) collect multi-turn trajectories across web, embodied, and tool-using tasks and use them to bootstrap generally capable agents. AgentTraj-style datasets are BC fuel, not yet offline RL — but they are the **substrate** offline RL needs.
+**Behavioral cloning on successful traces** (SFT on ReAct-style demonstrations) is the default baseline – analogous to Chapter 1. Frameworks such as [AgentGym](https://agentgym.github.io/) ([Xi et al., 2024](https://arxiv.org/abs/2406.04151)) collect multi-turn trajectories across web, embodied, and tool-using tasks and use them to bootstrap generally capable agents. AgentTraj-style datasets are BC fuel, not yet offline RL – but they are the **substrate** offline RL needs.
 
 The applied prerequisite is a **replayable trace schema**: without consistent logging of state snapshots, actions, observations, rewards, and behavior-policy metadata, later OPE, reward relabeling, and conservative policy improvement are impossible.
 
@@ -65,8 +65,8 @@ The applied prerequisite is a **replayable trace schema**: without consistent lo
 
 Treat each LLM call (or each tool step) as one decision in an MDP:
 
-- **State** $s_t$: everything the policy conditions on at step $t$ — system prompt, user goal, conversation, tool outputs, memory, retrieved context. This is usually a **POMDP** view: the true environment state is hidden; the agent sees a context window.
-- **Action** $a_t$: the model output — a tool call JSON, SQL query, browser action, or text plan.
+- **State** $s_t$: everything the policy conditions on at step $t$ – system prompt, user goal, conversation, tool outputs, memory, retrieved context. This is usually a **POMDP** view: the true environment state is hidden; the agent sees a context window.
+- **Action** $a_t$: the model output – a tool call JSON, SQL query, browser action, or text plan.
 - **Transition** $s_{t+1}$: the context update is often deterministic given $(s_t, a_t, o_t)$, but the observation $o_t$ may come from **stochastic, non-stationary, or versioned** tools and environments.
 - **Reward** $r_t$: often **0** until task completion; then success/failure, verifier score, human rating, or shaped process reward (format valid, tool succeeded, cost penalty).
 
@@ -78,7 +78,7 @@ The bridge for practitioners:
 Agent observability / tracing → trajectories → offline or off-policy RL dataset
 ```
 
-LangChain-, AutoGen-, or OpenAI Agents-style logs are not merely debugging artifacts — they are potential **RL training data** once rewards and state boundaries are defined.
+LangChain-, AutoGen-, or OpenAI Agents-style logs are not merely debugging artifacts – they are potential **RL training data** once rewards and state boundaries are defined.
 
 ---
 
@@ -110,7 +110,7 @@ The calculator example below implements the **tabular** stage; a classifier and 
 
 It fails in the same way as BC (Chapter 1): **compounding error** on long horizons, no use of reward beyond filtering, and no way to combine good segments from mixed-quality episodes.
 
-For multi-step tool use, SFT also **cannot assign credit** across steps: a trajectory may fail at step 8 while steps 1–7 were sound. Offline RL and advantage-weighted methods exist precisely to exploit partial progress — when rewards and coverage support it.
+For multi-step tool use, SFT also **cannot assign credit** across steps: a trajectory may fail at step 8 while steps 1–7 were sound. Offline RL and advantage-weighted methods exist precisely to exploit partial progress – when rewards and coverage support it.
 
 ---
 
@@ -120,9 +120,9 @@ For multi-step tool use, SFT also **cannot assign credit** across steps: a traje
 
 **DPO** optimizes a **sequence-level** log-likelihood ratio (a sum of per-token log-probs relative to a reference model), supervised by a pairwise preference label. As a result, it provides **weak step-level credit assignment** for multi-turn reasoning and tool use.
 
-[OREO](https://github.com/jwhj/OREO) — *Offline Reinforcement Learning for LLM Multi-Step Reasoning* ([Wang et al., 2024/2025](https://arxiv.org/abs/2412.16145), [ACL Findings 2025](https://aclanthology.org/2025.findings-acl.464/)) — is a useful anchor: it jointly trains an LLM policy and **value function** via a soft Bellman-style objective, motivated by sparse rewards and credit assignment across reasoning steps. Empirically it improves over DPO-style baselines on math reasoning (GSM8K, MATH) and embodied control (ALFWorld).
+[OREO](https://github.com/jwhj/OREO) – *Offline Reinforcement Learning for LLM Multi-Step Reasoning* ([Wang et al., 2024/2025](https://arxiv.org/abs/2412.16145), [ACL Findings 2025](https://aclanthology.org/2025.findings-acl.464/)) – is a useful anchor: it jointly trains an LLM policy and **value function** via a soft Bellman-style objective, motivated by sparse rewards and credit assignment across reasoning steps. Empirically it improves over DPO-style baselines on math reasoning (GSM8K, MATH) and embodied control (ALFWorld).
 
-A direct precursor is **ILQL** (Implicit Language Q-Learning; [Snell et al., 2023](https://arxiv.org/abs/2206.11871)) — IQL (Chapter 5) adapted to language generation: an expectile value function plus an implicit dataset-support constraint, with the policy realized by advantage-reweighting the base model's token logits. It is the most direct bridge from this book's value-pessimism chapters to LLM policies.
+A direct precursor is **ILQL** (Implicit Language Q-Learning; [Snell et al., 2023](https://arxiv.org/abs/2206.11871)) – IQL (Chapter 5) adapted to language generation: an expectile value function plus an implicit dataset-support constraint, with the policy realized by advantage-reweighting the base model's token logits. It is the most direct bridge from this book's value-pessimism chapters to LLM policies.
 
 The conceptual contrast:
 
@@ -149,15 +149,15 @@ Do **not** read this table as “drop in CQL unchanged.” Read it as **design v
 | **Model-based offline RL** | Simulator, verifier, or world model for tool outcomes |
 | **OPE (Ch. 3)** | Environment re-execution / action-conditioned simulation / learned value model; distinguish direct evaluation from fixed-data OPE |
 
-Agent Lightning’s **LightningRL** adds hierarchical credit assignment: allocate trajectory-level return to individual LLM calls, then apply standard single-turn RL updates — a practical pattern when episodes are long but each call is trainable. Treat this as an **off-policy RL bridge**, not a drop-in replacement for CQL or IQL on fixed logs.
+Agent Lightning’s **LightningRL** adds hierarchical credit assignment: allocate trajectory-level return to individual LLM calls, then apply standard single-turn RL updates – a practical pattern when episodes are long but each call is trainable. Treat this as an **off-policy RL bridge**, not a drop-in replacement for CQL or IQL on fixed logs.
 
 ---
 
 ## Credit Assignment in Reasoning and Tool Use
 
-Multi-turn agents combine **language generation** with **externalized actions**. Rewards often arrive only at episode end (task solved or not). Offline RL methods that maintain a **value function** — OREO, goal-conditioned critics, or FQE-style models — address the same problem as TD learning in control: which intermediate step contributed?
+Multi-turn agents combine **language generation** with **externalized actions**. Rewards often arrive only at episode end (task solved or not). Offline RL methods that maintain a **value function** – OREO, goal-conditioned critics, or FQE-style models – address the same problem as TD learning in control: which intermediate step contributed?
 
-**Online agentic RL** highlights how hard this is. [RAGEN](https://arxiv.org/abs/2504.20073) ([Wang et al., 2025](https://arxiv.org/abs/2504.20073)) studies multi-turn LLM agent RL (StarPO) and reports instability: reward variance cliffs, **Echo Trap** dynamics, and shallow or hallucinated reasoning without fine-grained rewards. [RAGEN-2](https://arxiv.org/abs/2604.06268) ([Wang et al., 2026](https://arxiv.org/abs/2604.06268)) analyzes **template collapse** — fluent but input-agnostic reasoning — and proposes SNR-aware filtering. These are **online** results, but the caveats transfer directly to offline training: if online agentic RL is unstable, offline agentic RL depends even more on **data coverage**, **reward quality**, and **evaluator fidelity**.
+**Online agentic RL** highlights how hard this is. [RAGEN](https://arxiv.org/abs/2504.20073) ([Wang et al., 2025](https://arxiv.org/abs/2504.20073)) studies multi-turn LLM agent RL (StarPO) and reports instability: reward variance cliffs, **Echo Trap** dynamics, and shallow or hallucinated reasoning without fine-grained rewards. [RAGEN-2](https://arxiv.org/abs/2604.06268) ([Wang et al., 2026](https://arxiv.org/abs/2604.06268)) analyzes **template collapse** – fluent but input-agnostic reasoning – and proposes SNR-aware filtering. These are **online** results, but the caveats transfer directly to offline training: if online agentic RL is unstable, offline agentic RL depends even more on **data coverage**, **reward quality**, and **evaluator fidelity**.
 
 For offline settings, prefer:
 
@@ -181,11 +181,11 @@ Writing $R - V^\pi(h_0)$ as a telescoping sum of $V^\pi(h_{t+1}) - V^\pi(h_t)$ a
 
 $$R - V^\pi(h_0) = \sum_{t=0}^{H-1} \underbrace{\left[Q^\pi(h_t, a_t) - V^\pi(h_t)\right]}_{A_t:\ \text{the decision}} \;+\; \sum_{t=0}^{H-1} \underbrace{\left[V^\pi(h_{t+1}) - Q^\pi(h_t, a_t)\right]}_{\varepsilon_t:\ \text{the environment}}.$$
 
-The advantage $A_t$ measures how much the decision changed the expected outcome. The term $\varepsilon_t$ measures how much the environment's response did: a search that happened to return the right document, an API that timed out. On trajectories generated by $\pi$, each term has zero mean given everything before it — $A_t$ given $h_t$, and $\varepsilon_t$ given $(h_t, a_t)$. The terms therefore form a martingale difference sequence, are mutually uncorrelated, and their variances add:
+The advantage $A_t$ measures how much the decision changed the expected outcome. The term $\varepsilon_t$ measures how much the environment's response did: a search that happened to return the right document, an API that timed out. On trajectories generated by $\pi$, each term has zero mean given everything before it – $A_t$ given $h_t$, and $\varepsilon_t$ given $(h_t, a_t)$. The terms therefore form a martingale difference sequence, are mutually uncorrelated, and their variances add:
 
 $$\operatorname{Var}\left[R - V^\pi(h_0)\right] = \sum_{t=0}^{H-1} \mathbb{E}\left[A_t^2\right] + \sum_{t=0}^{H-1} \mathbb{E}\left[\varepsilon_t^2\right].$$
 
-The identity holds for a fixed prompt $h_0$, and because $\mathbb{E}[R - V^\pi(h_0) \mid h_0] = 0$ for every prompt, it also holds averaged over prompts: subtracting $V^\pi(h_0)$ removes the prompt-to-prompt difficulty $\operatorname{Var}[V^\pi(h_0)]$, which is the job of the baseline below. It also assumes that $R$ is fixed once the episode is over, $V^\pi(h_H) = R$. With a stochastic grader — a human rating, or an LLM judge sampled at nonzero temperature — $V^\pi(h_H) = \mathbb{E}[R \mid h_H]$, and one more term appears, $\varepsilon_H = R - V^\pi(h_H)$, adding $\mathbb{E}[\operatorname{Var}(R \mid h_H)]$ to the variance. That is grading noise: no decision can be credited with it, and averaging several grades per trajectory is the only way to reduce it.
+The identity holds for a fixed prompt $h_0$, and because $\mathbb{E}[R - V^\pi(h_0) \mid h_0] = 0$ for every prompt, it also holds averaged over prompts: subtracting $V^\pi(h_0)$ removes the prompt-to-prompt difficulty $\operatorname{Var}[V^\pi(h_0)]$, which is the job of the baseline below. It also assumes that $R$ is fixed once the episode is over, $V^\pi(h_H) = R$. With a stochastic grader – a human rating, or an LLM judge sampled at nonzero temperature – $V^\pi(h_H) = \mathbb{E}[R \mid h_H]$, and one more term appears, $\varepsilon_H = R - V^\pi(h_H)$, adding $\mathbb{E}[\operatorname{Var}(R \mid h_H)]$ to the variance. That is grading noise: no decision can be credited with it, and averaging several grades per trajectory is the only way to reduce it.
 
 Temporal credit assignment is the problem of recovering the individual $A_t$ from data in which only their sum, mixed with the $\varepsilon_t$, is observed. The identity is a yardstick for the methods below: each is a way of estimating $A_t$, and they differ in which other terms leak into a step's credit. Two caveats keep it honest. The terms are *defined* for any policy and any history, but whether they can be *estimated* from fixed logs is a separate question: identification needs assumptions about coverage and about what the logged history captures, and the section on offline estimation below returns to it. And the identity is exact only for the true $Q^\pi$ and $V^\pi$ on complete histories; with learned values or truncated contexts it holds only approximately.
 
@@ -193,11 +193,11 @@ Temporal credit assignment is the problem of recovering the individual $A_t$ fro
 
 **Trajectory-level advantage.** Every step receives the same signal, $R - b$, where the baseline $b$ is a learned $V(h_0)$ or the mean outcome of other attempts at the same prompt, as in GRPO. Summed with the score function $\nabla \log \pi(a_t \mid h_t)$ over trajectories sampled from $\pi$ itself, this is an unbiased policy gradient (on logged trajectories from another policy it needs the importance weights discussed next), but as credit for one step it is $A_t$ plus every other advantage plus every $\varepsilon$: its variance is the whole sum above and grows with the horizon. Offline there is a second cost. The trajectories come from $\pi_b$, and turning them into a signal for a new policy requires importance weights $\prod_t \pi(a_t \mid h_t) / \pi_b(a_t \mid h_t)$, whose variance grows exponentially in $H$ (Chapter 3). Filtering successful traces for SFT is the degenerate case: weight one if $R = 1$, zero otherwise.
 
-**Value learning over tool decisions.** Fit $Q(h_t, a_t)$ and $V(h_t)$ by Bellman backups and use $\hat{A}_t = \hat{Q}(h_t, a_t) - \hat{V}(h_t)$. The target $V(h_{t+1})$ already reflects $o_t$, so an unlucky tool response is charged to $\varepsilon_t$ rather than to the decision before it — exactly the separation that trajectory-level signals cannot make. The price is bias, from two sources specific to agents. First, nobody fits a value over raw histories: the network sees an encoding $\phi(h_t)$, such as a truncated context, a summary or an embedding. When two histories with different prospects share an encoding, their values are averaged, the identity no longer holds for the learned quantities, and credit leaks between steps. Second, offline, $Q(h_t, a)$ is needed for calls the logs never made, whose responses were never observed. In-sample methods sidestep this: fitting $Q^{\pi_b}$ by SARSA-style backups and improving one step (Chapter 5, $\tau = 0.5$), or IQL's expectile regression, which never evaluates an unlogged call. OREO and ILQL belong to this family.
+**Value learning over tool decisions.** Fit $Q(h_t, a_t)$ and $V(h_t)$ by Bellman backups and use $\hat{A}_t = \hat{Q}(h_t, a_t) - \hat{V}(h_t)$. The target $V(h_{t+1})$ already reflects $o_t$, so an unlucky tool response is charged to $\varepsilon_t$ rather than to the decision before it – exactly the separation that trajectory-level signals cannot make. The price is bias, from two sources specific to agents. First, nobody fits a value over raw histories: the network sees an encoding $\phi(h_t)$, such as a truncated context, a summary or an embedding. When two histories with different prospects share an encoding, their values are averaged, the identity no longer holds for the learned quantities, and credit leaks between steps. Second, offline, $Q(h_t, a)$ is needed for calls the logs never made, whose responses were never observed. In-sample methods sidestep this: fitting $Q^{\pi_b}$ by SARSA-style backups and improving one step (Chapter 5, $\tau = 0.5$), or IQL's expectile regression, which never evaluates an unlogged call. OREO and ILQL belong to this family.
 
-**Process rewards.** Add a per-step reward from a verifier, or from a process reward model (PRM) trained on human step labels ([Lightman et al., 2023](https://arxiv.org/abs/2305.20050)) or on the success rate of continuations sampled from each prefix ([Math-Shepherd](https://arxiv.org/abs/2312.08935); Wang et al., 2024). Whether this changes what the agent optimizes depends on the form of the reward. [Ng, Harada and Russell (1999)](https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf) showed that adding $F_t = \gamma\,\Phi(h_{t+1}) - \Phi(h_t)$ for any potential $\Phi$ leaves the optimal policy unchanged: the discounted sum of $F_t$ telescopes to $\gamma^H \Phi(h_H) - \Phi(h_0)$, which does not depend on the actions when $\Phi(h_H)$ is a constant, as it is at a terminal state. The factor $\gamma$ matters; without it the sum keeps terms that depend on the intermediate histories, and the optimal actions can change. The setting of this section is undiscounted ($\gamma = 1$), where $F_t = \Phi(h_{t+1}) - \Phi(h_t)$. Take $\Phi = V^\pi$. Then $F_t = A_t + \varepsilon_t$ exactly, but $\Phi(h_H) = V^\pi(h_H) = R$ is not a constant, so the theorem does not apply as stated; what holds instead is that the shaping terms sum to $R - V^\pi(h_0)$. Training on these process rewards alone therefore ranks trajectories exactly as the outcome $R$ does, shifted by a quantity fixed by the start; added on top of $R$, they count the outcome twice, which again leaves the ranking unchanged. Either way, a PRM that predicts the probability of eventual success is value learning under another name and inherits its biases. A PRM that scores something else — fluency, the formal validity of a step, agreement with a judge — is not of this form, changes the objective, and invites the agent to collect process reward without finishing the task. Labels of the Math-Shepherd kind also require restarting the episode from a prefix, which fixed logs do not allow.
+**Process rewards.** Add a per-step reward from a verifier, or from a process reward model (PRM) trained on human step labels ([Lightman et al., 2023](https://arxiv.org/abs/2305.20050)) or on the success rate of continuations sampled from each prefix ([Math-Shepherd](https://arxiv.org/abs/2312.08935); Wang et al., 2024). Whether this changes what the agent optimizes depends on the form of the reward. [Ng, Harada and Russell (1999)](https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf) showed that adding $F_t = \gamma\,\Phi(h_{t+1}) - \Phi(h_t)$ for any potential $\Phi$ leaves the optimal policy unchanged: the discounted sum of $F_t$ telescopes to $\gamma^H \Phi(h_H) - \Phi(h_0)$, which does not depend on the actions when $\Phi(h_H)$ is a constant, as it is at a terminal state. The factor $\gamma$ matters; without it the sum keeps terms that depend on the intermediate histories, and the optimal actions can change. The setting of this section is undiscounted ($\gamma = 1$), where $F_t = \Phi(h_{t+1}) - \Phi(h_t)$. Take $\Phi = V^\pi$. Then $F_t = A_t + \varepsilon_t$ exactly, but $\Phi(h_H) = V^\pi(h_H) = R$ is not a constant, so the theorem does not apply as stated; what holds instead is that the shaping terms sum to $R - V^\pi(h_0)$. Training on these process rewards alone therefore ranks trajectories exactly as the outcome $R$ does, shifted by a quantity fixed by the start; added on top of $R$, they count the outcome twice, which again leaves the ranking unchanged. Either way, a PRM that predicts the probability of eventual success is value learning under another name and inherits its biases. A PRM that scores something else – fluency, the formal validity of a step, agreement with a judge – is not of this form, changes the objective, and invites the agent to collect process reward without finishing the task. Labels of the Math-Shepherd kind also require restarting the episode from a prefix, which fixed logs do not allow.
 
-**Return decomposition.** Learn a redistribution $\tilde{r}_0, \dots, \tilde{r}_{H-1}$ with $\sum_t \tilde{r}_t = R$ and train on the dense rewards. RUDDER ([Arjona-Medina et al., 2019](https://arxiv.org/abs/1806.07857)) predicts the return from each prefix and gives each step the change in that prediction. With an exact predictor of $Q^\pi$ the redistributed reward is $Q^\pi(h_t, a_t) - Q^\pi(h_{t-1}, a_{t-1}) = A_t + \varepsilon_{t-1}$: the decision, plus the luck of the observation that preceded it. Ren and Xie's latent per-step reward, above, is a statistical version of the same idea. The constraint $\sum_t \tilde{r}_t = R$ does not determine the split by itself: every redistribution that sums correctly fits the outcome labels equally well. Decomposition therefore needs structure — additivity over steps, a function class small enough to generalize — and when the predictor sees $\phi(h_t)$ rather than $h_t$, the aliasing problem returns.
+**Return decomposition.** Learn a redistribution $\tilde{r}_0, \dots, \tilde{r}_{H-1}$ with $\sum_t \tilde{r}_t = R$ and train on the dense rewards. RUDDER ([Arjona-Medina et al., 2019](https://arxiv.org/abs/1806.07857)) predicts the return from each prefix and gives each step the change in that prediction. With an exact predictor of $Q^\pi$ the redistributed reward is $Q^\pi(h_t, a_t) - Q^\pi(h_{t-1}, a_{t-1}) = A_t + \varepsilon_{t-1}$: the decision, plus the luck of the observation that preceded it. Ren and Xie's latent per-step reward, above, is a statistical version of the same idea. The constraint $\sum_t \tilde{r}_t = R$ does not determine the split by itself: every redistribution that sums correctly fits the outcome labels equally well. Decomposition therefore needs structure – additivity over steps, a function class small enough to generalize – and when the predictor sees $\phi(h_t)$ rather than $h_t$, the aliasing problem returns.
 
 | Method | Credit given to step $t$ | Needs | Main source of error | Offline risk |
 |---|---|---|---|---|
@@ -208,13 +208,13 @@ Temporal credit assignment is the problem of recovering the individual $A_t$ fro
 
 ### What Changes Offline
 
-Every quantity above is defined relative to a policy. The logs give $A^{\pi_b}$: the credit of a decision assuming the logging policy continues afterwards. That is what one-step methods use, and it is the safe choice. The credit of a decision under the improved policy requires continuations that the logs do not contain — the extrapolation problem of Chapters 2 and 4, now with tool responses that were never observed.
+Every quantity above is defined relative to a policy. The logs give $A^{\pi_b}$: the credit of a decision assuming the logging policy continues afterwards. That is what one-step methods use, and it is the safe choice. The credit of a decision under the improved policy requires continuations that the logs do not contain – the extrapolation problem of Chapters 2 and 4, now with tool responses that were never observed.
 
 There is also an evaluation problem: credit has no ground truth in the logs. Where the environment can be reset, rolling out several continuations from a logged prefix estimates $Q(h_t, a_t)$ directly, and that is the right benchmark for any credit estimator, even one trained only on logs. Where the state cannot be restored and only text was logged, Zhang's caution applies: credit may not be identifiable at all.
 
 ### Temporal Versus Multi-Agent Credit
 
-With several agents, the decision at step $t$ is a joint action $a_t = (a_t^1, \dots, a_t^n)$. The identity above still splits the outcome along time; dividing each $A_t$ among agents is a separate problem along a different axis. Counterfactual baselines answer the second question: COMA ([Foerster et al., 2018](https://arxiv.org/abs/1705.08926)) compares the joint $Q$ with its average over one agent's alternative actions, the other agents' actions held fixed. Mixing the two problems — assigning a team outcome directly to one agent's step, say — confounds a teammate's work with luck and with earlier decisions. Resolving credit over time first and then across agents is a convenient decomposition, not a theorem: when agents act simultaneously and their actions interact, the two axes need not separate without structural assumptions, such as an additive team value. What the data must allow in any case is keeping them apart, which is why the logging schema below has separate team and individual reward fields.
+With several agents, the decision at step $t$ is a joint action $a_t = (a_t^1, \dots, a_t^n)$. The identity above still splits the outcome along time; dividing each $A_t$ among agents is a separate problem along a different axis. Counterfactual baselines answer the second question: COMA ([Foerster et al., 2018](https://arxiv.org/abs/1705.08926)) compares the joint $Q$ with its average over one agent's alternative actions, the other agents' actions held fixed. Mixing the two problems – assigning a team outcome directly to one agent's step, say – confounds a teammate's work with luck and with earlier decisions. Resolving credit over time first and then across agents is a convenient decomposition, not a theorem: when agents act simultaneously and their actions interact, the two axes need not separate without structural assumptions, such as an additive team value. What the data must allow in any case is keeping them apart, which is why the logging schema below has separate team and individual reward fields.
 
 ### Open Problems
 
@@ -231,10 +231,10 @@ Chapter 3’s OPE toolbox applies, but agent environments rarely offer a faithfu
 
 Practical evaluation layers:
 
-1. **Environment re-execution / action-conditioned simulation** — execute candidate actions in a resettable sandbox, or simulate their outcomes under explicit model assumptions; cached responses require matching actions and environment snapshots.
-2. **Verifiers** — unit tests, SQL result checks, retrieval precision, code execution outcomes.
-3. **Learned critics** — FQE-style $Q(s,a)$ or goal-conditioned value models trained on logs. *Planning without Search* ([Hong et al., 2025](https://arxiv.org/abs/2505.18098)) — uses offline goal-conditioned values as a **natural-language critic** at inference without fine-tuning the base LLM.
-4. **Human or A/B review** — expensive but necessary for high-stakes deploy.
+1. **Environment re-execution / action-conditioned simulation** – execute candidate actions in a resettable sandbox, or simulate their outcomes under explicit model assumptions; cached responses require matching actions and environment snapshots.
+2. **Verifiers** – unit tests, SQL result checks, retrieval precision, code execution outcomes.
+3. **Learned critics** – FQE-style $Q(s,a)$ or goal-conditioned value models trained on logs. *Planning without Search* ([Hong et al., 2025](https://arxiv.org/abs/2505.18098)) – uses offline goal-conditioned values as a **natural-language critic** at inference without fine-tuning the base LLM.
+4. **Human or A/B review** – expensive but necessary for high-stakes deploy.
 
 Offline RL for agents fails quietly when OPE measures **format quality** instead of **task success**. Align metrics with deployment risk, as in Chapter 3’s coverage warnings.
 
@@ -258,23 +258,23 @@ Recent work gives this warning a measurement. In *The Replay Gap* ([Gonuguntla, 
 
 ### Evaluation Contract for an Agent Policy
 
-OPE methods tell you *how* to estimate return; they do not define *what counts as improvement*. For tool-using agents, a policy can raise task success while increasing cost, latency, redundant tool calls, or safety violations. Before comparing offline-trained candidates, write a short **evaluation contract** — a spec stakeholders can execute without re-debating metrics after every training run.
+OPE methods tell you *how* to estimate return; they do not define *what counts as improvement*. For tool-using agents, a policy can raise task success while increasing cost, latency, redundant tool calls, or safety violations. Before comparing offline-trained candidates, write a short **evaluation contract** – a spec stakeholders can execute without re-debating metrics after every training run.
 
 **Baselines (always report against both):**
 
-1. **Current deployed agent** — the behavior policy in production (or the best available shadow of it).
-2. **SFT / BC on successful traces** — imitation on filtered wins; the honest “no RL” ceiling when logs are good but sparse on reward structure.
+1. **Current deployed agent** – the behavior policy in production (or the best available shadow of it).
+2. **SFT / BC on successful traces** – imitation on filtered wins; the honest “no RL” ceiling when logs are good but sparse on reward structure.
 
 **Metric groups (do not collapse to one number):**
 
 | Group | What to measure | Typical role |
 |-------|-----------------|--------------|
-| **Task success** | Verifier pass rate, task completion, human accept rate | **Primary** — the metric you want to improve |
+| **Task success** | Verifier pass rate, task completion, human accept rate | **Primary** – the metric you want to improve |
 | **Cost / latency** | USD per episode, tokens, p95 wall-clock per task | **Guardrail** |
 | **Tool-call efficiency** | Calls per episode, duplicate lookups, empty retries | **Guardrail** |
 | **Safety / constraints** | Forbidden tools, PII leaks, policy violations, out-of-allowlist APIs | **Guardrail** |
 
-**Evaluation set:** Use a **held-out** task suite — never tasks seen during training or prompt tuning. Stratify by **task type** (search, code, CRM, etc.) and **difficulty** (single-hop vs multi-hop). Report per-stratum tables, not only a global average. Chapter 3’s coverage warnings apply: OPE on logs is not a substitute for held-out task eval when deploy states differ from the log.
+**Evaluation set:** Use a **held-out** task suite – never tasks seen during training or prompt tuning. Stratify by **task type** (search, code, CRM, etc.) and **difficulty** (single-hop vs multi-hop). Report per-stratum tables, not only a global average. Chapter 3’s coverage warnings apply: OPE on logs is not a substitute for held-out task eval when deploy states differ from the log.
 
 **Acceptance rule (example template):**
 
@@ -283,7 +283,7 @@ Accept candidate policy $\pi$ over baseline $b$ only if:
 - **Primary:** $\text{success}(\pi) \geq \text{success}(b) + \Delta_{\min}$ on the held-out suite, with a **confidence interval** (bootstrap over tasks, or A/B in shadow mode) that excludes zero uplift.
 - **Guardrails:** for each guardrail metric $g$, $\; g(\pi) \leq g(b) + \tau_g\;$ where $\tau_g$ is a **pre-registered tolerance** (e.g. cost +5%, p95 latency +10%, zero tolerance on hard safety violations).
 
-If primary improves but a guardrail breaks tolerance, the answer is **not** to ship with caveats by default — iterate on reward shaping, constraints, or support filtering until the contract is satisfied or the candidate is rejected.
+If primary improves but a guardrail breaks tolerance, the answer is **not** to ship with caveats by default – iterate on reward shaping, constraints, or support filtering until the contract is satisfied or the candidate is rejected.
 
 **Illustrative comparison (fictional numbers):**
 
@@ -293,7 +293,7 @@ If primary improves but a guardrail breaks tolerance, the answer is **not** to s
 | SFT / BC | 68% | $0.038 | 3.9 | 0.2% |
 | Offline RL candidate | **71% ± 2%** | $0.044 | 4.0 | 0.2% |
 
-With tolerances $\tau_{\text{cost}} = +5\%$ and $\tau_{\text{calls}} = +10\%$, the candidate **passes** success and safety but **fails** cost ($0.044 > 1.05 \times 0.041$). The contract rejects deployment until cost is brought down — even though success beat both baselines.
+With tolerances $\tau_{\text{cost}} = +5\%$ and $\tau_{\text{calls}} = +10\%$, the candidate **passes** success and safety but **fails** cost ($0.044 > 1.05 \times 0.041$). The contract rejects deployment until cost is brought down – even though success beat both baselines.
 
 This contract is the agentic analogue of Chapter 13’s **Industrial Deployment: Gated Readiness**: offline metrics and OPE inform Gate 2; the evaluation contract is what Gate 3 (shadow) and Gate 4 (limited rollout) must verify on live tasks.
 
@@ -301,17 +301,17 @@ This contract is the agentic analogue of Chapter 13’s **Industrial Deployment:
 
 ## LLMs as Annotators, Generators, and Critics
 
-LLMs appear in agentic offline pipelines in several roles — not only as the policy. KALM and TEDUO are **LLM-assisted offline RL** lines (language-conditioned or rollout-augmented control), not always narrow “tool-using chat agents” — but the data-layer pattern transfers:
+LLMs appear in agentic offline pipelines in several roles – not only as the policy. KALM and TEDUO are **LLM-assisted offline RL** lines (language-conditioned or rollout-augmented control), not always narrow “tool-using chat agents” – but the data-layer pattern transfers:
 
 | Role | Example | Offline RL connection |
 |------|---------|------------------------|
-| **Trajectory generator** | [KALM](https://arxiv.org/abs/2404.09248) ([Pang et al., NeurIPS 2024](https://arxiv.org/abs/2404.09248)) — LLM imaginary rollouts merged with real data, then standard offline RL | Expands coverage; watch semantic gap between text and low-level actions |
-| **Dataset labeler** | [TEDUO](https://arxiv.org/abs/2412.06877) — hindsight labeling and state abstraction on unlabeled logs, then offline RL + SFT | LLM as annotator before RL |
-| **Inference-time critic** | *Planning without Search* ([arXiv:2505.18098](https://arxiv.org/abs/2505.18098)) — goal-conditioned value function guides plan refinement | Offline RL trains critic; base LLM may stay frozen |
-| **Environment generator** | [SPADE](https://arxiv.org/abs/2608.19197) ([Liu et al., 2026](https://spade-rl.github.io/)) — an LLM writes executable environments with `reset()`/`step()`; an online self-play method, not offline RL | Executable, resettable environments make re-execution OPE and prefix rollouts possible; synthetic tasks may not transfer to production tools |
+| **Trajectory generator** | [KALM](https://arxiv.org/abs/2404.09248) ([Pang et al., NeurIPS 2024](https://arxiv.org/abs/2404.09248)) – LLM imaginary rollouts merged with real data, then standard offline RL | Expands coverage; watch semantic gap between text and low-level actions |
+| **Dataset labeler** | [TEDUO](https://arxiv.org/abs/2412.06877) – hindsight labeling and state abstraction on unlabeled logs, then offline RL + SFT | LLM as annotator before RL |
+| **Inference-time critic** | *Planning without Search* ([arXiv:2505.18098](https://arxiv.org/abs/2505.18098)) – goal-conditioned value function guides plan refinement | Offline RL trains critic; base LLM may stay frozen |
+| **Environment generator** | [SPADE](https://arxiv.org/abs/2608.19197) ([Liu et al., 2026](https://spade-rl.github.io/)) – an LLM writes executable environments with `reset()`/`step()`; an online self-play method, not offline RL | Executable, resettable environments make re-execution OPE and prefix rollouts possible; synthetic tasks may not transfer to production tools |
 | **Reward model** | LLM-as-judge scores | Cheap but gameable; combine with verifiers |
 
-KALM grounds the LLM on environment dynamics before generating rollouts — addressing the **semantic gap** between tokens and numerical state. TEDUO shows LLMs can enrich **unlabeled** interaction logs so offline RL has goals and abstract states to condition on.
+KALM grounds the LLM on environment dynamics before generating rollouts – addressing the **semantic gap** between tokens and numerical state. TEDUO shows LLMs can enrich **unlabeled** interaction logs so offline RL has goals and abstract states to condition on.
 
 ---
 
@@ -319,15 +319,15 @@ KALM grounds the LLM on environment dynamics before generating rollouts — addr
 
 Agentic offline RL inherits classical offline RL failures and adds agent-specific ones:
 
-- **Reward hacking** — optimizing verifier shortcuts instead of task intent.
-- **Spurious tool use** — calling tools to look productive without information gain.
-- **Template collapse** — diverse-looking text that ignores input (see RAGEN-2).
-- **Unsupported tool calls** — analog of OOD actions: APIs or arguments never seen in logs.
-- **Overconfident critics** — FQE-style models extrapolate on long contexts like Q-functions extrapolate on OOD actions.
-- **Non-stationary tools and APIs** — training logs from GPT-4.1-era tools may not match deploy-time behavior.
-- **Cost and safety** — reward must encode latency, spend, and policy violations, not only success rate.
+- **Reward hacking** – optimizing verifier shortcuts instead of task intent.
+- **Spurious tool use** – calling tools to look productive without information gain.
+- **Template collapse** – diverse-looking text that ignores input (see RAGEN-2).
+- **Unsupported tool calls** – analog of OOD actions: APIs or arguments never seen in logs.
+- **Overconfident critics** – FQE-style models extrapolate on long contexts like Q-functions extrapolate on OOD actions.
+- **Non-stationary tools and APIs** – training logs from GPT-4.1-era tools may not match deploy-time behavior.
+- **Cost and safety** – reward must encode latency, spend, and policy violations, not only success rate.
 
-Conservative methods (CQL-style pessimism, support constraints, rejection of low-coverage tool branches) are conceptually appropriate but require defining **action support** in structured action spaces — an open engineering problem.
+Conservative methods (CQL-style pessimism, support constraints, rejection of low-coverage tool branches) are conceptually appropriate but require defining **action support** in structured action spaces – an open engineering problem.
 
 ---
 
@@ -375,8 +375,8 @@ The tabular state key is `(task, x, y, result)`, with `None` for values not yet 
 
 Two data regimes:
 
-1. **Good coverage** — `mul` appears in logs when the task is multiplication.
-2. **Coverage gap** — on `mul` tasks, behavior logs only `add` / `sub`, never `mul`.
+1. **Good coverage** – `mul` appears in logs when the task is multiplication.
+2. **Coverage gap** – on `mul` tasks, behavior logs only `add` / `sub`, never `mul`.
 
 An unknown state or an empty valid support set makes the constrained policy abstain (`None`); evaluation counts this as an unsuccessful termination.
 
@@ -407,7 +407,7 @@ Dataset: no multiplication support
 1. **BC** clones the behavior policy. It improves over raw logging when the majority action at a state is good, but cannot invent unsupported tools.
 2. **Naive FQI** can stitch successful sub-trajectories (`lookup_x → lookup_y → correct op → final`) when coverage exists.
 3. **Without `mul` in the logs**, support-constrained FQI never selects multiplication. It may still succeed when a supported operation happens to give the same answer. That is the conservative behavior you want offline.
-4. **Naive FQI on mul tasks** faces two actions the logs never contain, `mul` and `estimate`. Both keep the default Q-value of 0, which beats the negative Q of the logged wrong operations, so naive FQI picks one of them — and which one is decided by a tie-break, not by evidence. Averaged over tie-breaks it solves about half of the multiplication tasks: right when it happens to pick `mul`, wrong when it picks `estimate`. That is the **extrapolation / OOD action** effect in miniature. Its overall score looks better than the constrained policy's, but the gain is a coin flip that the data cannot call in advance; in deployment, the unsupported choice could just as well be the harmful one.
+4. **Naive FQI on mul tasks** faces two actions the logs never contain, `mul` and `estimate`. Both keep the default Q-value of 0, which beats the negative Q of the logged wrong operations, so naive FQI picks one of them – and which one is decided by a tie-break, not by evidence. Averaged over tie-breaks it solves about half of the multiplication tasks: right when it happens to pick `mul`, wrong when it picks `estimate`. That is the **extrapolation / OOD action** effect in miniature. Its overall score looks better than the constrained policy's, but the gain is a coin flip that the data cannot call in advance; in deployment, the unsupported choice could just as well be the harmful one.
 
 **Thesis (same as classical offline RL):** improvement is possible **inside** the action/state support of the dataset; conservative methods refuse unsupported gains; unconstrained value learning can overtrust unvisited actions.
 
@@ -440,7 +440,7 @@ LLM stacks often conflate two learning problems:
 
 Fine-tuning the shared LLM on role-conditioned traces (DPO, SFT or single-agent offline RL) updates a different policy from the orchestration policy that chooses joint actions. State which of the two a method updates; otherwise multi-agent failure modes enter under the label of agent fine-tuning.
 
-**Example.** Two agents act at the same step without seeing each other's choice: agent 1 picks a query $m \in \{A, B\}$ while agent 2, working in parallel, picks a tool $u \in \{a, b\}$. The team receives $r = 1$ only for the pairs $(A, a)$ and $(B, b)$. Under a uniformly random behavior policy, every individual query and every individual tool succeeds in half of the logged episodes, so per-agent action values are all equal and carry no signal; only the value of the pair separates good from bad behavior. Agents that learn their own values from these logs — independent learners — have nothing to break the tie, choose independently, and end up at a mismatched pair such as $(A, b)$ half of the time. The example depends on the moves being simultaneous. If agent 2 observed $m$ before choosing, the problem would reduce to a two-step MDP that ordinary dynamic programming on the concatenated transcript solves exactly; credit assignment across agents becomes hard when an agent cannot see what it has to coordinate with. Offline MARL methods model the joint action explicitly for this reason.
+**Example.** Two agents act at the same step without seeing each other's choice: agent 1 picks a query $m \in \{A, B\}$ while agent 2, working in parallel, picks a tool $u \in \{a, b\}$. The team receives $r = 1$ only for the pairs $(A, a)$ and $(B, b)$. Under a uniformly random behavior policy, every individual query and every individual tool succeeds in half of the logged episodes, so per-agent action values are all equal and carry no signal; only the value of the pair separates good from bad behavior. Agents that learn their own values from these logs – independent learners – have nothing to break the tie, choose independently, and end up at a mismatched pair such as $(A, b)$ half of the time. The example depends on the moves being simultaneous. If agent 2 observed $m$ before choosing, the problem would reduce to a two-step MDP that ordinary dynamic programming on the concatenated transcript solves exactly; credit assignment across agents becomes hard when an agent cannot see what it has to coordinate with. Offline MARL methods model the joint action explicitly for this reason.
 
 Classical offline MARL already offers tools for this. MACCA ([Wang et al., 2025](https://arxiv.org/abs/2312.03644)) represents the offline data as a dynamic Bayesian network and identifies each agent's causal contribution to the reward. For LLM agents the nearest work is still online. LangMARL ([Yao et al., 2026](https://aclanthology.org/2026.emnlp-main.1837/)) uses a centralized language critic to assign credit to each agent and rewrites the agents' natural-language policies, their instructions and exemplars, rather than model weights, collecting fresh rollouts at every iteration. Carrying such agent-level credit over to fixed logs remains an open problem.
 
@@ -504,12 +504,12 @@ For applied work, a consistent JSON (or parquet) schema matters as much as algor
 
 Design choices:
 
-- **`state`** should be reconstructible at train and eval time — version prompts (`prompt_version`), tool schemas (`tool_schema_version`), and sandboxes (`environment_version`).
-- **`action`** should be structured (JSON schema) when possible — easier for support estimation than free text.
+- **`state`** should be reconstructible at train and eval time – version prompts (`prompt_version`), tool schemas (`tool_schema_version`), and sandboxes (`environment_version`).
+- **`action`** should be structured (JSON schema) when possible – easier for support estimation than free text.
 - **`terminated`** and **`truncated`** are separate flags: an episode that reached its goal or failed for good is terminated, and value targets stop there; one cut off by a step or time budget is truncated, and targets must keep bootstrapping. A single `done` flag mixes the two, which is the time-limit bug fixed in Chapter 10's code.
-- **`reward`** can be relabeled offline (verifier, human, LLM critic) — store `reward_components`, `reward_source`, and `verifier_version` separately from the scalar `reward`.
+- **`reward`** can be relabeled offline (verifier, human, LLM critic) – store `reward_components`, `reward_source`, and `verifier_version` separately from the scalar `reward`.
 - **`action_logprobs`** (or token/tool-call log-probabilities) are valuable for off-policy evaluation and filtering; log them when the behavior policy exposes them.
-- **`metadata.behavior_policy`** is necessary for **dataset provenance**. Importance-weighted OPE additionally requires comparable action representations and behavior/target action probabilities — often **unavailable** for free-form LLM actions unless log-probs were recorded at collection time.
+- **`metadata.behavior_policy`** is necessary for **dataset provenance**. Importance-weighted OPE additionally requires comparable action representations and behavior/target action probabilities – often **unavailable** for free-form LLM actions unless log-probs were recorded at collection time.
 
 ### Multi-agent extension
 

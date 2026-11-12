@@ -2,12 +2,12 @@
   <img src="figures/readme/banner.svg" alt="Offline RL: From Theory to Industrial Practice" width="920" />
 </p>
 
-<p align="center"><em>applied learning notes on offline deep reinforcement learning — from behavioral cloning to physics-informed control and tool-using agents</em></p>
+<p align="center"><em>applied learning notes on offline deep reinforcement learning – from behavioral cloning to physics-informed control and tool-using agents</em></p>
 
 <p align="center">
   <img src="figures/ch4/cql_vs_naive.png" alt="Q-values along one action dimension: naive offline Q-learning is optimistic everywhere, far above the true value; CQL stays close to the truth on the logged actions and falls below it outside them." width="640" />
 </p>
-<p align="center"><em>The central problem of the book in one picture: trained on a fixed dataset, naive Q-learning overestimates actions it has never seen; CQL keeps those values below the truth. — <a href="https://corba777.github.io/offline-rl-book/en/chapter4.html">Chapter 4</a></em></p>
+<p align="center"><em>The central problem of the book in one picture: trained on a fixed dataset, naive Q-learning overestimates actions it has never seen; CQL keeps those values below the truth. – <a href="https://corba777.github.io/offline-rl-book/en/chapter4.html">Chapter 4</a></em></p>
 
 <p align="center">
   <b>Thirteen chapters in English and Russian, each built as idea → formalization → code → limitations.</b><br/>
@@ -41,7 +41,7 @@
 
 ---
 
-Created and maintained by **Artem Zvyagintsev**. These are applied learning notes, not an authoritative textbook: the chapters summarize algorithms, implementation patterns and practical caveats, and the code is educational scaffolding rather than benchmark-grade implementations.
+Created and maintained by **Artem Zvyagintsev**. These are practical notes, not an exhaustive textbook: the chapters cover algorithms, implementation patterns and practical caveats, and the code is written for learning, not as benchmark-grade implementations.
 
 ## Contents
 
@@ -59,8 +59,8 @@ Created and maintained by **Artem Zvyagintsev**. These are applied learning note
 | 10 | Industrial Applications | [read](https://corba777.github.io/offline-rl-book/en/chapter10.html) | [читать](https://corba777.github.io/offline-rl-book/ru/chapter10.html) | [`chapter10.py`](code/chapter10.py) |
 | 11 | Explainability in Offline RL | [read](https://corba777.github.io/offline-rl-book/en/chapter11.html) | [читать](https://corba777.github.io/offline-rl-book/ru/chapter11.html) | [`chapter11.py`](code/chapter11.py) |
 | 12 | Offline RL for Tool-Using LLM Agents | [read](https://corba777.github.io/offline-rl-book/en/chapter12.html) | [читать](https://corba777.github.io/offline-rl-book/ru/chapter12.html) | [`agentic_offline_rl_toy.py`](code/agentic_offline_rl_toy.py) |
-| 13 | Conclusion and Future Directions | [read](https://corba777.github.io/offline-rl-book/en/chapter13.html) | [читать](https://corba777.github.io/offline-rl-book/ru/chapter13.html) | — |
-| App. | Algorithm Selection Guide | [read](https://corba777.github.io/offline-rl-book/en/appendix.html) | [читать](https://corba777.github.io/offline-rl-book/ru/appendix.html) | — |
+| 13 | Conclusion and Future Directions | [read](https://corba777.github.io/offline-rl-book/en/chapter13.html) | [читать](https://corba777.github.io/offline-rl-book/ru/chapter13.html) | – |
+| App. | Algorithm Selection Guide | [read](https://corba777.github.io/offline-rl-book/en/appendix.html) | [читать](https://corba777.github.io/offline-rl-book/ru/appendix.html) | – |
 
 Off-policy evaluation has its own chapter (3); value-based methods (CQL, IQL), policy constraints and actor-critic methods (TD3+BC, AWAC), Decision Transformers and model-based methods (MOPO, MOReL) each have one too. Chapter 2 maps the whole landscape with references. Chapters 9–12 move from algorithms to practice: physics priors, an industrial case study with multi-seed results, explainability, and tool-using LLM agents.
 
@@ -202,4 +202,4 @@ The case study of Chapter 10 is also written up as a short paper in [`paper/`](p
 ## License
 
 - Code in `code/` and `scripts/`: [MIT](LICENSE).
-- Text and figures (`en/`, `ru/`, `figures/`, the tables of contents): [CC BY 4.0](LICENSE-text) — free to share and adapt with attribution.
+- Text and figures (`en/`, `ru/`, `figures/`, the tables of contents): [CC BY 4.0](LICENSE-text) – free to share and adapt with attribution.

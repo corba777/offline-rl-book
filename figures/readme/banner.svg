@@ -13,7 +13,7 @@
   <!-- Title block -->
   <text x="44" y="92" font-size="44" font-weight="700" fill="#f3f6fc">Offline RL</text>
   <text x="46" y="128" font-size="21" fill="#dfe6f3">From Theory to Industrial Practice</text>
-  <text x="46" y="168" font-size="14.5" fill="#a8b6d0">Learning control policies from logged data —</text>
+  <text x="46" y="168" font-size="14.5" fill="#a8b6d0">Learning control policies from logged data –</text>
   <text x="46" y="189" font-size="14.5" fill="#a8b6d0">without live experiments on the plant.</text>
 
   <!-- Plant / environment -->

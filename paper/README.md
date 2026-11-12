@@ -2,9 +2,9 @@
 
 A short research paper built from the case study in Chapter 10 of the book.
 
-- `main.tex`, `refs.bib` — the paper.
-- `make_artifacts.py` — builds every table (`tables/*.tex`) and the figure (`figures/rollout_error.pdf`) from the saved results in `code/results/`; nothing is typed in by hand.
-- `build.sh` — runs `make_artifacts.py`, compiles the PDF with tectonic and packs `arxiv.tar.gz` (source, `.bbl`, tables and figure) for upload.
+- `main.tex`, `refs.bib` – the paper.
+- `make_artifacts.py` – builds every table (`tables/*.tex`) and the figure (`figures/rollout_error.pdf`) from the saved results in `code/results/`; nothing is typed in by hand.
+- `build.sh` – runs `make_artifacts.py`, compiles the PDF with tectonic and packs `arxiv.tar.gz` (source, `.bbl`, tables and figure) for upload.
 
 ```bash
 sh paper/build.sh        # needs the repo's Python environment and tectonic

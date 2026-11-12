@@ -70,7 +70,7 @@
   <g font-size="12">
     <line x1="40" y1="360" x2="70" y2="360" stroke="#2563eb" stroke-width="2"/>
     <text x="78" y="364">control input (the agent's action)</text>
-    <text x="330" y="364">T, f, v, d, L — measured state (normalized to [0, 1])</text>
+    <text x="330" y="364">T, f, v, d, L – measured state (normalized to [0, 1])</text>
     <line x1="40" y1="386" x2="70" y2="386" stroke="#b4441b" stroke-width="2" stroke-dasharray="6 4"/>
     <text x="78" y="390" fill="#b4441b">①–③ present in the true dynamics, missing from the agent's physics model</text>
   </g>

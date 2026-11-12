@@ -1,4 +1,4 @@
-# RU cross-reference audit — stale chapter numbers
+# RU cross-reference audit – stale chapter numbers
 
 The Russian translation is on an **older chapter numbering** (written before the OPE chapter was inserted as ch3 and before Decision Transformers became ch7). As a result almost every "Глава N / глав N–M" cross-reference points at the wrong chapter. The EN side is mostly correct, so each fix below is **anchored to the EN original**.
 
@@ -33,7 +33,7 @@ Legend: 🔴 wrong chapter that misleads a reader · ⚪ EN-anchored, unambiguou
 ## ru/chapter5.md
 | ~Line | Now | → Correct | Basis (EN) |
 |---|---|---|---|
-| 482 | Об этом — **в главе 5**. | в главе **8** | ch5: "the subject of Chapter 8" (self-ref to ch5 is clearly wrong) |
+| 482 | Об этом – **в главе 5**. | в главе **8** | ch5: "the subject of Chapter 8" (self-ref to ch5 is clearly wrong) |
 
 ## ru/chapter6.md
 | ~Line | Now | → Correct | Basis (EN) |
@@ -44,8 +44,8 @@ Legend: 🔴 wrong chapter that misleads a reader · ⚪ EN-anchored, unambiguou
 ## ru/chapter7.md
 | ~Line | Now | → Correct | Basis (EN) |
 |---|---|---|---|
-| 121 | стандарт — CQL, IQL и модельные методы **(глава 7)** | (глава **8**) | ch7: "model-based methods (Chapter 8)" |
-| 123 | **Глава 7 — модельный** offline RL … (MOPO, MOReL) | Глава **8** — модельный | ch7: "Chapter 8 turns to model-based offline RL" |
+| 121 | стандарт – CQL, IQL и модельные методы **(глава 7)** | (глава **8**) | ch7: "model-based methods (Chapter 8)" |
+| 123 | **Глава 7 – модельный** offline RL … (MOPO, MOReL) | Глава **8** – модельный | ch7: "Chapter 8 turns to model-based offline RL" |
 
 ## ru/chapter8.md
 | ~Line | Now | → Correct | Basis (EN) |
@@ -58,13 +58,13 @@ Legend: 🔴 wrong chapter that misleads a reader · ⚪ EN-anchored, unambiguou
 |---|---|---|---|
 | 23 | **В главах 3–7** мы рассматривали мир как black-box | В главах **4–8** | ch9: "Chapters 4–8 treated the world as a black box" |
 | 39 | слой поверх алгоритмов **из глав 3–5** | из глав **4–8** | offline-RL algorithm chapters = 4–8 |
-| 158 | Ансамбль **из главы 5** — чистая нейронная сеть | из главы **8** | ch9: "In Chapter 8, the dynamics ensemble…" |
+| 158 | Ансамбль **из главы 5** – чистая нейронная сеть | из главы **8** | ch9: "In Chapter 8, the dynamics ensemble…" |
 | 180 | NLL-потере ансамбля **из главы 5** | из главы **8** | ensemble = ch8 |
 | 251 | drop-in замена `DynamicsEnsemble` **из главы 5** | из главы **8** | ensemble = ch8 |
 | 298 | границей KNOWN/UNKNOWN из MOReL **(глава 5)** | (глава **8**) | MOReL = ch8 |
 | 427 | **Глава 9 разбирает** промышленный кейс | Глава **10** разбирает | next chapter = Industrial (ch10) |
 
-> Note on L427: the **EN side has the same bug** — `en/chapter9.md:439` says "Chapter 9 works through an industrial case study" (should be Chapter 10). This is errata item **Q**; fix EN and RU together.
+> Note on L427: the **EN side has the same bug** – `en/chapter9.md:439` says "Chapter 9 works through an industrial case study" (should be Chapter 10). This is errata item **Q**; fix EN and RU together.
 
 ## ru/chapter10.md (beyond the S/T already patched)
 | ~Line | Now | → Correct | Basis (EN) |
@@ -91,7 +91,7 @@ Legend: 🔴 wrong chapter that misleads a reader · ⚪ EN-anchored, unambiguou
 | 33 | Промышленный кейс **(глава 9)** | (глава **10**) | ch12: "The industrial case study (Chapter 10)" |
 | 41 | Теоретические гарантии **глав 3–8** | глав **4–9** | ch12:41 "guarantees from Chapters 4–9" |
 | 45 | Ансамблевая неопределённость **(главы 7–8)** | (главы **8–9**) | ch12:45 "Ensemble-based uncertainty (Chapters 8–9)" |
-| 47 | политики **из глав 1–9** — чёрные ящики | из глав **1–10** | ch12:47 "policies trained in Chapters 1–10" |
+| 47 | политики **из глав 1–9** – чёрные ящики | из глав **1–10** | ch12:47 "policies trained in Chapters 1–10" |
 | 49 | Гибридные динамические модели **главы 8** | главы **9** | ch12: "hybrid dynamics models in Chapter 9" |
 | 161 | Лагранжев подход **главы 6** | главы **9** | ch12:161 "The Lagrangian approach of Chapter 9" |
 | 181 | метрики `IndustrialEvaluator` **из главы 7** | из главы **10** | IndustrialEvaluator = ch10 |
@@ -100,8 +100,8 @@ Legend: 🔴 wrong chapter that misleads a reader · ⚪ EN-anchored, unambiguou
 
 ## Bonus (not chapter-number, but RU twins of known errata)
 
-- **R-twin — phantom Theorem 6.1 (RU).** `ru/chapter10.md:296` (and the ru/ch12 roadmap) reuse «Теорема 6.1 / зазор оптимальности из Теоремы 6.1». No such theorem exists; it is the ch9 λ-calibration heuristic. Same fix as EN item R, in Russian.
-- **Q-twin — ch9 closing (RU + EN).** Covered above (ru L427 / en:439): "Глава 9 / Chapter 9 разбирает industrial case study" → **Chapter 10**.
+- **R-twin – phantom Theorem 6.1 (RU).** `ru/chapter10.md:296` (and the ru/ch12 roadmap) reuse «Теорема 6.1 / зазор оптимальности из Теоремы 6.1». No such theorem exists; it is the ch9 λ-calibration heuristic. Same fix as EN item R, in Russian.
+- **Q-twin – ch9 closing (RU + EN).** Covered above (ru L427 / en:439): "Глава 9 / Chapter 9 разбирает industrial case study" → **Chapter 10**.
 
 ---
 
@@ -109,6 +109,6 @@ Legend: 🔴 wrong chapter that misleads a reader · ⚪ EN-anchored, unambiguou
 
 **40** stale chapter cross-references in RU (ch1 ×1, ch2 ×5, ch4 ×2, ch5 ×1, ch6 ×2, ch7 ×2, ch8 ×2, ch9 ×7, ch10 ×4, ch11 ×4, ch12 ×10) + 2 RU twins (R, Q). Each must be applied in **both** `ru/chapterN.md` and `ru/chapterN.html`.
 
-None of these affect the English edition except the shared **Q** bug at `en/chapter9.md:439`. The EN cross-references are otherwise correct — this drift is RU-only and points to the RU translation lagging a structural renumber.
+None of these affect the English edition except the shared **Q** bug at `en/chapter9.md:439`. The EN cross-references are otherwise correct – this drift is RU-only and points to the RU translation lagging a structural renumber.
 
 **Recommendation:** this is large but fully mechanical now that each target is pinned. I can generate `errata_ru_crossrefs.patch` (+ `_html`) applying all 40 with unique per-line anchors, verified with `git apply --check`. Because a few items (ch9 L39, ch11 L352) are logic-inferred rather than EN-verbatim, worth a quick eyeball on those two before committing.

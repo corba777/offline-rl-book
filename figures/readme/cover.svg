@@ -60,7 +60,7 @@
   </g>
 
   <!-- Tagline -->
-  <text x="58" y="738" font-size="20" fill="#a8b6d0">Learning control policies from logged data —</text>
+  <text x="58" y="738" font-size="20" fill="#a8b6d0">Learning control policies from logged data –</text>
   <text x="58" y="766" font-size="20" fill="#a8b6d0">without live experiments on the plant.</text>
 
   <!-- Author -->

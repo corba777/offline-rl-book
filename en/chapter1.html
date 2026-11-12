@@ -61,15 +61,15 @@
 <main>
 <h1>Chapter 1: Behavioral Cloning</h1>
 <blockquote>
-<p><em>"The simplest thing that could possibly work — and understanding exactly why it doesn't is the foundation of everything that follows."</em></p>
+<p><em>"The simplest thing that could possibly work – and understanding exactly why it doesn't is the foundation of everything that follows."</em></p>
 </blockquote>
 <hr />
 <h2>The Setting</h2>
-<p>You have a dataset. Someone — an operator, a controller, an expert — has been making decisions for months, and a logging system recorded everything: the state of the process at each moment, what action was taken, what happened next.</p>
+<p>You have a dataset. Someone – an operator, a controller, an expert – has been making decisions for months, and a logging system recorded everything: the state of the process at each moment, what action was taken, what happened next.</p>
 <div class="codehilite"><pre><span></span><code>D = {(sᵢ, aᵢ, s'ᵢ)},  i = 1 … n     (transitions from many episodes; s'ᵢ is the state after aᵢ)
 </code></pre></div>
 
-<p>You want to build a policy — a function π(s) → a — that behaves at least as well as whoever generated the data. You cannot run experiments. You cannot explore. You only have D.</p>
+<p>You want to build a policy – a function π(s) → a – that behaves at least as well as whoever generated the data. You cannot run experiments. You cannot explore. You only have D.</p>
 <p>The most natural idea: <strong>learn to imitate</strong>. If the expert chose action <code>a</code> in state <code>s</code>, then your policy should too. This is Behavioral Cloning (BC).</p>
 <hr />
 <h2>The Idea</h2>
@@ -84,7 +84,7 @@
 <h2>Formalization</h2>
 <p>Let the behavior policy that generated the data be $\pi_\beta$. The dataset $\mathcal{D}$ consists of transitions sampled from the <strong>behavior distribution</strong>:</p>
 <p><div class="math-display">$$(s, a) \sim d^{\pi_\beta}(s) \cdot \pi_\beta(a \mid s)$$</div></p>
-<p>where $d^{\pi_\beta}(s)$ is the <strong>state visitation distribution</strong> — how often the behavior policy visits each state.</p>
+<p>where $d^{\pi_\beta}(s)$ is the <strong>state visitation distribution</strong> – how often the behavior policy visits each state.</p>
 <p>BC minimizes the <strong>imitation loss</strong>:</p>
 <p><div class="math-display">$$\mathcal{L}_{BC}(\theta) = \mathbb{E}_{(s,a) \sim d^{\pi_\beta}} \left[ -\log \pi_\theta(a \mid s) \right]$$</div></p>
 <p>Under the MLE interpretation, this is equivalent to minimizing KL divergence between the learned policy and the behavior policy <strong>at states visited by the behavior policy</strong>:</p>
@@ -214,11 +214,11 @@
 <p>BC works well under two conditions:</p>
 <p><strong>1. Dense, high-quality data.</strong> If the behavior policy is near-optimal and the dataset covers the states you'll encounter at deployment, BC can perform remarkably well. Imitation learning results on robotic manipulation tasks show BC matching or exceeding model-free RL when the demonstrator is expert-level.</p>
 <p><strong>2. Short horizons.</strong> If the task requires only a few steps to complete, errors don't have time to compound.</p>
-<p>In practice, for short tasks — tens of steps rather than hundreds — with a high-quality demonstrator, BC is a strong baseline that's worth trying before anything more complex. There is no sharp horizon cutoff: what matters is how quickly small errors carry the agent into unfamiliar states.</p>
+<p>In practice, for short tasks – tens of steps rather than hundreds – with a high-quality demonstrator, BC is a strong baseline that's worth trying before anything more complex. There is no sharp horizon cutoff: what matters is how quickly small errors carry the agent into unfamiliar states.</p>
 <hr />
 <h2>Why BC Fails: The Compounding Error Problem</h2>
-<p>Here is the core issue. During training, BC sees states from $d^{\pi_\beta}$ — the distribution of states the <em>behavior policy</em> visits. At test time, the learned policy $\pi_\theta$ visits a <em>different</em> distribution $d^{\pi_\theta}$.</p>
-<p>Even if BC learns $\pi_\theta \approx \pi_\beta$ at every training state, small errors in action selection cause the trajectory to drift into <strong>states not seen in the dataset</strong>. At these new states, BC has no reliable predictions — and its errors there cause further drift.</p>
+<p>Here is the core issue. During training, BC sees states from $d^{\pi_\beta}$ – the distribution of states the <em>behavior policy</em> visits. At test time, the learned policy $\pi_\theta$ visits a <em>different</em> distribution $d^{\pi_\theta}$.</p>
+<p>Even if BC learns $\pi_\theta \approx \pi_\beta$ at every training state, small errors in action selection cause the trajectory to drift into <strong>states not seen in the dataset</strong>. At these new states, BC has no reliable predictions – and its errors there cause further drift.</p>
 <p>This is <strong>distribution shift</strong>, and it compounds over time.</p>
 <h3>The Formal Bound</h3>
 <p>Ross &amp; Bagnell (2010) proved the following. Suppose BC disagrees with the expert with probability at most $\epsilon$ on the expert's own state distribution (a 0–1 imitation loss):</p>
@@ -227,11 +227,11 @@
 <p><div class="math-display">$$J(\pi_\beta) - J(\pi_\theta) \leq \epsilon H^2 \cdot C$$</div></p>
 <p>where:
 - $H$ is the task horizon (number of steps)
-- $C$ is the bound on the per-step cost (costs in $[0, C]$); no smoothness of the dynamics is assumed — a single mistake can lead anywhere, which is exactly why errors compound
+- $C$ is the bound on the per-step cost (costs in $[0, C]$); no smoothness of the dynamics is assumed – a single mistake can lead anywhere, which is exactly why errors compound
 - The bound grows as $\mathcal{O}(H^2)$</p>
 <p><strong>The $H^2$ term is the problem.</strong> For a 30-minute prediction horizon at 10-second intervals, $H = 180$. Even tiny per-step error $\epsilon = 0.01$ produces a bound of $0.01 \times 180^2 = 324$. The number shows the scale of a worst-case bound, not the degradation to expect: the theorem assumes a finite, undiscounted horizon, a 0–1 disagreement rate measured on the expert's own states, and nothing about the dynamics, so it must cover the case where every mistake is unrecoverable. The bound is loose in practice, but the trend is real.</p>
 <h3>Intuition: The Snowball</h3>
-<p>Imagine a car following a road. BC trains the steering policy on expert demonstrations. If the policy makes a small error and drifts slightly off-center, it now faces a state the expert never demonstrated — slightly off-road. Its predictions there are unreliable, causing a bigger correction error, drifting further, until the car leaves the road entirely.</p>
+<p>Imagine a car following a road. BC trains the steering policy on expert demonstrations. If the policy makes a small error and drifts slightly off-center, it now faces a state the expert never demonstrated – slightly off-road. Its predictions there are unreliable, causing a bigger correction error, drifting further, until the car leaves the road entirely.</p>
 <p>This is called <strong>covariate shift</strong>: the input distribution at test time doesn't match training time.</p>
 <div class="codehilite"><pre><span></span><code>Training:  s₁ → s₂ → s₃  (expert trajectory, states well-covered)
 Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger errors)
@@ -239,7 +239,7 @@ Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger
            outside training distribution
 </code></pre></div>
 
-<p>The figure below makes the snowball concrete (<code>code/chapter1_5_8_figures.py</code>). A one-dimensional offset drifts unless it is corrected; the expert's feedback keeps it in a narrow band, and BC — a cubic fit to 150 noisy expert labels — matches the expert inside that band. Most BC rollouts stay there. But whenever noise carries one just outside, the cloned policy has no reliable answer, its small errors push the offset further out, and the rollout never comes back.</p>
+<p>The figure below makes the snowball concrete (<code>code/chapter1_5_8_figures.py</code>). A one-dimensional offset drifts unless it is corrected; the expert's feedback keeps it in a narrow band, and BC – a cubic fit to 150 noisy expert labels – matches the expert inside that band. Most BC rollouts stay there. But whenever noise carries one just outside, the cloned policy has no reliable answer, its small errors push the offset further out, and the rollout never comes back.</p>
 <p><img alt="Expert and behavioral-cloning rollouts of a drifting offset; BC rollouts that leave the band covered by data run away" src="../figures/ch1/bc_drift.png" /></p>
 <hr />
 <h2>Practical Limitations for Industrial Processes</h2>
@@ -258,7 +258,7 @@ Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger
 <li>Add $(s, a)$ to $\mathcal{D}$, go to step 1</li>
 </ol>
 <p>DAgger achieves an $\mathcal{O}(H)$ bound instead of $\mathcal{O}(H^2)$, because the policy is now trained on the states it actually visits.</p>
-<p>The problem: step 3 requires <strong>querying the expert online</strong>. In industrial settings, this means asking a human operator to label states during deployment — expensive and often impractical.</p>
+<p>The problem: step 3 requires <strong>querying the expert online</strong>. In industrial settings, this means asking a human operator to label states during deployment – expensive and often impractical.</p>
 <p>This is precisely why <strong>offline RL</strong> exists: we want to improve beyond BC without additional data collection.</p>
 <hr />
 <h2>Summary</h2>
@@ -272,7 +272,7 @@ Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger
 <tbody>
 <tr>
 <td>Data required</td>
-<td>Transitions $(s, a)$ — no rewards needed</td>
+<td>Transitions $(s, a)$ – no rewards needed</td>
 </tr>
 <tr>
 <td>Training objective</td>
@@ -284,11 +284,11 @@ Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger
 </tr>
 <tr>
 <td>OOD handling</td>
-<td>None — fails silently on unseen states</td>
+<td>None – fails silently on unseen states</td>
 </tr>
 <tr>
 <td>Reward optimization</td>
-<td>No — copies behavior, not objectives</td>
+<td>No – copies behavior, not objectives</td>
 </tr>
 <tr>
 <td>Implementation complexity</td>
@@ -296,11 +296,11 @@ Testing:   s₁ → s₂' → s₃''  (small errors → unseen states → larger
 </tr>
 </tbody>
 </table>
-<p><strong>BC is the right starting point.</strong> Before training CQL or building world models, always fit a BC baseline. If BC already achieves acceptable performance, you may not need anything more complex. If it doesn't, understanding <em>why</em> — which states it fails on, how error compounds — tells you exactly what offline RL needs to fix.</p>
+<p><strong>BC is the right starting point.</strong> Before training CQL or building world models, always fit a BC baseline. If BC already achieves acceptable performance, you may not need anything more complex. If it doesn't, understanding <em>why</em> – which states it fails on, how error compounds – tells you exactly what offline RL needs to fix.</p>
 <hr />
 <h2>What Comes Next</h2>
 <p>BC fails because it treats the problem as i.i.d. supervised learning and ignores sequential structure. The next question: can we use reward information to do better, while still learning only from a fixed dataset?</p>
-<p>This is the offline RL problem. Chapter 2 defines it formally and shows why naively applying Q-learning to offline data produces catastrophically overoptimistic value estimates — the <strong>extrapolation error</strong> problem that motivates the methods in Chapters 3–9.</p>
+<p>This is the offline RL problem. Chapter 2 defines it formally and shows why naively applying Q-learning to offline data produces catastrophically overoptimistic value estimates – the <strong>extrapolation error</strong> problem that motivates the methods in Chapters 3–9.</p>
 <hr />
 <h2>References</h2>
 <ul>

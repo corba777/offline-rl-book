@@ -70,7 +70,7 @@
 <p>Explainability in Offline RL is harder than in standard supervised learning for three reasons specific to the offline setting.</p>
 <p><strong>There are three separate models to explain.</strong> A trained Offline RL agent contains a Q-function (the critic), a policy (the actor), and optionally a dynamics model. Each answers a different question, and their explanations do not always agree. The Q-function might rate an action highly because temperature is near its setpoint; the policy might choose that action because level is near its lower bound. Understanding the discrepancy is as important as understanding the agreement.</p>
 <p><strong>The Q-function's input is a concatenation of state and action.</strong> Unlike a classifier whose input is a single feature vector, the Q-function takes $(s, a)$ as input. SHAP values computed over this concatenated space tell you whether the high Q-value comes from the state (the situation was favorable) or the action (the specific action was appropriate for this situation).</p>
-<p><strong>The behavior policy's distribution is uneven.</strong> SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset — dense near the operating setpoint and sparse near disturbances. SHAP values answer: <em>"how does this instance differ from the typical operating point, and how does that difference affect the output?"</em></p>
+<p><strong>The behavior policy's distribution is uneven.</strong> SHAP values are relative to a background distribution. In Offline RL, the natural background is the offline dataset – dense near the operating setpoint and sparse near disturbances. SHAP values answer: <em>"how does this instance differ from the typical operating point, and how does that difference affect the output?"</em></p>
 <blockquote>
 <p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/chapter11.py"><code>chapter11.py</code></a>. Figures: <code>chapter11_toy_figures.py</code>; causal toy: <code>chapter11_causal_toy.py</code>.</p>
 </blockquote>
@@ -80,13 +80,13 @@
 <p><div class="math-display">$$f(x) = \phi_0 + \sum_{i=1}^{n} \phi_i(x)$$</div></p>
 <p>where $\phi_0 = \mathbb{E}[f(X)]$ is the expected model output over the background distribution, and $\phi_i(x)$ is the contribution of feature $i$ to the prediction for instance $x$.</p>
 <p>The SHAP values $\{\phi_i\}$ are the unique decomposition satisfying:
-- <strong>Efficiency</strong>: $\sum_i \phi_i = f(x) - \phi_0$ — values sum to total prediction minus baseline
+- <strong>Efficiency</strong>: $\sum_i \phi_i = f(x) - \phi_0$ – values sum to total prediction minus baseline
 - <strong>Symmetry</strong>: features with equal marginal contributions receive equal SHAP values
 - <strong>Dummy</strong>: a feature with zero marginal contribution receives $\phi_i = 0$</p>
 <p><strong>KernelExplainer</strong> computes SHAP values without architecture knowledge. It fits a weighted linear model to masked predictions:</p>
 <p><div class="math-display">$$\phi = \arg\min_{\phi} \sum_{z \in \{0,1\}^n} \pi(z)\left[f(h(x, z)) - \phi_0 - \sum_i z_i \phi_i\right]^2$$</div></p>
-<p>where $z$ is a binary mask, $h(x, z)$ replaces masked features with background samples, and $\pi(z)$ weights coalitions by the Shapley kernel. This works on any black-box function — Q-networks, policy networks, ensemble dynamics — with no architecture assumptions.</p>
-<p>That replacement has a cost the rest of this book warns about. Interventional KernelSHAP evaluates the model on hybrid inputs: a state from one transition with an action from another, or a temperature from one row with a viscosity from another, even though viscosity is a deterministic function of temperature and filler. Such inputs can lie far outside the data — exactly where Q-functions and dynamics models are least reliable — and the attributions inherit whatever the model does there. Treat attributions for derived or strongly correlated features (viscosity, density) with care: group them with the variables they depend on, or use a background conditioned on the instance. For a principled treatment of Shapley values in RL — which characteristic function to use for a policy or a value function, and how to stay on the data distribution — see Beechey et al. (<a href="https://arxiv.org/abs/2306.05810">2023</a>); Milani et al. (<a href="https://arxiv.org/abs/2202.08434">2024</a>) place feature attribution among the other families of explainable-RL methods.</p>
+<p>where $z$ is a binary mask, $h(x, z)$ replaces masked features with background samples, and $\pi(z)$ weights coalitions by the Shapley kernel. This works on any black-box function – Q-networks, policy networks, ensemble dynamics – with no architecture assumptions.</p>
+<p>That replacement has a cost the rest of this book warns about. Interventional KernelSHAP evaluates the model on hybrid inputs: a state from one transition with an action from another, or a temperature from one row with a viscosity from another, even though viscosity is a deterministic function of temperature and filler. Such inputs can lie far outside the data – exactly where Q-functions and dynamics models are least reliable – and the attributions inherit whatever the model does there. Treat attributions for derived or strongly correlated features (viscosity, density) with care: group them with the variables they depend on, or use a background conditioned on the instance. For a principled treatment of Shapley values in RL – which characteristic function to use for a policy or a value function, and how to stay on the data distribution – see Beechey et al. (<a href="https://arxiv.org/abs/2306.05810">2023</a>); Milani et al. (<a href="https://arxiv.org/abs/2202.08434">2024</a>) place feature attribution among the other families of explainable-RL methods.</p>
 <p>We use KernelExplainer throughout for consistency: all three explanations use the same method, making them directly comparable.</p>
 <h3>Toy example: what SHAP shows</h3>
 <p>A minimal example fixes intuition. Consider a toy Q-function with three inputs: $Q(s_1, s_2, a) = 2 s_1 - s_2 + 0.5 a$. So state_1 pushes Q up, state_2 pushes it down, and the action has a smaller positive effect. We draw a background from "typical" operation (values in $[0.3, 0.7]$) and explain a set of instances. SHAP attributes each prediction to the three features.</p>
@@ -94,25 +94,25 @@
 <p><img alt="Toy Q: mean |SHAP| per feature" src="../figures/ch11/toy_shap_bar.png" /></p>
 <p><strong>Why is this one instance’s Q high?</strong> The waterfall plot takes a single instance (e.g. high $s_1$, low $s_2$) and shows how each feature’s SHAP value moves the output from the baseline $\phi_0 = \mathbb{E}[Q]$ to the final $Q(x)$. Positive bars (state_1, action) push Q up; the negative bar (state_2) pushes it down.</p>
 <p><img alt="Toy Q: waterfall for one instance" src="../figures/ch11/toy_shap_waterfall.png" /></p>
-<p><strong>Spread across instances.</strong> A beeswarm plot shows one dot per instance per feature; the x-axis is SHAP value and the color is the feature’s value (blue = low, red = high). You see that high state_1 tends to go with positive SHAP (red dots on the right) and high state_2 with negative SHAP — the model’s monotone dependence is visible.</p>
+<p><strong>Spread across instances.</strong> A beeswarm plot shows one dot per instance per feature; the x-axis is SHAP value and the color is the feature’s value (blue = low, red = high). You see that high state_1 tends to go with positive SHAP (red dots on the right) and high state_2 with negative SHAP – the model’s monotone dependence is visible.</p>
 <p><img alt="Toy Q: beeswarm of SHAP values" src="../figures/ch11/toy_shap_beeswarm.png" /></p>
 <p><strong>Toy policy: which state feature drives the action?</strong> Next, take a toy policy $\pi(s_1, s_2) = \text{clip}(0.5 + 0.4 s_1 - 0.3 s_2)$ with a single action. State_1 pushes the action up, state_2 pushes it down. Policy SHAP attributes the scalar action to the two state inputs. The bar chart shows which state variable the policy "looks at" most; the waterfall for one state shows how each feature's contribution moves the output from the average action $\mathbb{E}[\pi]$ to $\pi(s)$. Do not read the sign of a bar as the sign of a coefficient: in the waterfall below $s_2 = 0.20$ lies below its background mean of about 0.5, so its contribution $-0.3 \times (0.20 - 0.50) = +0.09$ is positive although $s_2$ lowers the action. SHAP measures an effect relative to the background. In the real coating setup (Level 2) we have two action dimensions (heat_input, flow_input); we explain each separately and get one such bar and waterfall per action.</p>
 <p><img alt="Toy policy: mean |SHAP| per state feature" src="../figures/ch11/toy_policy_bar.png" /></p>
 <p><img alt="Toy policy: waterfall for one state" src="../figures/ch11/toy_policy_waterfall.png" /></p>
-<p><strong>Toy dynamics: which input drives the predicted next state?</strong> Finally, a toy dynamics model with two next-state dimensions: $\hat{s}_1' = 0.7 s_1 + 0.2 a$ and $\hat{s}_2' = 0.6 s_2 + 0.15 a$. So the first output is driven by current $s_1$ and action $a$; the second by $s_2$ and $a$. We explain each output separately (as in Level 3). The two-panel bar chart shows mean $|\phi_i|$ for the three inputs $(s_1, s_2, a)$ when predicting $\hat{s}_1'$ and $\hat{s}_2'$ — SHAP recovers that $s_1$ and $a$ matter for next_s1, and $s_2$ and $a$ for next_s2. The waterfall for one $(s, a)$ instance shows how each input's SHAP adds up from the baseline prediction to $\hat{s}_1'$.</p>
+<p><strong>Toy dynamics: which input drives the predicted next state?</strong> Finally, a toy dynamics model with two next-state dimensions: $\hat{s}_1' = 0.7 s_1 + 0.2 a$ and $\hat{s}_2' = 0.6 s_2 + 0.15 a$. So the first output is driven by current $s_1$ and action $a$; the second by $s_2$ and $a$. We explain each output separately (as in Level 3). The two-panel bar chart shows mean $|\phi_i|$ for the three inputs $(s_1, s_2, a)$ when predicting $\hat{s}_1'$ and $\hat{s}_2'$ – SHAP recovers that $s_1$ and $a$ matter for next_s1, and $s_2$ and $a$ for next_s2. The waterfall for one $(s, a)$ instance shows how each input's SHAP adds up from the baseline prediction to $\hat{s}_1'$.</p>
 <p><img alt="Toy dynamics: which inputs drive next_s1 and next_s2?" src="../figures/ch11/toy_dynamics_bar.png" /></p>
 <p><img alt="Toy dynamics: waterfall for one (s,a) → next_s1" src="../figures/ch11/toy_dynamics_waterfall.png" /></p>
 <p>All of these figures are produced by running <code>python code/chapter11_toy_figures.py</code> (see the script for the exact toy models and SHAP setup). Later in this chapter we check that the Q-function and policy attend to similar state features (rank correlation), and that the dynamics model obeys simple physics (e.g. heat_input → next_temperature positive); the same SHAP outputs feed those consistency checks.</p>
 <hr />
 <h2>Three Levels of Explanation</h2>
-<h3>Level 1: Q-function SHAP — Why Does the Agent Value This Action?</h3>
-<p>The Q-function $Q(s, a)$ takes the concatenated $(s, a)$ vector as input and outputs a scalar value estimate. SHAP on this input answers which features — current state variables or the chosen action — contribute most to the Q-value.</p>
+<h3>Level 1: Q-function SHAP – Why Does the Agent Value This Action?</h3>
+<p>The Q-function $Q(s, a)$ takes the concatenated $(s, a)$ vector as input and outputs a scalar value estimate. SHAP on this input answers which features – current state variables or the chosen action – contribute most to the Q-value.</p>
 <div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">QFunctionWrapper</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Wrap QNetwork as numpy-in / numpy-out for SHAP KernelExplainer.</span>
 
-<span class="sd">    Input:  X ∈ R^{n × (state_dim + action_dim)}  — [state | action]</span>
-<span class="sd">    Output: q ∈ R^n                                — Q-value per sample</span>
+<span class="sd">    Input:  X ∈ R^{n × (state_dim + action_dim)}  – [state | action]</span>
+<span class="sd">    Output: q ∈ R^n                                – Q-value per sample</span>
 <span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
@@ -126,15 +126,15 @@
 <p>Feature vector: <code>[temperature, filler_frac, viscosity, density, level, heat_input, flow_input]</code>.</p>
 <p>State feature SHAP answers: "was this situation favorable?"
 Action feature SHAP answers: "was this action appropriately chosen for this state?"</p>
-<p><strong>Expected pattern for a well-trained CQL agent:</strong> state features near their setpoints → positive SHAP (favorable situation → high Q). If action SHAP values are near zero regardless of action magnitude, the Q-function ignores the action — a sign of Q-function collapse.</p>
-<h3>Level 2: Policy SHAP — Why Does the Agent Choose This Action?</h3>
+<p><strong>Expected pattern for a well-trained CQL agent:</strong> state features near their setpoints → positive SHAP (favorable situation → high Q). If action SHAP values are near zero regardless of action magnitude, the Q-function ignores the action – a sign of Q-function collapse.</p>
+<h3>Level 2: Policy SHAP – Why Does the Agent Choose This Action?</h3>
 <p>We explain each action dimension separately (SHAP requires scalar output):</p>
 <div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">PolicySingleOutputWrapper</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    action_idx = 0 → heat_input</span>
 <span class="sd">    action_idx = 1 → flow_input</span>
 
-<span class="sd">    Explains deterministic mean action tanh(μ_θ(s)) — not sampled,</span>
+<span class="sd">    Explains deterministic mean action tanh(μ_θ(s)) – not sampled,</span>
 <span class="sd">    so SHAP estimates are stable across calls.</span>
 <span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">S</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
@@ -146,7 +146,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 </code></pre></div>
 
 <p><strong>Expected pattern:</strong> <code>heat_input</code> driven primarily by <code>temperature</code>. For <code>flow_input</code> the naive guess is <code>filler_frac</code>, but in the run below <code>level</code> dominates by a wide margin (mean |SHAP| 0.16 against 0.04). That is physically sensible: the feed is the only lever on the integrating level, while the filler fraction relaxes back toward its setpoint largely on its own.</p>
-<h3>Level 3: Dynamics SHAP — Why Does the Model Predict This Next State?</h3>
+<h3>Level 3: Dynamics SHAP – Why Does the Model Predict This Next State?</h3>
 <p>We explain three output dimensions: <code>next_temperature</code> (0), <code>next_filler_frac</code> (1), <code>next_level</code> (4):</p>
 <div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">DynamicsSingleOutputWrapper</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""</span>
@@ -161,7 +161,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
         <span class="k">return</span> <span class="n">s_next</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_idx</span><span class="p">]</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
 </code></pre></div>
 
-<p><strong>Physics sanity check:</strong> <code>heat_input</code> should show a <strong>positive dependence slope</strong> with <code>next_temperature</code> (SHAP increases as heat rises); likewise <code>flow_input</code> with <code>next_level</code>. Do not expect the same for <code>next_filler_frac</code>: the filler responds to the feed two steps later, so a correct one-step model shows almost no dependence on the current flow command. Test this via a feature-vs-SHAP correlation or the dependence plot — not via mean signed SHAP, which can sit near zero when instances straddle the background baseline. If the slope is inverted, the dynamics model learned an impossible relationship in some data region — a red flag before deployment.</p>
+<p><strong>Physics sanity check:</strong> <code>heat_input</code> should show a <strong>positive dependence slope</strong> with <code>next_temperature</code> (SHAP increases as heat rises); likewise <code>flow_input</code> with <code>next_level</code>. Do not expect the same for <code>next_filler_frac</code>: the filler responds to the feed two steps later, so a correct one-step model shows almost no dependence on the current flow command. Test this via a feature-vs-SHAP correlation or the dependence plot – not via mean signed SHAP, which can sit near zero when instances straddle the background baseline. If the slope is inverted, the dynamics model learned an impossible relationship in some data region – a red flag before deployment.</p>
 <hr />
 <h2>The Explainer Class</h2>
 <p><code>OfflineRLExplainer</code> manages background construction and SHAP computation for all three levels:</p>
@@ -177,7 +177,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
             <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">bg_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bg_actions</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 </code></pre></div>
 
-<p>The background defines $\phi_0$ — the average model output. Using the offline dataset means SHAP values answer: <em>"how does this transition differ from a typical observed transition?"</em></p>
+<p>The background defines $\phi_0$ – the average model output. Using the offline dataset means SHAP values answer: <em>"how does this transition differ from a typical observed transition?"</em></p>
 <p><strong>Performance:</strong> KernelExplainer calls each wrapper thousands of times. The implementation in <code>chapter11.py</code> pre-tensors the background on the device at explainer init to reduce transfer overhead. For very large runs, consider reducing <code>n_background</code> or <code>n_samples</code>. <strong>DynamicsSingleOutputWrapper</strong> aggregates the ensemble (mean prediction) before SHAP; SHAP is computed on the mean next-state, not per-model.</p>
 <div class="codehilite"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">explainer</span><span class="o">.</span><span class="n">explain_all</span><span class="p">(</span>
     <span class="n">n_explain</span>    <span class="o">=</span> <span class="mi">150</span><span class="p">,</span>   <span class="c1"># instances to explain</span>
@@ -202,7 +202,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 - <strong>Red-right / blue-left consistently</strong> → monotone relationship
 - <strong>Mixed colors</strong> → nonlinear or interaction-dependent</p>
 <h3>Bar Charts (Policy and Dynamics)</h3>
-<p>Mean |SHAP| per feature — answers "which features matter most?"</p>
+<p>Mean |SHAP| per feature – answers "which features matter most?"</p>
 <div class="codehilite"><pre><span></span><code><span class="n">plot_policy_bar</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">'policy_shap'</span><span class="p">],</span> <span class="n">STATE_NAMES</span><span class="p">,</span>
                 <span class="n">save_path</span><span class="o">=</span><span class="s1">'ch11_policy_bar.png'</span><span class="p">)</span>
 
@@ -220,9 +220,9 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
     <span class="n">save_path</span><span class="o">=</span><span class="s1">'ch11_force_best.png'</span><span class="p">)</span>
 </code></pre></div>
 
-<p>An operator can use this to answer: "why did the agent rate this moment as high-value?" If the answer is "temperature near setpoint, level stable" — sensible. If "viscosity unusually low" when the setpoint is on temperature — a spurious correlation to investigate.</p>
+<p>An operator can use this to answer: "why did the agent rate this moment as high-value?" If the answer is "temperature near setpoint, level stable" – sensible. If "viscosity unusually low" when the setpoint is on temperature – a spurious correlation to investigate.</p>
 <h3>Dependence Plot: Interactions</h3>
-<p>SHAP of feature A vs its raw value, colored by feature B — reveals interaction effects:</p>
+<p>SHAP of feature A vs its raw value, colored by feature B – reveals interaction effects:</p>
 <div class="codehilite"><pre><span></span><code><span class="n">plot_shap_dependence</span><span class="p">(</span>
     <span class="n">results</span><span class="p">[</span><span class="s1">'q_shap'</span><span class="p">][:,</span> <span class="p">:</span><span class="nb">len</span><span class="p">(</span><span class="n">STATE_NAMES</span><span class="p">)],</span>
     <span class="n">results</span><span class="p">[</span><span class="s1">'states'</span><span class="p">],</span>
@@ -232,7 +232,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
     <span class="n">title</span><span class="o">=</span><span class="s1">'Q-SHAP: temperature effect (colored by filler_frac)'</span><span class="p">)</span>
 </code></pre></div>
 
-<p>If temperature SHAP values split systematically by filler color, there is an interaction: the Q-function's response to temperature depends on filler level. For a physics-informed agent this is expected — viscosity is a nonlinear function of both.</p>
+<p>If temperature SHAP values split systematically by filler color, there is an interaction: the Q-function's response to temperature depends on filler level. For a physics-informed agent this is expected – viscosity is a nonlinear function of both.</p>
 <hr />
 <h2>Consistency Check</h2>
 <div class="codehilite"><pre><span></span><code><span class="n">metrics</span> <span class="o">=</span> <span class="n">check_explanation_consistency</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
@@ -250,20 +250,20 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 <span class="w">    </span><span class="nt">flow_input</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="nt">next_filler</span><span class="w">     </span><span class="o">:</span><span class="w"> </span><span class="nt">d</span><span class="o">/</span><span class="nt">du</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">-0</span><span class="p">.</span><span class="nc">0114</span>
 </code></pre></div>
 
-<p><strong>Q-policy Spearman $\rho$:</strong> ranks state features by mean |SHAP| in the Q-function and in the policy. With only five state features this is a blunt instrument: for $n = 5$, $\rho$ must reach about 0.9 to be significant at the 5% level (one-sided), so the 0.70 above is not evidence of anything on its own. How unstable it is shows directly: an earlier run of the same code, differing only in the random retraining, gave 0.20. Both the Q-function and the policy rank <code>level</code> and <code>temperature</code> highest; the remaining three features have near-zero policy SHAP, and their order — which decides $\rho$ — is noise. Nor is there a reason the two rankings must agree: the Q-function attributes <em>value</em> and the policy attributes <em>action</em>, and a variable can matter for one without mattering for the other. A very low or negative $\rho$ is a prompt to look closer — for instance at whether a strongly regularized actor (large CQL $\alpha$) has stopped responding to the state — not a pass/fail test.</p>
-<p><strong>Physics sign tests:</strong> <code>heat_input</code> should show a positive dependence slope with <code>next_temperature</code>, and <code>flow_input</code> with <code>next_level</code>; the slope for <code>next_filler_frac</code> is printed for reference and should be near zero because of the transport delay. The code fits a line to SHAP against the feature value instead of averaging signed SHAP, which can sit near zero when instances straddle the background; the dependence plot shows the same thing visually. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region — common when coverage near boundaries is very sparse. The slope is still a heuristic, not a derivative: the sign of $d\,\mathrm{SHAP}_i / d x_i$ need not match the sign of $\partial f / \partial x_i$ when features interact, are correlated, or sit on the other side of the background. The code therefore also runs an intervention check — nudge one actuator input by $\pm 0.05$ with every other input fixed and measure the change in the model's mean prediction — which tests the model's own local response directly. Neither check sees delayed effects: a one-step model and its one-step attribution say nothing about what an action does two steps later, which for the filler loop is exactly where its effect lies; that needs a multi-step rollout or an impulse-response test. Both checks are in normalized units: the ensemble predicts normalized states, so $d/du$ is in standard deviations of the output variable per unit of action. Converted with the logged standard deviations, the level response is $1.83 \times 0.109 \approx 0.199$ per action unit, against $0.5 \times 0.4 = 0.2$ from the mass balance, while the temperature response is $1.03 \times 0.041 \approx 0.042$ against a true $0.036$ — an 18% overestimate that a sign test cannot see. Here the two checks agree closely — slope and finite difference are $+1.04$ and $+1.03$ for heat, $+1.83$ for both on the level — which is what one should see when the model is smooth and the inputs nearly independent; a large gap between them is a reason to distrust the SHAP slope.</p>
+<p><strong>Q-policy Spearman $\rho$:</strong> ranks state features by mean |SHAP| in the Q-function and in the policy. With only five state features this is a blunt instrument: for $n = 5$, $\rho$ must reach about 0.9 to be significant at the 5% level (one-sided), so the 0.70 above is not evidence of anything on its own. How unstable it is shows directly: an earlier run of the same code, differing only in the random retraining, gave 0.20. Both the Q-function and the policy rank <code>level</code> and <code>temperature</code> highest; the remaining three features have near-zero policy SHAP, and their order – which decides $\rho$ – is noise. Nor is there a reason the two rankings must agree: the Q-function attributes <em>value</em> and the policy attributes <em>action</em>, and a variable can matter for one without mattering for the other. A very low or negative $\rho$ is a prompt to look closer – for instance at whether a strongly regularized actor (large CQL $\alpha$) has stopped responding to the state – not a pass/fail test.</p>
+<p><strong>Physics sign tests:</strong> <code>heat_input</code> should show a positive dependence slope with <code>next_temperature</code>, and <code>flow_input</code> with <code>next_level</code>; the slope for <code>next_filler_frac</code> is printed for reference and should be near zero because of the transport delay. The code fits a line to SHAP against the feature value instead of averaging signed SHAP, which can sit near zero when instances straddle the background; the dependence plot shows the same thing visually. An inverted slope indicates the dynamics model learned a physically impossible relationship in some data region – common when coverage near boundaries is very sparse. The slope is still a heuristic, not a derivative: the sign of $d\,\mathrm{SHAP}_i / d x_i$ need not match the sign of $\partial f / \partial x_i$ when features interact, are correlated, or sit on the other side of the background. The code therefore also runs an intervention check – nudge one actuator input by $\pm 0.05$ with every other input fixed and measure the change in the model's mean prediction – which tests the model's own local response directly. Neither check sees delayed effects: a one-step model and its one-step attribution say nothing about what an action does two steps later, which for the filler loop is exactly where its effect lies; that needs a multi-step rollout or an impulse-response test. Both checks are in normalized units: the ensemble predicts normalized states, so $d/du$ is in standard deviations of the output variable per unit of action. Converted with the logged standard deviations, the level response is $1.83 \times 0.109 \approx 0.199$ per action unit, against $0.5 \times 0.4 = 0.2$ from the mass balance, while the temperature response is $1.03 \times 0.041 \approx 0.042$ against a true $0.036$ – an 18% overestimate that a sign test cannot see. Here the two checks agree closely – slope and finite difference are $+1.04$ and $+1.03$ for heat, $+1.83$ for both on the level – which is what one should see when the model is smooth and the inputs nearly independent; a large gap between them is a reason to distrust the SHAP slope.</p>
 <hr />
 <h2>SHAP in Production: Practical Considerations</h2>
 <p><strong>Computational cost.</strong> KernelExplainer makes $n\_\text{explain} \times n\_\text{samples} \times n\_\text{background}$ model evaluations. For 150 × 80 × 80 = 960,000 calls this takes minutes on CPU. Practical strategy: run offline before deployment on a held-out validation set; re-run monthly on recent operating data to detect distribution shift.</p>
-<p><strong>Background dataset choice</strong> is the most important hyperparameter. Full dataset background answers "difference from typical operation." Constraint-region background answers "what distinguishes near-violations from typical near-violations?" — useful for diagnosing why the agent approaches boundaries.</p>
-<p><strong>Physical units.</strong> States are normalized for training. To communicate feature values with operators, convert <strong>states</strong> back to physical units — not SHAP values:</p>
+<p><strong>Background dataset choice</strong> is the most important hyperparameter. Full dataset background answers "difference from typical operation." Constraint-region background answers "what distinguishes near-violations from typical near-violations?" – useful for diagnosing why the agent approaches boundaries.</p>
+<p><strong>Physical units.</strong> States are normalized for training. To communicate feature values with operators, convert <strong>states</strong> back to physical units – not SHAP values:</p>
 <div class="codehilite"><pre><span></span><code><span class="c1"># Convert feature values back to physical units for display</span>
 <span class="n">states_physical</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">'states'</span><span class="p">]</span> <span class="o">*</span> <span class="n">s_std</span> <span class="o">+</span> <span class="n">s_mean</span>
 <span class="c1"># SHAP values are in the units of the model's output, and here those are scaled:</span>
 <span class="c1"># - Q-SHAP: Q in units of the scaled reward (multiply by r_std for raw reward)</span>
 <span class="c1"># - policy-SHAP: action units in [-1, 1]</span>
 <span class="c1"># - dynamics-SHAP: normalized next-state units; multiply by s_std of the *output*</span>
-<span class="c1">#   variable for physical units — never by the s_std of the input feature</span>
+<span class="c1">#   variable for physical units – never by the s_std of the input feature</span>
 </code></pre></div>
 
 <hr />
@@ -274,7 +274,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 <p><strong>SHAP explains the model, not whether the model is correct.</strong> If the Q-function overestimates in some region (a known offline RL failure mode), SHAP will faithfully explain the overestimation. Consistency checks can detect some failure modes, but SHAP is not a substitute for evaluation metrics from Chapter 10.</p>
 <hr />
 <h2>Beyond SHAP: Causal AI in Offline RL</h2>
-<p>SHAP is a well-established tool for <em>attribution</em> — which inputs the model uses for a prediction. A different line of work asks: can we make Offline RL agents reason in terms of <em>cause and effect</em>, so they generalize better and avoid spurious correlations?</p>
+<p>SHAP is a well-established tool for <em>attribution</em> – which inputs the model uses for a prediction. A different line of work asks: can we make Offline RL agents reason in terms of <em>cause and effect</em>, so they generalize better and avoid spurious correlations?</p>
 <p><strong>Why causality matters in Offline RL.</strong> Offline data is observational: we see $(s, a, s', r)$ under the behavior policy, but not what would have happened under another action. Standard model-based methods learn transition models that fit correlations; in distribution shift or under confounding (e.g. unobserved factors that affect both action and next state), correlation-driven models can fail. Causal approaches aim to separate true causal influences from spurious ones. In driving logs, for example, wipers being on and harder braking are strongly correlated, yet neither causes the other: both are caused by rain, a confounder. A model that learns "wipers on → brake harder" fails as soon as the wipers are switched on for another reason.</p>
 <p><strong>Causal RL in practice.</strong> Recent work includes:</p>
 <ul>
@@ -283,9 +283,9 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 <li><strong>Surveys and taxonomy.</strong> Causal RL is often categorized into: causal representation learning, counterfactual policy optimization, <em>offline</em> causal RL, causal transfer, and causal explainability. The last connects directly to this chapter: explanations that reflect cause–effect structure are easier to trust and to debug.</li>
 </ul>
 <p><strong>Resources.</strong> The survey by Deng et al. (2023) gives a unified view of causal RL and includes a section on offline/batch settings. The FOCUS paper (Zhu et al.) is a concrete example of causal-structured world models for offline model-based RL. For the link between off-policy evaluation and causal inference (treatment effect estimation), see the batch RL / causal inference literature (e.g. the connection between importance sampling and inverse propensity scoring). References are listed below.</p>
-<p><strong>Toy code example.</strong> A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next\_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ — correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an <em>intervention</em> we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: <code>python code/chapter11_causal_toy.py</code>. Core idea:</p>
+<p><strong>Toy code example.</strong> A minimal script illustrates why correlation-based predictors can fail under intervention. True dynamics: $\text{next\_s1} = 0.8\,s_1 + 0.2\,a$ (causal parents: $s_1$, $a$). We add a nuisance variable $z = s_1 + \text{noise}$ – correlated with $s_1$ but not a cause of next_s1. The "correlation" model predicts next_s1 from $(s_2, z, a)$ (it never sees $s_1$, so it uses $z$ as a proxy). The "causal" model uses $(s_1, a)$ only. Both fit well in-distribution. Under an <em>intervention</em> we set $z=0.9$, $s_1=0.2$, $a=0.5$: true next_s1 is $0.26$, but the correlation model predicts high (misled by $z$); the causal model predicts $0.26$. Run: <code>python code/chapter11_causal_toy.py</code>. Core idea:</p>
 <div class="codehilite"><pre><span></span><code><span class="c1"># True dynamics (unknown to learner): next_s1 = 0.8*s1 + 0.2*a</span>
-<span class="c1"># Nuisance z = s1 + noise — correlated with s1, not a cause of next_s1</span>
+<span class="c1"># Nuisance z = s1 + noise – correlated with s1, not a cause of next_s1</span>
 <span class="c1"># Correlation model: fit next_s1 from (s2, z, a)</span>
 <span class="c1"># Causal model:       fit next_s1 from (s1, a)</span>
 <span class="c1"># Intervention: s1=0.2, z=0.9, a=0.5 → true next_s1=0.26</span>
@@ -329,7 +329,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 </tr>
 </tbody>
 </table>
-<p>The consistency checks — the Q-policy rank comparison and the physics sign tests — are screening tools: the sign tests can catch a physically impossible dynamics model, while the rank comparison only flags cases worth a closer look.</p>
+<p>The consistency checks – the Q-policy rank comparison and the physics sign tests – are screening tools: the sign tests can catch a physically impossible dynamics model, while the rank comparison only flags cases worth a closer look.</p>
 <p>Chapter 12 carries the offline RL toolkit over to tool-using LLM agents, where states are contexts and actions are tool calls. Chapter 13 then closes the book with a broader view: what the field has achieved, where it is heading, and the open problems that remain.</p>
 <hr />
 <h2>Appendix 11.A: Choosing Between SHAP Variants</h2>
@@ -347,7 +347,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 <td><code>KernelExplainer</code></td>
 <td>Any black-box</td>
 <td>Slow</td>
-<td>Used throughout — consistent across all model types</td>
+<td>Used throughout – consistent across all model types</td>
 </tr>
 <tr>
 <td><code>DeepExplainer</code></td>
@@ -389,7 +389,7 @@ Action feature SHAP answers: "was this action appropriately chosen for this stat
 <li>Doshi-Velez, F., &amp; Kim, B. (2017). <em>Towards a Rigorous Science of Interpretable Machine Learning.</em> <a href="https://arxiv.org/abs/1702.08608">arXiv:1702.08608</a>.</li>
 <li>Deng, Z., Jiang, J., Long, G., &amp; Zhang, C. (2023). <em>Causal Reinforcement Learning: A Survey.</em> TMLR. <a href="https://arxiv.org/abs/2307.01452">arXiv:2307.01452</a>.</li>
 <li>Zhu, Z.-M., Chen, X.-H., Tian, H.-L., Zhang, K., &amp; Yu, Y. (2022). <em>Offline Reinforcement Learning with Causal Structured World Models.</em> <a href="https://arxiv.org/abs/2206.01474">arXiv:2206.01474</a> (FOCUS).</li>
-<li>Buesing, L., et al. (2020). <em>Woulda, Coulda, Shoulda: Counterfactually-Guided Policy Search.</em> ICLR. <a href="https://arxiv.org/abs/2006.02579">arXiv:2006.02579</a> — connection between batch RL and causal inference.</li>
+<li>Buesing, L., et al. (2020). <em>Woulda, Coulda, Shoulda: Counterfactually-Guided Policy Search.</em> ICLR. <a href="https://arxiv.org/abs/2006.02579">arXiv:2006.02579</a> – connection between batch RL and causal inference.</li>
 </ul></main>
 <nav class="chapter-nav">
 <a href="/offline-rl-book/en/chapter10.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Industrial Applications</span></a>

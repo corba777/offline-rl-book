@@ -20,13 +20,13 @@ permalink: "/offline-rl-book/en/chapter4/"
 
 ## The Problem, Restated
 
-In Chapter 2 we saw that standard Q-learning on offline data produces catastrophically overoptimistic Q-values for out-of-distribution (OOD) actions. The greedy policy then exploits these inflated values, selecting actions the dataset never covered — and failing in deployment.
+In Chapter 2 we saw that standard Q-learning on offline data produces catastrophically overoptimistic Q-values for out-of-distribution (OOD) actions. The greedy policy then exploits these inflated values, selecting actions the dataset never covered – and failing in deployment.
 
 The root cause: the Bellman backup uses $\max_{a'} Q(s', a')$, which ranges over all actions including those never seen. For unseen actions, the Q-function generalizes optimistically.
 
-**Conservative Q-Learning (CQL)** — Kumar et al., NeurIPS 2020 — fixes this with a single elegant idea: **add a regularization term that explicitly penalizes Q-values on actions not in the dataset**.
+**Conservative Q-Learning (CQL)** – Kumar et al., NeurIPS 2020 – fixes this with a single elegant idea: **add a regularization term that explicitly penalizes Q-values on actions not in the dataset**.
 
-The result: a Q-function that is pessimistic about OOD actions by construction. The greedy policy, facing lower values outside the dataset, naturally stays close to the behavior policy — without explicitly constraining it.
+The result: a Q-function that is pessimistic about OOD actions by construction. The greedy policy, facing lower values outside the dataset, naturally stays close to the behavior policy – without explicitly constraining it.
 
 ---
 
@@ -46,7 +46,7 @@ where:
 - The first expectation **pushes Q-values down** for actions sampled from $\mu$
 - The second expectation **pushes Q-values up** for actions in the dataset
 
-In words: **minimize Q-values everywhere, but maximize them at dataset actions**. The gap between the two terms is what CQL minimizes — it makes dataset actions look better than OOD actions, which is exactly what we want.
+In words: **minimize Q-values everywhere, but maximize them at dataset actions**. The gap between the two terms is what CQL minimizes – it makes dataset actions look better than OOD actions, which is exactly what we want.
 
 ---
 
@@ -58,7 +58,7 @@ More precisely, CQL minimizes the following regularized Bellman error:
 
 $$\min_\theta \, \alpha \left( \mathbb{E}_{s \sim \mathcal{D}} \left[ \log \sum_a \exp Q_\theta(s, a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q_\theta(s, a) \right] \right) + \frac{1}{2} \mathcal{L}_{TD}(\theta)$$
 
-The first term is the **log-sum-exp** over all actions — a smooth approximation of $\max_a Q(s,a)$. It pushes the entire Q-surface down. The second term lifts Q-values specifically at dataset points.
+The first term is the **log-sum-exp** over all actions – a smooth approximation of $\max_a Q(s,a)$. It pushes the entire Q-surface down. The second term lifts Q-values specifically at dataset points.
 
 This can be written compactly. Define:
 
@@ -94,7 +94,7 @@ Kumar et al. (2020) prove two related lower bounds, and the difference between t
 
 **Theorem 3.1 (push-down term only).** If the penalty contains only $\mathbb{E}_{a \sim \mu}[Q]$, for any $\mu$ whose support lies inside that of $\hat\pi_\beta$, the learned $\hat{Q}^\pi$ is a *pointwise* lower bound: $\hat{Q}^\pi(s, a) \leq Q^\pi(s, a)$ for all $s \in \mathcal{D}$ and all $a$, provided $\alpha$ is large enough.
 
-**Theorem 3.2 (full CQL objective).** With the data term $-\mathbb{E}_{a \sim \hat\pi_\beta}[Q]$ included and $\mu = \pi$, the Q-values are no longer a pointwise bound — actions that are frequent in the data can even be overestimated — but the value of the policy is:
+**Theorem 3.2 (full CQL objective).** With the data term $-\mathbb{E}_{a \sim \hat\pi_\beta}[Q]$ included and $\mu = \pi$, the Q-values are no longer a pointwise bound – actions that are frequent in the data can even be overestimated – but the value of the policy is:
 
 $$\hat{V}^\pi(s) = \mathbb{E}_{a \sim \pi(\cdot \mid s)}\bigl[\hat{Q}^\pi(s, a)\bigr] \leq V^\pi(s) \quad \forall s \in \mathcal{D}$$
 
@@ -294,9 +294,9 @@ $\alpha$ is the most important hyperparameter in CQL. It controls the trade-off 
 
 | $\alpha$ | Behavior |
 |---|---|
-| $\alpha = 0$ | Standard SAC — no conservatism, OOD exploitation |
-| $\alpha$ small (0.1–1.0) | Mild conservatism — allows some policy improvement |
-| $\alpha$ large (5–10) | Strong conservatism — policy stays close to $\pi_\beta$ |
+| $\alpha = 0$ | Standard SAC – no conservatism, OOD exploitation |
+| $\alpha$ small (0.1–1.0) | Mild conservatism – allows some policy improvement |
+| $\alpha$ large (5–10) | Strong conservatism – policy stays close to $\pi_\beta$ |
 | $\alpha \to \infty$ | Equivalent to Behavioral Cloning |
 
 **Automated $\alpha$ tuning.** CQL can tune $\alpha$ automatically using a Lagrangian approach. We want the CQL penalty to be at most some target threshold $\tau$:
@@ -322,9 +322,9 @@ with torch.no_grad():
     log_alpha_cql.clamp_(np.log(1e-3), np.log(1e3))   # keep α in a sane range
 ```
 
-**What $\tau$ means, and why it is easy to get wrong.** The penalty is the log-integral of $\exp Q$ over the action box minus $Q$ on the logged actions. For a $Q$ that does not depend on the action it equals $d \log 2$ ($1.39$ for $d = 2$); values below that mean $Q$ already peaks at the logged actions. Two consequences follow. First, $\tau$ has no scale-free meaning: it depends on the action dimension, on the reward scale and on how sharply the true $Q$ varies with the action. Thresholds from papers do not transfer either: the reference implementation multiplies the penalty by `min_q_weight` $w$ and omits the $-\log N$ normalization over its $N = 30$ samples, so its $\tau_{\text{ref}}$ corresponds to $\tau_{\text{ref}}/w - \log 30$ here — its AntMaze setting $\tau_{\text{ref}} = 5$, $w = 5$ becomes about $-2.4$. Second, and more important, a target is reachable only if it lies in the range the penalty actually covers as $\alpha$ varies, and that range can be narrow.
+**What $\tau$ means, and why it is easy to get wrong.** The penalty is the log-integral of $\exp Q$ over the action box minus $Q$ on the logged actions. For a $Q$ that does not depend on the action it equals $d \log 2$ ($1.39$ for $d = 2$); values below that mean $Q$ already peaks at the logged actions. Two consequences follow. First, $\tau$ has no scale-free meaning: it depends on the action dimension, on the reward scale and on how sharply the true $Q$ varies with the action. Thresholds from papers do not transfer either: the reference implementation multiplies the penalty by `min_q_weight` $w$ and omits the $-\log N$ normalization over its $N = 30$ samples, so its $\tau_{\text{ref}}$ corresponds to $\tau_{\text{ref}}/w - \log 30$ here – its AntMaze setting $\tau_{\text{ref}} = 5$, $w = 5$ becomes about $-2.4$. Second, and more important, a target is reachable only if it lies in the range the penalty actually covers as $\alpha$ varies, and that range can be narrow.
 
-On the thermal task it is very narrow. Over 40 epochs, with $\alpha$ fixed at 1 the penalty settles at $0.14$; the same agent with auto-tuning reaches $0.13$ when $\alpha$ climbs to $3.4$ and $0.16$ when $\alpha$ falls to $0.3$, and after 120 epochs with $\alpha \approx 0.02$ it is still only $0.19$. The likely reason is that the true $Q$ here already varies with the action, so that variation, rather than conservatism, sets most of the penalty. Any target below about $0.13$ — including the formerly default $-2$ — makes $\alpha$ rise for the whole run; a target above about $0.16$ makes it fall towards plain SAC, at least within any training run of practical length. Neither is an equilibrium. Because Adam takes steps of roughly constant size, $\alpha$ then moves at a fixed rate in $\log \alpha$, and its final value is set by the length of training, not by the data. Returns barely differed in this experiment ($-1.9$ to $-2.1$ on one seed), which is itself a warning: the tuning looked harmless while doing nothing.
+On the thermal task it is very narrow. Over 40 epochs, with $\alpha$ fixed at 1 the penalty settles at $0.14$; the same agent with auto-tuning reaches $0.13$ when $\alpha$ climbs to $3.4$ and $0.16$ when $\alpha$ falls to $0.3$, and after 120 epochs with $\alpha \approx 0.02$ it is still only $0.19$. The likely reason is that the true $Q$ here already varies with the action, so that variation, rather than conservatism, sets most of the penalty. Any target below about $0.13$ – including the formerly default $-2$ – makes $\alpha$ rise for the whole run; a target above about $0.16$ makes it fall towards plain SAC, at least within any training run of practical length. Neither is an equilibrium. Because Adam takes steps of roughly constant size, $\alpha$ then moves at a fixed rate in $\log \alpha$, and its final value is set by the length of training, not by the data. Returns barely differed in this experiment ($-1.9$ to $-2.1$ on one seed), which is itself a warning: the tuning looked harmless while doing nothing.
 
 The practical rule: run CQL with a fixed $\alpha$ first, take $\tau$ from the penalty it reaches, and plot $\alpha$ during the tuned run. If $\alpha$ settles, the constraint is active; if it drifts in one direction for the whole run, treat the result as a schedule and fall back to a fixed $\alpha$ chosen by OPE (Chapter 3). `cql.py` follows this rule in its demo and refuses `auto_alpha=True` without an explicit `target_cql`.
 
@@ -352,11 +352,11 @@ The fixed `0.1` in our implementation works for the thermal control environment 
 
 ## Intuition: The Q-Landscape
 
-Think of the Q-function as a landscape over the state-action space. Standard Q-learning shapes this landscape using only data points as anchors — in between, the landscape is unconstrained and tends to rise due to optimistic generalization.
+Think of the Q-function as a landscape over the state-action space. Standard Q-learning shapes this landscape using only data points as anchors – in between, the landscape is unconstrained and tends to rise due to optimistic generalization.
 
 CQL adds gravity: it pulls the entire landscape down, while the TD loss anchors it at data points. The result is a landscape that is high at dataset actions and low everywhere else.
 
-The policy, acting greedily on this landscape, prefers dataset actions — not because it was explicitly constrained, but because the landscape naturally guides it there.
+The policy, acting greedily on this landscape, prefers dataset actions – not because it was explicitly constrained, but because the landscape naturally guides it there.
 
 The figure below shows this on the toy problem of Chapter 2, produced by `code/chapter2_4_figures.py`. With the same data and the same TD target, adding the CQL penalty with $\alpha = 1$ keeps Q close to the true value inside the data (about $-5$ to $-1$, against $-3.3$) and pushes it far down outside, exactly where the naive network rated actions highest. CQL errs on the pessimistic side by design: the true $Q^*$ barely drops toward the edges, while the CQL estimate falls to about $-50$ there.
 
@@ -368,11 +368,11 @@ The figure below shows this on the toy problem of Chapter 2, produced by `code/c
 
 The right value of $\alpha$ depends on dataset quality, reward scale, and how much you trust the behavior policy.
 
-### Step 1 — Sanity-check the penalty
+### Step 1 – Sanity-check the penalty
 
 The penalty is the gap between the soft maximum over all actions and $Q$ at dataset actions, and it is exactly what CQL minimizes. So before tuning, check its direction: train a few hundred updates at two values of $\alpha$. The larger $\alpha$ should give the smaller penalty. If it does not, the OOD sampling or the importance weights are broken.
 
-### Step 2 — Grid search over one log-scale pass
+### Step 2 – Grid search over one log-scale pass
 
 ```python
 for alpha in [0.1, 0.5, 1.0, 5.0, 10.0]:
@@ -384,12 +384,12 @@ for alpha in [0.1, 0.5, 1.0, 5.0, 10.0]:
 
 Five runs give a coarse map of the reward–conservatism tradeoff.
 
-### Step 3 — Read the diagnostics
+### Step 3 – Read the diagnostics
 
 | Symptom | Diagnosis | Fix |
 |---|---|---|
-| Policy ≈ BC, no improvement | $\alpha$ too large — Q suppressed everywhere | Reduce by 5–10× |
-| Q-values diverge | $\alpha$ too small — OOD not controlled | Increase by 2–5× |
+| Policy ≈ BC, no improvement | $\alpha$ too large – Q suppressed everywhere | Reduce by 5–10× |
+| Q-values diverge | $\alpha$ too small – OOD not controlled | Increase by 2–5× |
 | CQL penalty near zero or negative | Conservatism saturated: out-of-data values already sit below the data | Do not raise $\alpha$; if the policy ≈ BC, lower it |
 | CQL penalty >> TD loss | $\alpha$ too large or reward scale issue | Normalize rewards; reduce $\alpha$ |
 
@@ -439,7 +439,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 
 **Start with $\alpha = 1.0$.** This is a safe default. If the policy is too conservative (performance similar to BC), reduce $\alpha$. If Q-values diverge, increase it.
 
-**Use Double-Q.** Always use two Q-networks and take the minimum. This reduces overestimation independent of CQL — they complement each other.
+**Use Double-Q.** Always use two Q-networks and take the minimum. This reduces overestimation independent of CQL – they complement each other.
 
 **Monitor the CQL penalty.** Log the gap between the soft maximum over actions and $Q$ at dataset actions. A large or growing gap means some actions outside the data still look better than the data, and $\alpha$ may be too small. A gap near zero or below means out-of-data values are already pushed under the data; raising $\alpha$ further mostly makes the policy more BC-like.
 
@@ -455,7 +455,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 
 **Conservative by design.** CQL will not outperform the behavior policy by a large margin in regions with sparse data. It is designed to be safe, not to extrapolate aggressively. For tasks requiring significant extrapolation beyond the dataset, model-based methods (Chapter 8) are more appropriate.
 
-**Continuous action spaces need sampling.** The logsumexp over actions requires sampling — typically 10 uniform + 10 policy samples per state. Each sample is divided by the density of the distribution it came from ($2^{-d}$ for uniform actions, $\pi(a|s)$ for policy actions); after that, one logsumexp over all 20 weighted samples minus $\log 20$ is exactly the half-and-half mixture estimate of $\log \int e^{Q}\,da$ used by Kumar et al. The variance of this estimate grows with the action dimension, which is why the paper finds the policy-based variant more stable in high-dimensional action spaces. Sampling also adds computational overhead compared to BC or TD3+BC. Three implementation details are worth knowing when comparing penalty magnitudes. In the code, dividing by the uniform density is written as subtracting `log_unif = -d * log 2`, which adds $d \log 2$. Policy samples are drawn at the current states only, while the reference implementation also draws them at the next states $s'$. And the tanh correction $\log(1 - \tanh^2 u)$ is computed as `log(1 - a**2 + 1e-6)`: the small constant keeps it finite, but once $|u| > 9$ the tanh rounds to $\pm 1$ and the gradient of the correction vanishes. The identity $\log(1 - \tanh^2 u) = 2(\log 2 - u - \operatorname{softplus}(-2u))$ stays accurate there; with `log_std` clamped at 2 saturation is rare, but it is worth using if you widen that range.
+**Continuous action spaces need sampling.** The logsumexp over actions requires sampling – typically 10 uniform + 10 policy samples per state. Each sample is divided by the density of the distribution it came from ($2^{-d}$ for uniform actions, $\pi(a|s)$ for policy actions); after that, one logsumexp over all 20 weighted samples minus $\log 20$ is exactly the half-and-half mixture estimate of $\log \int e^{Q}\,da$ used by Kumar et al. The variance of this estimate grows with the action dimension, which is why the paper finds the policy-based variant more stable in high-dimensional action spaces. Sampling also adds computational overhead compared to BC or TD3+BC. Three implementation details are worth knowing when comparing penalty magnitudes. In the code, dividing by the uniform density is written as subtracting `log_unif = -d * log 2`, which adds $d \log 2$. Policy samples are drawn at the current states only, while the reference implementation also draws them at the next states $s'$. And the tanh correction $\log(1 - \tanh^2 u)$ is computed as `log(1 - a**2 + 1e-6)`: the small constant keeps it finite, but once $|u| > 9$ the tanh rounds to $\pm 1$ and the gradient of the correction vanishes. The identity $\log(1 - \tanh^2 u) = 2(\log 2 - u - \operatorname{softplus}(-2u))$ stays accurate there; with `log_std` clamped at 2 saturation is rare, but it is worth using if you widen that range.
 
 ---
 
@@ -472,7 +472,7 @@ TD3+BC is a good starting point for deterministic policies. CQL is more principl
 
 CQL closes the gap between behavioral cloning and full offline RL. It uses reward information to improve over the behavior policy, while pessimism about OOD actions prevents the catastrophic failures of standard Q-learning.
 
-The remaining limitation: CQL is **model-free**. It learns from the data as-is, with no model of how the system transitions. Chapter 5 (IQL) refines the value pessimism idea. Chapter 8 (MOPO) shows how learning a world model enables generating synthetic data — extending the effective dataset beyond what was collected.
+The remaining limitation: CQL is **model-free**. It learns from the data as-is, with no model of how the system transitions. Chapter 5 (IQL) refines the value pessimism idea. Chapter 8 (MOPO) shows how learning a world model enables generating synthetic data – extending the effective dataset beyond what was collected.
 
 ---
 

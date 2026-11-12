@@ -13,12 +13,12 @@ Idea: actor loss = minimize -lambda_ * Q_norm(s, pi(s)) + ||pi(s) - a||^2
 No theoretical guarantee; simple and effective in practice.
 
 Contents:
-    1. ThermalProcessEnv  — toy environment (same as cql.py / iql.py)
+    1. ThermalProcessEnv  – toy environment (same as cql.py / iql.py)
     2. Dataset collection + normalization
     3. Actor (deterministic), QNetwork (double-Q)
     4. TD3+BC loss: TD for Q, BC-regularized actor
-    5. TD3BCAgent — training loop
-    6. run_comparison()  — train and evaluate vs BC
+    5. TD3BCAgent – training loop
+    6. run_comparison()  – train and evaluate vs BC
 
 Usage:
     python td3bc.py
@@ -132,7 +132,7 @@ def normalize_dataset(dataset):
 # ============================================================================
 
 class QNetwork(nn.Module):
-    """Q(s,a) — same as CQL/IQL."""
+    """Q(s,a) – same as CQL/IQL."""
     def __init__(self, state_dim, action_dim, hidden_dim=256):
         super().__init__()
         self.net = nn.Sequential(
@@ -190,7 +190,7 @@ def td3bc_actor_loss(actor, Q1, states, actions, lambda_=0.25):
 
 class TD3BCAgent:
     """
-    TD3 with BC penalty. Critic: standard TD3 — clipped double Q, target
+    TD3 with BC penalty. Critic: standard TD3 – clipped double Q, target
     networks, target policy smoothing (Gaussian noise, std policy_noise, clipped
     at noise_clip, added to the target action) and an actor and target update
     every policy_delay critic steps. Actor: TD3+BC loss with normalized Q.
@@ -309,7 +309,7 @@ def evaluate(env, agent, s_mean, s_std, n_episodes=20, seed=100):
 # ============================================================================
 
 def main(quick=False):
-    print("TD3+BC (Chapter 6) — Offline RL on ThermalProcessEnv")
+    print("TD3+BC (Chapter 6) – Offline RL on ThermalProcessEnv")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     state_dim, action_dim = 3, 2
     batch_size = 256

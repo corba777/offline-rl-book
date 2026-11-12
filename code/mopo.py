@@ -13,15 +13,15 @@ synthetic rollouts with uncertainty-penalized rewards, then run standard RL
 exploiting regions where the model is unreliable.
 
 Contents:
-    1. ThermalProcessEnv         — toy industrial environment (same as CQL)
-    2. Dataset collection        — noisy PID behavior policy
-    3. ProbabilisticDynamicsNet  — single probabilistic dynamics model
-    4. DynamicsEnsemble          — N models for uncertainty estimation
-    5. QNetwork / GaussianPolicy — SAC critic and actor (reused from CQL)
-    6. MOPOAgent                 — model training + synthetic rollouts + SAC
-    7. BCAgent                   — behavioral cloning baseline
-    8. show_model_uncertainty()  — visualize where the model is confident
-    9. run_comparison()          — train all, compare performance
+    1. ThermalProcessEnv         – toy industrial environment (same as CQL)
+    2. Dataset collection        – noisy PID behavior policy
+    3. ProbabilisticDynamicsNet  – single probabilistic dynamics model
+    4. DynamicsEnsemble          – N models for uncertainty estimation
+    5. QNetwork / GaussianPolicy – SAC critic and actor (reused from CQL)
+    6. MOPOAgent                 – model training + synthetic rollouts + SAC
+    7. BCAgent                   – behavioral cloning baseline
+    8. show_model_uncertainty()  – visualize where the model is confident
+    9. run_comparison()          – train all, compare performance
 
 Usage:
     python mopo.py
@@ -45,8 +45,8 @@ class ThermalProcessEnv:
     """
     Toy thermal coating process (asphalt-manufacturing-inspired).
 
-    State:  [temperature, filler_pct, viscosity]  — all in [0, 1]
-    Action: [heat_delta, flow_delta]               — in [-1, 1]
+    State:  [temperature, filler_pct, viscosity]  – all in [0, 1]
+    Action: [heat_delta, flow_delta]               – in [-1, 1]
 
     Dynamics (discrete-time, first-order):
         T_{t+1}      = alpha_T * T_t + beta_T * heat_input + noise
@@ -110,7 +110,7 @@ class ThermalProcessEnv:
 # ============================================================================
 
 def pid_action(state, T_target, f_target):
-    """Proportional control — behavior policy."""
+    """Proportional control – behavior policy."""
     T, f, _ = state
     return np.array([
         np.clip(2.0 * (T_target - T), -1, 1),
@@ -121,7 +121,7 @@ def pid_action(state, T_target, f_target):
 def collect_offline_dataset(n_episodes=400, noise_scale=0.3, seed=0):
     """
     Collect transitions using a noisy PID (suboptimal behavior policy).
-    noise_scale=0.3 gives mixed-quality data — some good, some bad.
+    noise_scale=0.3 gives mixed-quality data – some good, some bad.
     """
     env = ThermalProcessEnv(seed=seed)
     S, A, R, S2, D = [], [], [], [], []
@@ -169,10 +169,10 @@ class ProbabilisticDynamicsNet(nn.Module):
         s'_pred ~ N(s + mean(s,a), exp(log_var(s,a)))
 
     Residual prediction (predicting delta rather than absolute s') is
-    critical for stability — the identity baseline makes it easier to
+    critical for stability – the identity baseline makes it easier to
     learn small corrections.
 
-    Trained with negative log-likelihood (NLL) — not MSE — so the network
+    Trained with negative log-likelihood (NLL) – not MSE – so the network
     learns its own uncertainty for each input.
     """
 
@@ -271,7 +271,7 @@ class DynamicsEnsemble:
 
         Bootstrap sampling is critical for ensemble diversity:
         each model sees a random 80% of the data, so they disagree
-        on data-sparse regions — which is exactly what we want.
+        on data-sparse regions – which is exactly what we want.
         """
         n_data = len(dataset['states'])
         s  = torch.FloatTensor(dataset['states']).to(self.device)
@@ -788,7 +788,7 @@ def run_comparison(quick=False):
     print(f"{'Method':<28} {'Reward':>12}  {'T err':>8}  {'f err':>8}")
     print("-" * 60)
     print(f"{'Noisy PID (data)':<28} {np.mean(pid_r):>8.2f}±{np.std(pid_r):.2f}"
-          f"  {'—':>8}  {'—':>8}")
+          f"  {'–':>8}  {'–':>8}")
     for name, res in [("BC", bc_res),
                       ("MOPO (λ=1.0, h=5)", mopo_res),
                       ("MOPO (λ=3.0, h=3)", mopo_c_res)]:

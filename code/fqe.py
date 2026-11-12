@@ -12,7 +12,7 @@ then estimates J(π) ≈ (1/n) Σ Q(s, π(s)) over states (e.g. initial or from 
 Contents:
     1. ThermalProcessEnv, dataset collection, normalization (same as cql.py/td3bc.py)
     2. QNetwork
-    3. FQEAgent — fit Q to TD target with π at next state; estimate_J()
+    3. FQEAgent – fit Q to TD target with π at next state; estimate_J()
     4. Example: train BC, run FQE to estimate J(BC), compare with rollout return
 
 Usage:
@@ -123,7 +123,7 @@ def normalize_dataset(dataset):
 # ============================================================================
 
 class QNetwork(nn.Module):
-    """Q(s, a) — same architecture as in cql.py / td3bc.py."""
+    """Q(s, a) – same architecture as in cql.py / td3bc.py."""
     def __init__(self, state_dim, action_dim, hidden_dim=256):
         super().__init__()
         self.net = nn.Sequential(
@@ -272,7 +272,7 @@ def evaluate(env, agent, n_episodes=20, seed=100, s_mean=None, s_std=None):
 # ============================================================================
 
 def main(quick=False):
-    print("FQE (Chapter 3) — Off-Policy Evaluation on ThermalProcessEnv")
+    print("FQE (Chapter 3) – Off-Policy Evaluation on ThermalProcessEnv")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     state_dim, action_dim = 3, 2
     batch_size = 256

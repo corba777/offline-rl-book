@@ -19,21 +19,21 @@ epsilon -> immediate HALT with -kappa. Kidambi et al. (2020, Corollary 2) bound 
 suboptimality gap, provided the KNOWN region really keeps model error small.
 
 Contents:
-    1.  ThermalProcessEnv        — toy industrial environment (same as mopo.py)
-    2.  Dataset collection       — noisy PID behavior policy
-    3.  ProbabilisticDynamicsNet — single probabilistic dynamics model (same arch)
-    4.  DynamicsEnsemble         — N models + uncertainty; calibrate_epsilon()
-    5.  QNetwork / GaussianPolicy — SAC critic and actor
-    6.  MOReLAgent               — P-MDP construction + rollouts + SAC
-    7.  BCAgent                  — behavioral cloning baseline
-    8.  visualize_pmdp()         — plot KNOWN vs UNKNOWN boundary in state space
-    9.  run_comparison()         — train BC / MOPO-style / MOReL, compare
+    1.  ThermalProcessEnv        – toy industrial environment (same as mopo.py)
+    2.  Dataset collection       – noisy PID behavior policy
+    3.  ProbabilisticDynamicsNet – single probabilistic dynamics model (same arch)
+    4.  DynamicsEnsemble         – N models + uncertainty; calibrate_epsilon()
+    5.  QNetwork / GaussianPolicy – SAC critic and actor
+    6.  MOReLAgent               – P-MDP construction + rollouts + SAC
+    7.  BCAgent                  – behavioral cloning baseline
+    8.  visualize_pmdp()         – plot KNOWN vs UNKNOWN boundary in state space
+    9.  run_comparison()         – train BC / MOPO-style / MOReL, compare
 
 Key MOReL-specific additions vs mopo.py:
-    - DynamicsEnsemble.calibrate_epsilon()   — set threshold from in-dist data
-    - MOReLAgent.generate_synthetic_data()   — hard HALT on OOD, not soft penalty
-    - MOReLAgent._is_halt()                  — Boolean OOD mask
-    - visualize_pmdp()                       — show P-MDP boundary in 2D slice
+    - DynamicsEnsemble.calibrate_epsilon()   – set threshold from in-dist data
+    - MOReLAgent.generate_synthetic_data()   – hard HALT on OOD, not soft penalty
+    - MOReLAgent._is_halt()                  – Boolean OOD mask
+    - visualize_pmdp()                       – show P-MDP boundary in 2D slice
 
 Usage:
     python morel.py
@@ -51,7 +51,7 @@ from typing import Tuple, Dict, List, Optional
 
 
 # ============================================================================
-# 1. ENVIRONMENT  (identical to mopo.py — same task, different algorithm)
+# 1. ENVIRONMENT  (identical to mopo.py – same task, different algorithm)
 # ============================================================================
 
 class ThermalProcessEnv:
@@ -123,7 +123,7 @@ class ThermalProcessEnv:
 # ============================================================================
 
 def pid_action(state, T_target, f_target):
-    """Proportional controller — behavior policy."""
+    """Proportional controller – behavior policy."""
     T, f, _ = state
     return np.array([
         np.clip(2.0 * (T_target - T), -1, 1),
@@ -326,7 +326,7 @@ class DynamicsEnsemble:
 
         Rationale:
             Setting epsilon at the 80th percentile means 80% of the actual
-            dataset transitions are labelled KNOWN — the ensemble reliably
+            dataset transitions are labelled KNOWN – the ensemble reliably
             models them. The other 20% near the edges of data support are
             labelled UNKNOWN and become the safety boundary.
 
@@ -404,7 +404,7 @@ class GaussianPolicy(nn.Module):
 
 
 # ============================================================================
-# 6. MOReL AGENT   — the core of this file
+# 6. MOReL AGENT   – the core of this file
 # ============================================================================
 
 class MOReeLAgent:
@@ -412,14 +412,14 @@ class MOReeLAgent:
     Model-Based Offline Reinforcement Learning (MOReL).
 
     Training pipeline:
-        Phase 1 — Train dynamics ensemble on offline dataset.
-        Phase 2 — Calibrate epsilon: set KNOWN/UNKNOWN threshold.
-        Phase 3 — Generate P-MDP rollouts:
+        Phase 1 – Train dynamics ensemble on offline dataset.
+        Phase 2 – Calibrate epsilon: set KNOWN/UNKNOWN threshold.
+        Phase 3 – Generate P-MDP rollouts:
                     • sample starting states from real dataset
                     • roll out h steps using ensemble
                     • if uncertainty > epsilon → HALT (done=True, reward=-kappa)
                     • else → normal predicted transition
-        Phase 4 — Train SAC on combined real + P-MDP synthetic data.
+        Phase 4 – Train SAC on combined real + P-MDP synthetic data.
         Repeat phases 3-4 for each outer training iteration.
 
     The P-MDP guarantee (Theorem 1, Kidambi et al. 2020):
@@ -1005,7 +1005,7 @@ def run_comparison(quick=False):
                  morel_returns, 'o-', label='MOReL')
         plt.axhline(bc_return, linestyle='--', color='gray', label='BC')
         plt.xlabel('Outer iteration'); plt.ylabel('Episode return')
-        plt.title('MOReL vs BC — ThermalProcessEnv')
+        plt.title('MOReL vs BC – ThermalProcessEnv')
         plt.legend(); plt.grid(True, alpha=0.3)
         plt.tight_layout()
         plt.savefig('morel_training.png', dpi=150)

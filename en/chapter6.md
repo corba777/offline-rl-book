@@ -14,7 +14,7 @@ permalink: "/offline-rl-book/en/chapter6/"
 
 # Chapter 6: Policy-Constraint and Actor-Critic (TD3+BC, AWAC)
 
-> *"Stay close to what you've seen — but use the critic to lean toward the best of it."*
+> *"Stay close to what you've seen – but use the critic to lean toward the best of it."*
 
 ---
 
@@ -22,7 +22,7 @@ permalink: "/offline-rl-book/en/chapter6/"
 
 Chapters 4 and 5 addressed extrapolation error by making the **value function** pessimistic: CQL penalizes Q-values for OOD actions; IQL avoids OOD queries entirely by using expectile regression and advantage-weighted regression.
 
-A different design is to leave the critic (Q or V) largely unchanged and instead **constrain or regularize the actor** so that the learned policy stays close to the behavior policy. The agent still improves over the data — the critic identifies which actions in the dataset were better — but the policy is not allowed to drift arbitrarily far into OOD regions.
+A different design is to leave the critic (Q or V) largely unchanged and instead **constrain or regularize the actor** so that the learned policy stays close to the behavior policy. The agent still improves over the data – the critic identifies which actions in the dataset were better – but the policy is not allowed to drift arbitrarily far into OOD regions.
 
 This family is **policy-constraint** (or **actor-regularized**) offline RL. It is **actor-critic**: we train both a critic and a policy, but the policy objective explicitly includes a term that pulls it toward the data. Two widely used methods in this family are **TD3+BC** (minimalist, deterministic) and **AWAC** (advantage-weighted, in-sample actor updates).
 
@@ -30,7 +30,7 @@ This family is **policy-constraint** (or **actor-regularized**) offline RL. It i
 
 ## TD3+BC: A Minimalist Policy-Regularized Approach
 
-**TD3+BC** — Fujimoto & Gu, NeurIPS 2021 — adds a single term to the actor loss: a behavioral cloning loss that penalizes deviation from dataset actions. The idea is simple: the actor should maximize Q-value *and* stay close to the actions in the dataset.
+**TD3+BC** – Fujimoto & Gu, NeurIPS 2021 – adds a single term to the actor loss: a behavioral cloning loss that penalizes deviation from dataset actions. The idea is simple: the actor should maximize Q-value *and* stay close to the actions in the dataset.
 
 ### The Idea
 
@@ -40,8 +40,8 @@ TD3+BC modifies the actor objective to:
 
 $$\pi^* = \arg\max_\pi \; \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ \lambda \, Q(s, \pi(s)) - \bigl(\pi(s) - a\bigr)^2 \right]$$
 
-- The first term: **exploit the critic** — choose actions that get high Q (as in TD3).
-- The second term: **imitate the data** — penalize the squared error between $\pi(s)$ and the dataset action $a$ at state $s$.
+- The first term: **exploit the critic** – choose actions that get high Q (as in TD3).
+- The second term: **imitate the data** – penalize the squared error between $\pi(s)$ and the dataset action $a$ at state $s$.
 
 The hyperparameter $\lambda$ balances the two. Small $\lambda$ → policy is almost pure BC. Large $\lambda$ → policy chases Q and may go OOD. In practice, $\lambda$ is set by normalizing Q so that the two terms have comparable scale.
 
@@ -59,19 +59,19 @@ Then the actor maximizes $\mathbb{E}\bigl[ \lambda \, \tilde{Q}(s, \pi(s)) - (\p
 
 **Critic (Q):** Standard TD3. Two Q-networks $Q_1, Q_2$; target networks; TD loss with $\min(Q_1', Q_2')$ at next state and delayed policy updates.
 
-**Actor:** Deterministic policy $\pi_\phi(s)$. Loss (using the normalized $\tilde{Q}$ defined above — **one** scaling step, not two):
+**Actor:** Deterministic policy $\pi_\phi(s)$. Loss (using the normalized $\tilde{Q}$ defined above – **one** scaling step, not two):
 
 $$\mathcal{L}_\pi(\phi) = \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ -\lambda \, \tilde{Q}(s, \pi_\phi(s)) + \bigl(\pi_\phi(s) - a\bigr)^2 \right]$$
 
 Written out with the batch mean $|Q|$: minimize $-\lambda \, Q(s,\pi_\phi(s)) / \bigl(\mathbb{E}_{\mathcal{B}}|Q| + \epsilon\bigr) + (\pi_\phi(s)-a)^2$. This keeps the Q-term and BC-term on similar scale across batches.
 
-**No theoretical guarantee** — unlike CQL, TD3+BC does not provide a lower bound on the true Q-function. It is an empirical, minimalist fix that works well in practice and is very easy to implement.
+**No theoretical guarantee** – unlike CQL, TD3+BC does not provide a lower bound on the true Q-function. It is an empirical, minimalist fix that works well in practice and is very easy to implement.
 
 ---
 
 ## AWAC: Advantage-Weighted Actor-Critic
 
-**AWAC** (Advantage-Weighted Actor-Critic) — Nair et al., 2020 — keeps the **actor update in-sample**: the actor is fitted only on dataset actions, reweighted by their advantage. The critic is a different matter. Its TD target and the value $V(s) = \mathbb{E}_{a \sim \pi}[Q(s,a)]$ are evaluated at actions of the current policy, so AWAC still queries Q outside the data; IQL (Chapter 5) removes those queries as well.
+**AWAC** (Advantage-Weighted Actor-Critic) – Nair et al., 2020 – keeps the **actor update in-sample**: the actor is fitted only on dataset actions, reweighted by their advantage. The critic is a different matter. Its TD target and the value $V(s) = \mathbb{E}_{a \sim \pi}[Q(s,a)]$ are evaluated at actions of the current policy, so AWAC still queries Q outside the data; IQL (Chapter 5) removes those queries as well.
 
 ### The Idea
 
@@ -172,7 +172,7 @@ Start with the paper's $\lambda = 2.5$ on standard benchmarks, or with our more 
 | Hyperparameter | Typical range | Notes |
 |---|---|---|
 | $\beta$ | 0.1 – 10 | Lower → sharper focus on best actions |
-| V / Q | — | Can learn V from data or use Q(s, a) mean |
+| V / Q | – | Can learn V from data or use Q(s, a) mean |
 
 **When to use which**
 

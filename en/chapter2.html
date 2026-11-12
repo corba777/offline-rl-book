@@ -61,42 +61,42 @@
 <main>
 <h1>Chapter 2: The Offline RL Problem</h1>
 <blockquote>
-<p><em>"The value function is an optimist. Given the chance, it will assign infinite value to actions it has never seen — and that is precisely the problem."</em></p>
+<p><em>"The value function is an optimist. Given the chance, it will assign infinite value to actions it has never seen – and that is precisely the problem."</em></p>
 </blockquote>
 <hr />
 <h2>From BC to RL: What Changes</h2>
 <p>Behavioral cloning ignores rewards. It copies what the expert did, not what the expert was trying to achieve.</p>
-<p>The natural next step: use the reward signal. If we have a dataset of transitions $(s, a, r, s')$, we can try to learn a policy that <strong>maximizes cumulative reward</strong> — not just imitates observed behavior. This is the promise of offline RL.</p>
+<p>The natural next step: use the reward signal. If we have a dataset of transitions $(s, a, r, s')$, we can try to learn a policy that <strong>maximizes cumulative reward</strong> – not just imitates observed behavior. This is the promise of offline RL.</p>
 <p>The tool that makes online RL work is <strong>Q-learning</strong>: learn a value function $Q(s, a)$ that estimates the expected future reward of taking action $a$ in state $s$, then act greedily with respect to it.</p>
-<p>The question: can we apply Q-learning to a fixed offline dataset? The answer is yes — but with a catastrophic failure mode that requires careful handling.</p>
+<p>The question: can we apply Q-learning to a fixed offline dataset? The answer is yes – but with a catastrophic failure mode that requires careful handling.</p>
 <hr />
 <h2>Q-Learning: A Brief Recap</h2>
 <p>The Q-function satisfies the <strong>Bellman optimality equation</strong>:</p>
 <p><div class="math-display">$$Q^{\ast}(s, a) = r(s, a) + \gamma \, \mathbb{E}_{s' \sim P(\cdot|s,a)} \left[ \max_{a'} Q^{\ast}(s', a') \right]$$</div></p>
 <p>We learn $Q_\theta$ by minimizing the <strong>TD error</strong> (Temporal Difference):</p>
 <p><div class="math-display">$$\mathcal{L}_{TD}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q_{\bar{\theta}}(s', a') - Q_\theta(s, a) \right)^{2} \right]$$</div></p>
-<p>where $Q_{\bar{\theta}}$ is a <strong>target network</strong> — a periodically updated copy of $Q_\theta$ used to stabilize training.</p>
+<p>where $Q_{\bar{\theta}}$ is a <strong>target network</strong> – a periodically updated copy of $Q_\theta$ used to stabilize training.</p>
 <p>In <strong>online RL</strong>, the agent collects new transitions by acting in the environment. When $Q_\theta$ becomes inaccurate somewhere, the agent will visit those states, get real rewards, and correct the estimate.</p>
 <p>In <strong>offline RL</strong>, the dataset $\mathcal{D}$ is fixed. There is no feedback loop.</p>
 <hr />
 <h2>The Extrapolation Error Problem</h2>
 <p>Here is the key issue. During the $\max_{a'}$ step in the Bellman backup:</p>
 <p><div class="math-display">$$\max_{a'} Q_{\bar{\theta}}(s', a')$$</div></p>
-<p>the optimizer searches over <strong>all possible actions</strong> $a'$ — including actions that never appear in the dataset $\mathcal{D}$.</p>
-<p>For an action $a' \notin \mathcal{D}$, the Q-function has no training signal. Its value at $(s', a')$ is determined entirely by generalization from nearby points — which, for neural networks, can be arbitrarily optimistic.</p>
+<p>the optimizer searches over <strong>all possible actions</strong> $a'$ – including actions that never appear in the dataset $\mathcal{D}$.</p>
+<p>For an action $a' \notin \mathcal{D}$, the Q-function has no training signal. Its value at $(s', a')$ is determined entirely by generalization from nearby points – which, for neural networks, can be arbitrarily optimistic.</p>
 <p>When the Bellman backup picks this overestimated $Q(s', a')$ as the target, it propagates the overestimation backward through the chain:</p>
 <p><div class="math-display">$$Q(s, a) \leftarrow r + \gamma \cdot \underbrace{Q(s', a')}_{\text{overestimated}}$$</div></p>
 <p>This is <strong>bootstrapping error</strong>: errors propagate and amplify through the TD update chain.</p>
 <h3>A Concrete Example</h3>
 <p>Suppose our dataset contains transitions from a chemical process. The operator always kept temperature between 380–420K. The Q-function is trained on these states.</p>
-<p>At state $s'$ near the boundary (say, 419K), the $\max_{a'}$ step might find that the Q-function predicts high reward for an OOD action such as <em>increase heating to 450K</em> — an action never taken by the operator. There's no training data to contradict this. The Q-function has generalized optimistically into that region.</p>
-<p>The Bellman update then uses this value as a target, inflating $Q(s, 419K, \text{heat})$. This propagates backward, inflating values at earlier states. The resulting policy will confidently drive the process into dangerous territory — and the Q-function will predict high rewards all the way there.</p>
+<p>At state $s'$ near the boundary (say, 419K), the $\max_{a'}$ step might find that the Q-function predicts high reward for an OOD action such as <em>increase heating to 450K</em> – an action never taken by the operator. There's no training data to contradict this. The Q-function has generalized optimistically into that region.</p>
+<p>The Bellman update then uses this value as a target, inflating $Q(s, 419K, \text{heat})$. This propagates backward, inflating values at earlier states. The resulting policy will confidently drive the process into dangerous territory – and the Q-function will predict high rewards all the way there.</p>
 <p>This is not a corner case. It is the <strong>default behavior</strong> of Q-learning on offline data.</p>
 <hr />
 <h2>Formal Statement: The Performance Gap</h2>
 <p>Let $\hat{\pi}$ be the greedy policy with respect to a learned Q-function:</p>
 <p><div class="math-display">$$\hat{\pi}(s) = \arg\max_a Q_\theta(s, a)$$</div></p>
-<p>Define the <strong>estimated performance</strong> as the return the Q-function promises at the start of an episode, $\hat{J}(\hat{\pi}) = \mathbb{E}_{s_0 \sim \rho_0}\bigl[Q_\theta(s_0, \hat{\pi}(s_0))\bigr]$, and the <strong>true performance</strong> $J(\hat{\pi})$ — what the policy actually achieves in the environment.</p>
+<p>Define the <strong>estimated performance</strong> as the return the Q-function promises at the start of an episode, $\hat{J}(\hat{\pi}) = \mathbb{E}_{s_0 \sim \rho_0}\bigl[Q_\theta(s_0, \hat{\pi}(s_0))\bigr]$, and the <strong>true performance</strong> $J(\hat{\pi})$ – what the policy actually achieves in the environment.</p>
 <p>The gap between them is given <em>exactly</em> by a standard telescoping identity (a form of the simulation lemma):</p>
 <p><div class="math-display">$$\hat{J}(\hat{\pi}) - J(\hat{\pi}) = \frac{1}{1-\gamma}\, \underset{(s,a) \sim d^{\hat{\pi}}}{\mathbb{E}}\Bigl[ Q_\theta(s,a) - (\mathcal{B}^{\hat{\pi}} Q_\theta)(s,a) \Bigr]$$</div></p>
 <p>Here $d^{\hat{\pi}}$ is the normalized discounted state-action occupancy of $\hat{\pi}$, and $\mathcal{B}^{\hat{\pi}} Q(s,a) = r(s,a) + \gamma\, \mathbb{E}_{s'}\bigl[Q(s', \hat{\pi}(s'))\bigr]$. For the greedy policy $\mathcal{B}^{\hat{\pi}} Q_\theta$ coincides with the optimality backup $\mathcal{B}^{\ast} Q_\theta$, so the right side is simply the Bellman error of the learned Q-function, averaged over the states and actions that the <em>learned</em> policy visits.</p>
@@ -108,10 +108,10 @@
 <p>In Chapter 1, we saw distribution shift in BC: the policy visits different states than the expert, causing compounding errors in action prediction.</p>
 <p>In offline Q-learning, the distribution shift is in <strong>action space</strong>:</p>
 <ul>
-<li><strong>Training distribution</strong>: $(s, a) \sim d^{{\pi_{\beta}}}(s) \cdot \pi_{\beta}(a \mid s)$ — state-action pairs from the dataset</li>
-<li><strong>Evaluation distribution</strong>: $(s, a) \sim d^{{\hat{\pi}}}(s) \cdot \hat{\pi}(a \mid s)$ — state-action pairs under the greedy policy</li>
+<li><strong>Training distribution</strong>: $(s, a) \sim d^{{\pi_{\beta}}}(s) \cdot \pi_{\beta}(a \mid s)$ – state-action pairs from the dataset</li>
+<li><strong>Evaluation distribution</strong>: $(s, a) \sim d^{{\hat{\pi}}}(s) \cdot \hat{\pi}(a \mid s)$ – state-action pairs under the greedy policy</li>
 </ul>
-<p>The greedy policy will select actions outside the training distribution whenever the Q-function is overoptimistic there — which is exactly when no corrective training signal exists.</p>
+<p>The greedy policy will select actions outside the training distribution whenever the Q-function is overoptimistic there – which is exactly when no corrective training signal exists.</p>
 <p>Offline Q-learning also combines all three ingredients of what Sutton and Barto call the <strong>"deadly triad"</strong>: function approximation, bootstrapping and off-policy learning. The triad explains why errors can grow without bound once they appear; the action-space distribution shift above explains where those errors come from.</p>
 <hr />
 <h2>Empirical Demonstration</h2>
@@ -158,7 +158,7 @@
 <div class="codehilite"><pre><span></span><code><span class="c1"># Dataset: actions restricted to [-0.5, 0.5]</span>
 <span class="n">dataset</span> <span class="o">=</span> <span class="n">build_dataset</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mi">10_000</span><span class="p">)</span>
 
-<span class="c1"># Train Q-network with standard TD — max_{a'} searches over the FULL space [-2, 2]</span>
+<span class="c1"># Train Q-network with standard TD – max_{a'} searches over the FULL space [-2, 2]</span>
 <span class="n">Q</span> <span class="o">=</span> <span class="n">train_q_network</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">3000</span><span class="p">)</span>
 
 <span class="c1"># Compare Q-values at a representative state</span>
@@ -204,15 +204,15 @@ OOD − ID max Q gap      : +1029.508  (positive ⇒ OOD overestimation)
 <li>Too aggressive → policy exploits Q-function errors (catastrophic failure).</li>
 </ul>
 <p>The solution space splits into two families:</p>
-<p><strong>Policy-constraint methods</strong> — restrict the learned policy to stay close to $\pi_{\beta}$:</p>
+<p><strong>Policy-constraint methods</strong> – restrict the learned policy to stay close to $\pi_{\beta}$:</p>
 <p><div class="math-display">$$\pi^{\ast} = \arg\max_\pi \mathbb{E}_{s \sim \mathcal{D}} \left[ Q(s, \pi(s)) \right] \quad \text{s.t.} \quad D(\pi \,\|\, \pi_{\beta}) \leq \epsilon$$</div></p>
 <p>Examples: TD3+BC, BEAR, BCQ.</p>
-<p><strong>Value-pessimism methods</strong> — instead of constraining the policy, make Q-values pessimistic for OOD actions:</p>
+<p><strong>Value-pessimism methods</strong> – instead of constraining the policy, make Q-values pessimistic for OOD actions:</p>
 <p><div class="math-display">$$Q^{\ast} = \arg\min_Q \mathcal{L}_{TD}(Q) + \alpha \left( \mathbb{E}_{s \sim \mathcal{D}, a \sim \mu} \left[ Q(s,a) \right] - \mathbb{E}_{(s,a) \sim \mathcal{D}} \left[ Q(s,a) \right] \right)$$</div></p>
 <p>The intuition: Q-values are pushed <em>down</em> on actions from a broad proposal $\mu$ (uniform, or the current policy) and pushed back <em>up</em> on the logged actions, so only actions the data do not support lose value; without the second term every Q-value would just shift down together. The greedy policy then prefers in-distribution actions.</p>
 <p>This is the approach of <strong>CQL</strong> (Chapter 4). <strong>IQL</strong> (Chapter 5) reaches a similar effect differently: it never evaluates an action outside the data, using expectile regression instead of an explicit penalty.</p>
 <h3>The Offline RL Algorithm Landscape</h3>
-<p>Beyond value-pessimism, two other families are widely used. Chapters 4–8 cover them in depth — value pessimism (Chapters 4–5), policy constraints (Chapter 6), sequence models (Chapter 7) and model-based methods (Chapter 8); the map below places them side by side.</p>
+<p>Beyond value-pessimism, two other families are widely used. Chapters 4–8 cover them in depth – value pessimism (Chapters 4–5), policy constraints (Chapter 6), sequence models (Chapter 7) and model-based methods (Chapter 8); the map below places them side by side.</p>
 <p><strong>Policy-constraint and Actor-Critic methods</strong> keep the learned policy close to the behavior policy, either by explicit constraints or by regularizing the actor toward the data. <strong>TD3+BC</strong> (Fujimoto &amp; Gu, 2021) adds a behavioral cloning term to the actor loss: $\pi$ maximizes $\lambda Q(s, \pi(s)) - (\pi(s) - a)^{2}$ (with $Q$ scaled by mean $\lvert Q \rvert$ over the batch) so it stays near the data while improving on it. <strong>AWAC</strong> (Advantage-Weighted Actor-Critic) and <strong>AWR</strong> (Advantage-Weighted Regression) fit the policy with importance weights derived from the advantage; the actor is fitted only on dataset pairs $(s, a)$, although AWAC's critic still evaluates the current policy and therefore queries Q at its actions; IQL (Chapter 5) removes those queries as well. <strong>BEAR</strong> and <strong>BCQ</strong> restrict the policy support (e.g. to actions close to the dataset or generated by a conditional VAE). All of these are <em>actor-critic</em> in the sense that they train both a critic (Q or V) and an actor (policy), but the actor is constrained or regularized rather than greedy over an unconstrained Q.</p>
 <p><strong>Decision Transformers (DT)</strong> (Chen et al., 2021) take a different view: treat offline RL as <strong>sequence modeling</strong>. The model is given a trajectory prefix (states, actions, returns-to-go or rewards) and predicts the next action autoregressively. There is no Bellman backup and no explicit Q-function; the “policy” is implicit in the conditional distribution over actions given past context and desired return. <strong>Offline DT</strong> is trained by supervised learning on $(s, a, R)$ chunks from the dataset, often with return-conditioning so that at test time you can ask for “high return” behavior. This avoids extrapolation error by construction (no $\max_{a'}$ over OOD actions) but shifts the challenge to generalization of the sequence model and the choice of conditioning. Variants include <strong>Q-learning DT</strong> (e.g. QDT) that combine return-conditioning with TD learning for better credit assignment.</p>
 <p>For practitioners: value-pessimism (CQL, IQL) and model-based methods (Chapter 8) are a strong default for continuous control and process data; policy-constraint (e.g. TD3+BC) and DT are worth trying when you have long horizons, multi-task data, or a preference for sequence-model tooling. References for these families are listed at the end of this chapter.</p>
@@ -259,7 +259,7 @@ OOD − ID max Q gap      : +1029.508  (positive ⇒ OOD overestimation)
 </tr>
 </tbody>
 </table>
-<p>The two main remedies: <strong>policy constraints</strong> (stay near $\pi_{\beta}$) and <strong>value pessimism</strong> (push OOD Q-values down). CQL implements the second approach with an elegant regularization objective — which is where we go next. This chapter also mapped the broader landscape — policy-constraint and actor-critic methods (TD3+BC, AWAC, BEAR, BCQ) and Decision Transformers — which Chapters 6 and 7 develop next to value pessimism (Chapters 4–5) and model-based methods (Chapter 8).</p>
+<p>The two main remedies: <strong>policy constraints</strong> (stay near $\pi_{\beta}$) and <strong>value pessimism</strong> (push OOD Q-values down). CQL implements the second approach with an elegant regularization objective – which is where we go next. This chapter also mapped the broader landscape – policy-constraint and actor-critic methods (TD3+BC, AWAC, BEAR, BCQ) and Decision Transformers – which Chapters 6 and 7 develop next to value pessimism (Chapters 4–5) and model-based methods (Chapter 8).</p>
 <hr />
 <h2>References</h2>
 <ul>
