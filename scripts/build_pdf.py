@@ -14,11 +14,13 @@ Usage (from the repo root):
     python scripts/build_pdf.py --tex-only # LaTeX source only
     python scripts/build_pdf.py --epub     # -> build/epub/offline-rl-book.epub (pandoc only)
     python scripts/build_pdf.py --cover    # PDF with the cover page in front
-    python scripts/build_pdf.py --leanpub  # -> build/leanpub/: EPUB and PDF, both with the cover
+    python scripts/build_pdf.py --leanpub  # -> build/leanpub/: EPUB and PDF, both with the cover,
+                                           #    and the Russian edition in build/leanpub/ru/
+    python scripts/build_pdf.py --lang ru  # any of the above from ru/ (Leanpub only)
 
 The EPUB is the ebook sold on Leanpub (pay what you want, free minimum); CI
 does not build or publish it, nor the PDF with a cover page: the PDF on GitHub
-starts with the title page.
+starts with the title page. The Russian edition is built for Leanpub only.
 """
 import argparse
 import datetime
@@ -31,7 +33,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 HERE = Path(__file__).resolve().parent / "pdf"
 SITE = "https://corba777.github.io"
-CHAPTERS = [f"en/chapter{i}.md" for i in range(1, 14)] + ["en/appendix.md"]
+RU_MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа",
+             "сентября", "октября", "ноября", "декабря"]
+DOI = "10.5281/zenodo.24045871"
+# What differs between the English and the Russian edition.
+LANG = {
+    "en": dict(title="Offline RL: From Theory to Industrial Practice",
+               subtitle="Applied learning notes on offline deep reinforcement learning",
+               title_tex="title.tex", cover="cover.svg", cover_label="Cover",
+               site=f"{SITE}/offline-rl-book/", about="About this book", toc="Contents",
+               date=lambda d: d.strftime("%B %-d, %Y"),
+               rights=["Version {version}", "Text and figures: CC BY 4.0. Code: MIT.",
+                       "Free online: <{site}>", "Source and code: <https://github.com/corba777/offline-rl-book>",
+                       "DOI: [{doi}](https://doi.org/{doi})", "Built from commit {commit}."]),
+    "ru": dict(title="Offline RL: от теории к промышленной практике",
+               subtitle="Прикладные учебные заметки по offline deep RL",
+               title_tex="title_ru.tex", cover="cover_ru.svg", cover_label="Обложка",
+               site=f"{SITE}/offline-rl-book/ru/", about="Об этой книге", toc="Содержание",
+               date=lambda d: f"{d.day} {RU_MONTHS[d.month - 1]} {d.year} г.",
+               rights=["Версия {version}", "Текст и рисунки: CC BY 4.0. Код: MIT.",
+                       "Бесплатно онлайн: <{site}>", "Исходники и код: <https://github.com/corba777/offline-rl-book>",
+                       "DOI: [{doi}](https://doi.org/{doi})", "Собрано из коммита {commit}."]),
+}
+
+
+def chapters(lang):
+    return [f"{lang}/chapter{i}.md" for i in range(1, 14)] + [f"{lang}/appendix.md"]
 
 
 def edition():
@@ -60,11 +87,12 @@ def chapter_id(rel):
     return "appendix" if stem == "appendix" else "ch" + stem.removeprefix("chapter")
 
 
-def preprocess(text, figdir, anchor, epub=False, raster_svg=False):
+def preprocess(text, figdir, anchor, epub=False, raster_svg=False, lang="en"):
     """Turn one chapter's Markdown into pandoc-friendly Markdown for LaTeX (or EPUB).
     raster_svg: diagrams as 300 dpi PNGs instead of vector PDFs (see build_pdf)."""
     text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.S)                  # front matter
-    text = re.sub(r"^# (?:Chapter \d+|Appendix): (.*)$", rf"# \1 {{#{anchor}}}", text, count=1, flags=re.M)
+    text = re.sub(r"^# (?:Chapter \d+|Appendix|Глава \d+|Приложение): (.*)$", rf"# \1 {{#{anchor}}}", text,
+                  count=1, flags=re.M)
     text = re.sub(r"^---\s*$", "", text, flags=re.M)                          # horizontal rules
     text = text.replace("📄 ", "")
     # Inside math, \_ and \* are escapes for the website's Markdown; LaTeX would print them.
@@ -94,7 +122,7 @@ def preprocess(text, figdir, anchor, epub=False, raster_svg=False):
 
     def figure(m):
         alt, path = m.group(1), m.group(2)
-        src = (ROOT / "en" / path).resolve()
+        src = (ROOT / lang / path).resolve()
         if src.suffix == ".svg" and epub:
             # EPUB 3 readers render SVG; keep it vector, with the same font substitution.
             dst = figdir / (src.parent.name + "_" + src.name)
@@ -114,13 +142,13 @@ def preprocess(text, figdir, anchor, epub=False, raster_svg=False):
 
     text = re.sub(r"!\[([^\]]*)\]\((\.\./figures/[^)]+)\)", figure, text)
     # Links to other chapters jump inside the PDF; other site links stay absolute.
-    text = re.sub(r"\]\(/offline-rl-book/en/((?:chapter\d+|appendix))\.html(?:#[^)]*)?\)",
+    text = re.sub(rf"\]\(/offline-rl-book/{lang}/((?:chapter\d+|appendix))\.html(?:#[^)]*)?\)",
                   lambda m: f"](#{chapter_id(m.group(1) + '.md')})", text)
     text = re.sub(r"\]\((/offline-rl-book/[^)]*)\)", lambda m: f"]({SITE}{m.group(1)})", text)
     return text
 
 
-COVER = ROOT / "figures" / "readme" / "cover.svg"
+COVERS = ROOT / "figures" / "readme"
 
 
 def main():
@@ -130,24 +158,29 @@ def main():
     ap.add_argument("--epub", action="store_true", help="build the EPUB instead of the PDF")
     ap.add_argument("--cover", action="store_true", help="put the cover page in front of the PDF")
     ap.add_argument("--leanpub", action="store_true",
-                    help="build the EPUB and the PDF, both with the cover, into build/leanpub/")
+                    help="build the EPUB and the PDF, both with the cover, into build/leanpub/ "
+                         "(English) and build/leanpub/ru/ (Russian)")
+    ap.add_argument("--lang", choices=sorted(LANG), default="en", help="edition (default: en)")
     args = ap.parse_args()
     custom_out = args.out != ap.get_default("out")
     if args.leanpub:
         dest = Path(args.out) if custom_out else ROOT / "build" / "leanpub"
-        build_epub(dest / "epub")
-        build_pdf(dest / "pdf", cover=True, raster_svg=True)
-        for f in (dest / "epub" / "offline-rl-book.epub", dest / "epub" / "cover.png",
-                  dest / "pdf" / "offline-rl-book.pdf"):
-            shutil.copy(f, dest / f.name)
-        print(f"Leanpub files: {dest}")
+        for lang, sub in (("en", dest), ("ru", dest / "ru")):
+            build_epub(sub / "epub", lang=lang)
+            build_pdf(sub / "pdf", cover=True, raster_svg=True, lang=lang)
+            for f in (sub / "epub" / "offline-rl-book.epub", sub / "epub" / "cover.png",
+                      sub / "pdf" / "offline-rl-book.pdf"):
+                shutil.copy(f, sub / f.name)
+            print(f"Leanpub files ({lang}): {sub}")
         return
     if args.epub:
-        return build_epub(Path(args.out) if custom_out else ROOT / "build" / "epub")
-    build_pdf(Path(args.out), tex_only=args.tex_only, cover=args.cover)
+        out = Path(args.out) if custom_out else ROOT / "build" / ("epub" if args.lang == "en" else "epub-ru")
+        return build_epub(out, lang=args.lang)
+    out = Path(args.out) if custom_out or args.lang == "en" else ROOT / "build" / "pdf-ru"
+    build_pdf(out, tex_only=args.tex_only, cover=args.cover, lang=args.lang)
 
 
-def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
+def build_pdf(out, tex_only=False, cover=False, raster_svg=False, lang="en"):
     """The preprint-style PDF; with cover=True, the cover page comes first.
     raster_svg=True renders the diagrams as images: newer cairo versions draw the
     spaces of SVG text with empty Type 3 glyphs. Used for the Leanpub PDF built
@@ -158,10 +191,12 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
     figdir = out / "figures"
     figdir.mkdir(parents=True)
 
+    L = LANG[lang]
     parts = []
-    for rel in CHAPTERS:
-        md = preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel), raster_svg=raster_svg)
-        if rel == CHAPTERS[0]:
+    for rel in chapters(lang):
+        md = preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel),
+                        raster_svg=raster_svg, lang=lang)
+        if rel == chapters(lang)[0]:
             # Title page and contents are numbered i, ii, ...; Chapter 1 starts at page 1.
             md = "```{=latex}\n\\clearpage\n\\pagenumbering{arabic}\n```\n\n" + md
         if rel.endswith("appendix.md"):
@@ -170,11 +205,12 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
     (out / "book.md").write_text("\n\n".join(parts), encoding="utf-8")
 
     version, commit = edition()
-    date = datetime.date.today().strftime("%B %-d, %Y")
-    title = (HERE / "title.tex").read_text().replace("$date$", date).replace("$commit$", commit) \
+    date = L["date"](datetime.date.today())
+    title = (HERE / L["title_tex"]).read_text().replace("$date$", date).replace("$commit$", commit) \
         .replace("$version$", version)
     (out / "title.tex").write_text(title)
-    shutil.copy(HERE / "preamble.tex", out / "preamble.tex")
+    (out / "preamble.tex").write_text((HERE / "preamble.tex").read_text()
+                                      .replace(LANG["en"]["title"], L["title"]))
     before_body = ["--include-before-body=title.tex"]
     if cover:
         # The cover marks the ebook edition (Leanpub): no "A Preprint" label, and
@@ -186,7 +222,7 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
         # The 2:3 cover art, cropped to the page's aspect ratio (its background
         # bleeds sideways), placed full-bleed before the title page. It goes in as a
         # 300 dpi image: cairo's PDF output draws spaces with Type 3 fonts.
-        svg = COVER.read_text(encoding="utf-8")
+        svg = (COVERS / L["cover"]).read_text(encoding="utf-8")
         w = 900 * 8.5 / 11                       # US Letter, the report class default
         svg = svg.replace('viewBox="0 0 600 900" width="1600" height="2400"',
                           f'viewBox="{(600 - w) / 2:.2f} 0 {w:.2f} 900" width="{w:.2f}" height="900"', 1)
@@ -195,7 +231,8 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
                        cwd=out, check=True)
         with open(out / "preamble.tex", "a", encoding="utf-8") as fh:
             fh.write("\n\\usepackage{pdfpages}\n")
-        (out / "cover.tex").write_text("{\\renewcommand{\\thepage}{Cover}\\includepdf[pages=1]{cover.png}}\n")
+        (out / "cover.tex").write_text(f"{{\\renewcommand{{\\thepage}}{{{L['cover_label']}}}"
+                                       "\\includepdf[pages=1]{cover.png}}\n")
         before_body.insert(0, "--include-before-body=cover.tex")
 
     subprocess.run([
@@ -207,7 +244,7 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
         "-V", "documentclass=report", "-V", "classoption=11pt",
         "-V", "geometry:margin=1in", "-V", "colorlinks=true",
         "-V", "linkcolor=blue!50!black", "-V", "urlcolor=blue!50!black",
-        "-M", "pagetitle=Offline RL: From Theory to Industrial Practice",
+        "-M", f"pagetitle={L['title']}", "-V", f"lang={lang}",
         "-M", "author-meta=Artem Zvyagintsev",
     ], cwd=out, check=True)
 
@@ -276,15 +313,16 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
     print(f"PDF: {out / 'offline-rl-book.pdf'}")
 
 
-def about_text():
-    """The abstract on the PDF's title page, as plain text: one source for both editions."""
-    tex = (HERE / "title.tex").read_text(encoding="utf-8")
+def about_text(lang="en"):
+    """The abstract on the PDF's title page, as plain text: one source for both formats."""
+    tex = (HERE / LANG[lang]["title_tex"]).read_text(encoding="utf-8")
     body = re.search(r"\\begin\{quote\}(.*?)\\end\{quote\}", tex, flags=re.S).group(1)
-    return " ".join(body.split())
+    return " ".join(body.split()).replace("~---", "\u00a0—").replace("---", "—")
 
 
-def build_epub(out):
-    """EPUB 3 of the English edition: same chapters, MathML for formulas, SVG figures."""
+def build_epub(out, lang="en"):
+    """EPUB 3 of one edition: same chapters, MathML for formulas, SVG figures."""
+    L = LANG[lang]
     need("pandoc"); need("rsvg-convert")
     if out.exists():
         shutil.rmtree(out)
@@ -292,30 +330,27 @@ def build_epub(out):
     figdir.mkdir(parents=True)
     # Cover in the style of the README banner; the PNG is also what Leanpub asks for.
     subprocess.run(["rsvg-convert", "-w", "1600", "-h", "2400", "-o", str(out / "cover.png"),
-                    str(COVER)], check=True)
-    parts = [preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel), epub=True)
-             for rel in CHAPTERS]
+                    str(COVERS / L["cover"])], check=True)
+    parts = [preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel), epub=True, lang=lang)
+             for rel in chapters(lang)]
     # Same text as "About this book" in the Leanpub PDF, right after the title page.
-    parts.insert(0, "# About this book {.unnumbered .unlisted}\n\n" + about_text())
+    parts.insert(0, f"# {L['about']} {{.unnumbered .unlisted}}\n\n" + about_text(lang))
     (out / "book.md").write_text("\n\n".join(parts), encoding="utf-8")
     version, commit = edition()
     date = datetime.date.today().isoformat()
     # Title page: where the free, citable version lives, as on the PDF's title page.
-    doi = "10.5281/zenodo.24045871"
+    rights = "\\\n  ".join(line.format(version=version, site=L["site"], doi=DOI, commit=commit)
+                            for line in L["rights"])
     (out / "meta.yaml").write_text(f"""---
-title: "Offline RL: From Theory to Industrial Practice"
-subtitle: "Applied learning notes on offline deep reinforcement learning"
+title: "{L['title']}"
+subtitle: "{L['subtitle']}"
 author: "Artem Zvyagintsev"
-lang: en
+lang: {lang}
+toc-title: "{L['toc']}"
 date: "{date}"
-description: "Built from commit {commit}. Free online at {SITE}/offline-rl-book/"
+description: "Built from commit {commit}. Free online at {L['site']}"
 rights: |
-  Version {version}\\
-  Text and figures: CC BY 4.0. Code: MIT.\\
-  Free online: <{SITE}/offline-rl-book/>\\
-  Source and code: <https://github.com/corba777/offline-rl-book>\\
-  DOI: [{doi}](https://doi.org/{doi})\\
-  Built from commit {commit}.
+  {rights}
 ---
 """, encoding="utf-8")
     subprocess.run([

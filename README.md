@@ -175,7 +175,8 @@ The same chapters also build as an EPUB 3 (MathML formulas, no LaTeX needed):
 
 ```bash
 python scripts/build_pdf.py --epub     # -> build/epub/offline-rl-book.epub
-python scripts/build_pdf.py --leanpub  # -> build/leanpub/: EPUB and PDF with the cover page, cover.png
+python scripts/build_pdf.py --leanpub  # -> build/leanpub/: EPUB and PDF with the cover page, cover.png;
+                                       #    the Russian edition (Leanpub only) in build/leanpub/ru/
 ```
 
 The cover is [`figures/readme/cover.svg`](figures/readme/cover.svg). Neither the EPUB nor the PDF with a cover page is built by CI; both are published on [Leanpub](https://leanpub.com/offline-rl-book) with a free minimum price, so readers can get it at no cost or pay what they want to support the book. The PDF here stays free, and the text stays CC BY 4.0 in every format.

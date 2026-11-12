@@ -1,0 +1,44 @@
+\pagenumbering{roman}   % front matter; Chapter 1 starts at arabic page 1
+\begin{titlepage}
+\thispagestyle{empty}
+\vspace*{3.5cm}
+\noindent\rule{\textwidth}{2pt}
+\begin{center}
+  {\LARGE\bfseries Offline RL: от теории к промышленной практике\par}
+  \vspace{0.6em}
+  {\large Прикладные учебные заметки по offline deep RL\par}
+\end{center}
+\noindent\rule{\textwidth}{0.6pt}
+
+\vspace{1.6cm}
+\begin{center}
+  {\large\bfseries Artem Zvyagintsev\par}
+  \vspace{0.3em}
+  {\normalsize\url{https://corba777.github.io/offline-rl-book/ru/}\par}
+  \vspace{1.2em}
+  {\normalsize Версия $version$\quad\textperiodcentered\quad $date$\par}
+\end{center}
+
+\vspace{1.6cm}
+\begin{center}\textbf{Об этой книге}\end{center}
+\begin{quote}
+Offline RL обучает политики управления по записанным данным, без пробных
+действий на управляемой системе. Эти заметки проходят путь от поведенческого
+клонирования и ошибки экстраполяции, которая ломает наивное Q-обучение, через
+оценку политики по офлайн-данным, консервативное и неявное Q-обучение,
+ограничение политики, Decision Transformers и модельные методы к
+physics-informed offline RL, промышленному кейсу с результатами на нескольких
+seeds, объяснимости и tool-using LLM-агентам. Каждая глава идёт от идеи к
+формализации, работающему коду и ограничениям. Материал суммирует алгоритмы,
+паттерны реализации и практические caveats; это не авторитетный учебник, а
+код~--- учебный каркас.
+\end{quote}
+
+\vfill
+\begin{center}\footnotesize
+DOI: \href{https://doi.org/10.5281/zenodo.24045871}{10.5281/zenodo.24045871}\quad Текст и рисунки: CC BY 4.0.\quad Код: MIT.\\
+Исходники: \url{https://github.com/corba777/offline-rl-book}\\
+Собрано из коммита $commit$.
+\end{center}
+\end{titlepage}
+\setcounter{page}{2}   % the title page is i, the contents start at ii
