@@ -34,6 +34,21 @@ SITE = "https://corba777.github.io"
 CHAPTERS = [f"en/chapter{i}.md" for i in range(1, 14)] + ["en/appendix.md"]
 
 
+def edition():
+    """(version, commit) for the title pages. The version is the latest release tag,
+    with the number of commits since it when the build is not exactly on a tag
+    (1.1.1+6); without tags, the version in CITATION.cff."""
+    git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    commit = git("rev-parse", "--short", "HEAD") or "unknown"
+    m = re.fullmatch(r"v?(.+?)(?:-(\d+)-g[0-9a-f]+)?", git("describe", "--tags", "--match", "v*"))
+    if m:
+        version = m.group(1) + (f"+{m.group(2)}" if m.group(2) else "")
+    else:
+        cff = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+        version = re.search(r"^version:\s*(\S+)", cff, flags=re.M).group(1)
+    return version, commit
+
+
 def need(tool):
     if shutil.which(tool) is None:
         sys.exit(f"{tool} not found; install it with: brew install pandoc tectonic librsvg")
@@ -146,15 +161,18 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
     parts = []
     for rel in CHAPTERS:
         md = preprocess((ROOT / rel).read_text(encoding="utf-8"), figdir, chapter_id(rel), raster_svg=raster_svg)
+        if rel == CHAPTERS[0]:
+            # Title page and contents are numbered i, ii, ...; Chapter 1 starts at page 1.
+            md = "```{=latex}\n\\clearpage\n\\pagenumbering{arabic}\n```\n\n" + md
         if rel.endswith("appendix.md"):
             md = "\n```{=latex}\n\\appendix\n```\n\n" + md
         parts.append(md)
     (out / "book.md").write_text("\n\n".join(parts), encoding="utf-8")
 
-    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
-                            capture_output=True, text=True).stdout.strip() or "unknown"
+    version, commit = edition()
     date = datetime.date.today().strftime("%B %-d, %Y")
-    title = (HERE / "title.tex").read_text().replace("$date$", date).replace("$commit$", commit)
+    title = (HERE / "title.tex").read_text().replace("$date$", date).replace("$commit$", commit) \
+        .replace("$version$", version)
     (out / "title.tex").write_text(title)
     shutil.copy(HERE / "preamble.tex", out / "preamble.tex")
     before_body = ["--include-before-body=title.tex"]
@@ -177,7 +195,7 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False):
                        cwd=out, check=True)
         with open(out / "preamble.tex", "a", encoding="utf-8") as fh:
             fh.write("\n\\usepackage{pdfpages}\n")
-        (out / "cover.tex").write_text("\\includepdf[pages=1]{cover.png}\n")
+        (out / "cover.tex").write_text("{\\renewcommand{\\thepage}{Cover}\\includepdf[pages=1]{cover.png}}\n")
         before_body.insert(0, "--include-before-body=cover.tex")
 
     subprocess.run([
@@ -280,8 +298,7 @@ def build_epub(out):
     # Same text as "About this book" in the Leanpub PDF, right after the title page.
     parts.insert(0, "# About this book {.unnumbered .unlisted}\n\n" + about_text())
     (out / "book.md").write_text("\n\n".join(parts), encoding="utf-8")
-    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
-                            capture_output=True, text=True).stdout.strip() or "unknown"
+    version, commit = edition()
     date = datetime.date.today().isoformat()
     # Title page: where the free, citable version lives, as on the PDF's title page.
     doi = "10.5281/zenodo.24045871"
@@ -293,6 +310,7 @@ lang: en
 date: "{date}"
 description: "Built from commit {commit}. Free online at {SITE}/offline-rl-book/"
 rights: |
+  Version {version}\\
   Text and figures: CC BY 4.0. Code: MIT.\\
   Free online: <{SITE}/offline-rl-book/>\\
   Source and code: <https://github.com/corba777/offline-rl-book>\\

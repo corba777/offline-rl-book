@@ -1,3 +1,4 @@
+\pagenumbering{roman}   % front matter; Chapter 1 starts at arabic page 1
 \begin{titlepage}
 \thispagestyle{empty}
 \vspace*{3.5cm}
@@ -15,7 +16,7 @@
   \vspace{0.3em}
   {\normalsize\url{https://corba777.github.io/offline-rl-book/}\par}
   \vspace{1.2em}
-  {\normalsize\scshape A Preprint\quad--\quad $date$\par}
+  {\normalsize\scshape A Preprint\quad--\quad Version $version$\quad\textperiodcentered\quad $date$\par}
 \end{center}
 
 \vspace{1.6cm}
@@ -40,3 +41,4 @@ Source: \url{https://github.com/corba777/offline-rl-book}\\
 Built from commit $commit$.
 \end{center}
 \end{titlepage}
+\setcounter{page}{2}   % the title page is i, the contents start at ii

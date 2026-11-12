@@ -54,6 +54,8 @@ jobs:
       contents: write   # to update the "pdf" release on main
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # tags, for the version on the title page
       - name: Install pandoc, tectonic and rsvg-convert
         run: |
           curl -fsSL -o pandoc.deb https://github.com/jgm/pandoc/releases/download/3.13/pandoc-3.13-1-amd64.deb
