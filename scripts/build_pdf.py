@@ -91,8 +91,9 @@ def preprocess(text, figdir, anchor, epub=False, raster_svg=False, lang="en"):
     """Turn one chapter's Markdown into pandoc-friendly Markdown for LaTeX (or EPUB).
     raster_svg: diagrams as 300 dpi PNGs instead of vector PDFs (see build_pdf)."""
     text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.S)                  # front matter
-    text = re.sub(r"^# (?:Chapter \d+|Appendix|Глава \d+|Приложение): (.*)$", rf"# \1 {{#{anchor}}}", text,
-                  count=1, flags=re.M)
+    # "Приложение: выбор алгоритма" loses its prefix, so the title gets its capital letter.
+    text = re.sub(r"^# (?:Chapter \d+|Appendix|Глава \d+|Приложение): (.*)$",
+                  lambda m: f"# {m.group(1)[:1].upper()}{m.group(1)[1:]} {{#{anchor}}}", text, count=1, flags=re.M)
     text = re.sub(r"^---\s*$", "", text, flags=re.M)                          # horizontal rules
     text = text.replace("📄 ", "")
     # Inside math, \_ and \* are escapes for the website's Markdown; LaTeX would print them.
@@ -279,7 +280,7 @@ def build_pdf(out, tex_only=False, cover=False, raster_svg=False, lang="en"):
     def keep_together(m):
         body = m.group(0)
         rows = len(re.findall(r"\\\\\s*$", body, flags=re.M))
-        if rows > 15:
+        if rows > 15 or table_lines(body) > 40:   # longer than a page: let it break
             return body
         body = re.sub(r"\\\\(\s*)$", r"\\\\*\1", body, flags=re.M)
         return f"\\needspace{{{table_lines(body) + 3}\\baselineskip}}\n" + body
