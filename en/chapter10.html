@@ -268,7 +268,7 @@
                     <span class="n">over</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">e_new</span> <span class="o">*</span> <span class="n">e_prev</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">e_new</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">band</span><span class="p">)</span>
 </code></pre></div>
 
-<p>Results are aggregated over ten seeds; each seed draws a new logged dataset, a new network initialization and new evaluation episodes. The intervals are 95% Student-$t$ intervals over the ten per-seed means, so they reflect seed-to-seed variation – usually the larger source of uncertainty; with this few seeds a percentile bootstrap would undercover. Because every method sees the same dataset within a seed, methods are also compared by their <em>paired</em> per-seed differences, which remove the variation they share. Two cautions on reading the numbers. Half of the evaluation starts are disturbed, against 15% of the logged episodes, so the overall averages describe a stress test, not expected production performance; the nominal and disturbed starts are reported separately. And a violation rate of zero over 200 evaluation episodes is an observation, not a proof of safety.</p>
+<p>Results are aggregated over ten seeds; each seed draws a new logged dataset, a new network initialization and new evaluation episodes. The intervals are 95% Student-$t$ intervals over the ten per-seed means, so they reflect seed-to-seed variation – usually the larger source of uncertainty; with this few seeds a percentile bootstrap would undercover. The exception is a cell with a failing seed: there one seed at, say, −224 stretches a $t$-interval past zero, to returns this task cannot produce, and the interval stops meaning anything. Such cells give the mean alone and, as IQM, the interquartile mean (the mean of the middle six of ten seeds) with a bootstrap interval; read them mainly by that IQM and by the number of failing seeds. Because every method sees the same dataset within a seed, methods are also compared by their <em>paired</em> per-seed differences, which remove the variation they share. Two cautions on reading the numbers. Half of the evaluation starts are disturbed, against 15% of the logged episodes, so the overall averages describe a stress test, not expected production performance; the nominal and disturbed starts are reported separately. And a violation rate of zero over 200 evaluation episodes is an observation, not a proof of safety.</p>
 <hr />
 <h2>The Physics Model</h2>
 <p>The known physics for the coating process is encoded in <code>coating_physics_fn</code>. It implements the first-order responses and the mass balance exactly, but omits the cross-coupling, transport delay, and viscosity nonlinearity:</p>
@@ -379,7 +379,7 @@
 <td>−2.7 [−2.9, −2.5]</td>
 <td>−1.4 [−1.5, −1.4]</td>
 <td>−1.4 [−1.5, −1.3]</td>
-<td>−5.6 [−10.2, −1.1]</td>
+<td>−5.6; IQM −3.6 [−7.5, −3.0]</td>
 </tr>
 <tr>
 <td>Return, nominal / disturbed starts</td>
@@ -474,7 +474,7 @@
 </tr>
 </tbody>
 </table>
-<p><strong>Paired per-seed differences</strong> (95% $t$-interval; positive return and negative IAE are improvements):</p>
+<p><strong>Paired per-seed differences</strong> (95% $t$-interval, except where a seed fails; positive return and negative IAE are improvements):</p>
 <table>
 <thead>
 <tr>
@@ -499,7 +499,7 @@
 </tr>
 <tr>
 <td>HybridMOReL − BC</td>
-<td>−2.9 [−7.5, +1.7]</td>
+<td>−2.9; IQM −1.0 [−4.9, −0.3]</td>
 <td>−0.5 [−1.2, +0.2]</td>
 <td>+0.057 [−0.007, +0.121]</td>
 </tr>
@@ -519,17 +519,17 @@
 <tbody>
 <tr>
 <td>Learned hybrid dynamics</td>
-<td>−7.6 [−13.5, −1.7]; 2 seeds fail</td>
+<td>−7.6; IQM −4.6 [−12.0, −2.7]; 2 seeds fail</td>
 <td>−1.2 [−1.3, −1.2]; no failures</td>
 </tr>
 <tr>
 <td>True dynamics</td>
-<td>−25.6 [−75.5, +24.3]; 1 seed fails (−224)</td>
+<td>−25.6; IQM −3.8 [−41.1, −2.6]; 1 seed fails (−224)</td>
 <td>−1.2 [−1.3, −1.2]; no failures</td>
 </tr>
 </tbody>
 </table>
-<p>The termination rule, not the model, is the bottleneck. Note what the right-hand column is: without HALT and without any uncertainty penalty the agent is no longer MOReL but model-based SAC with no pessimism at all – essentially MBPO with half of every batch real data. With that agent the learned hybrid model and the true dynamics yield nearly identical policy returns under the tested conditions: the paired difference between the two is +0.001 [−0.002, +0.004], and both beat CQL on the same datasets by +0.19 [+0.15, +0.23] with half its level error – an agreement that, as the baselines below show, says less about the model than it seems. With HALT, even the true dynamics fail on a seed. The budget is not the problem either: the same 4,500 SAC steps suffice once HALT is off. This also corrects the first reading of the oracle comparison, which swapped the model and the termination rule at once and attributed the whole difference to the model.</p>
+<p>The evidence points to the termination rule, not the model, as the bottleneck. It rests on one comparison: with the learned model, HALT at the 80th percentile failed on 4 of 20 seeds (these ten and the ten fresh seeds below) and the same agent without HALT on none – one-sided Fisher exact test $p = 0.053$, suggestive rather than conclusive. The true-dynamics row is consistent with it: there the rollouts are exact and only the halts can mislead the critic, and one seed of ten fails. A single seed proves nothing by itself, but it is what termination as the cause predicts and model error as the cause does not. Note what the right-hand column is: without HALT and without any uncertainty penalty the agent is no longer MOReL but model-based SAC with no pessimism at all – essentially MBPO with half of every batch real data. With that agent the learned hybrid model and the true dynamics yield nearly identical policy returns under the tested conditions: the paired difference between the two is +0.001 [−0.002, +0.004], and both beat CQL on the same datasets by +0.19 [+0.15, +0.23] with half its level error – an agreement that, as the baselines below show, says less about the model than it seems. The budget is not the problem either: the same 4,500 SAC steps suffice once HALT is off. This also corrects the first reading of the oracle comparison, which swapped the model and the termination rule at once and attributed the whole difference to the model.</p>
 <p>Why does HALT do so much harm here? The threshold is a percentile, so by construction it labels 20% of the logged transitions UNKNOWN, and every halt costs about $\kappa \approx 2{,}000$ in normalized reward against ordinary rewards near −1. A fifth of the synthetic transitions then carry a penalty three orders of magnitude larger than anything else in the data, and the critic's targets are dominated by where the threshold happens to fall, not by the task. A $\kappa$ large enough to deter halting, combined with a threshold that fires on in-distribution data, turns pessimism into the main training signal.</p>
 <p>The ablation also tests the uncertainty itself, since the true dynamics give the model's actual error anywhere. One step ahead, on 4,000 states per seed (error: distance between predicted and true next state over the five process variables, normalized units):</p>
 <table>
@@ -635,13 +635,13 @@
 <tbody>
 <tr>
 <td>Markov state</td>
-<td>−7.6 [−13.5, −1.7]; 2 seeds fail</td>
+<td>−7.6; IQM −4.6 [−12.0, −2.7]; 2 seeds fail</td>
 <td>−4.6 [−5.6, −3.6]; none fail</td>
 <td>−1.2 [−1.3, −1.2]</td>
 </tr>
 <tr>
 <td>Five logged variables</td>
-<td>−6.5 [−10.4, −2.5]; 1 seed fails</td>
+<td>−6.5; IQM −4.6 [−8.6, −3.7]; 1 seed fails</td>
 <td>−4.2 [−5.0, −3.4]; none fail</td>
 <td>−1.3 [−1.3, −1.2]</td>
 </tr>
@@ -812,7 +812,7 @@
 <h3>Reading the Results</h3>
 <p><strong>CQL improves clearly on the logging policy and on BC</strong>, with or without the lagged commands – and at its default α = 1 it is still too conservative for this task: α = 0.1 does better (see the baselines above). It removes the steady-state offsets that the proportional operators left behind: the temperature error falls by about a third and the level stays two to three times closer to its setpoint, which accounts for most of the difference in return. BC reproduces the operators, offsets included. The gain is not free on every axis: CQL tracks the filler fraction slightly worse than BC (IAE 0.026 against 0.024, a small but consistent paired difference). The reward trades filler against level, and with one actuator for both, CQL leans toward the level.</p>
 <p><strong>The constraint penalty helped a little, and only a paired comparison shows it.</strong> Side by side, the CQL+Physics and CQL intervals overlap on every metric, and neither violated a bound even from disturbed starts. Paired by seed, the penalty raises the return by about 0.05–0.07 (3–5%): clearly on the Markov state, within noise on the logged one, and with level tracking slightly better but not significantly so. A plausible mechanism, not tested here: the penalty makes the logged low-level excursions more costly, which pushes the policy to keep the tank fuller, closer to its setpoint. With a dozen paired comparisons in the table, one should expect a borderline result or two by chance, so treat this one as suggestive. It is still a useful lesson about method: overlapping intervals of two means are not evidence of no difference.</p>
-<p><strong>HybridMOReL was unstable on both versions of the state, and the ablation shows why.</strong> With five variables, nine seeds landed between −2.1 and −5.7, and one drove the level out of bounds in 62% of steps from disturbed starts. With the lagged commands, the first run had no failing seed, but the ablation repeated it on the same datasets with a different initialization and two of ten seeds failed. The cause is the termination rule as configured – a percentile threshold that halts a fifth of in-data transitions, with a penalty large enough to dominate the critic – not the hybrid model: with HALT off, the agent – then plain model-based SAC – does as well on the learned model as on the true dynamics and beats CQL – and so does plain SAC on the real data alone, so the model contributes little either way. The HALT study confirms the same cause on the five-variable state, where the physics prior is wrong on the filler loop: without HALT the model-based agent beats CQL there as well, and fresh seeds reproduce the result.</p>
+<p><strong>HybridMOReL was unstable on both versions of the state, and the ablation shows why.</strong> With five variables, nine seeds landed between −2.1 and −5.7, and one drove the level out of bounds in 62% of steps from disturbed starts. With the lagged commands, the first run had no failing seed, but the ablation repeated it on the same datasets with a different initialization and two of ten seeds failed. The evidence points to the termination rule as configured – a percentile threshold that halts a fifth of in-data transitions, with a penalty large enough to dominate the critic – not the hybrid model: with HALT off, the agent – then plain model-based SAC – does as well on the learned model as on the true dynamics and beats CQL – and so does plain SAC on the real data alone, so the model contributes little either way. The HALT study confirms the same cause on the five-variable state, where the physics prior is wrong on the filler loop: without HALT the model-based agent beats CQL there as well, and fresh seeds reproduce the result.</p>
 <p><strong>The calibrated $\lambda$ is about 2.2 on every seed</strong>, because the largest logged violation is always the same 0.15: the level hits zero, its physical floor, 0.15 below the lower bound. An earlier version of <code>calibrate_lambda</code> looked only at the first 2,000 transitions. The logs are ordered by regime, normal operation first, so that prefix held only the occasional small violation, and $\lambda$ swung from 2 to 73 across seeds depending on which one happened to fall into it. Two lessons follow. Compute calibration statistics on the whole dataset, or on a random sample of it, never on a prefix of logs that are sorted by anything. And a reference that comes out identical on every seed deserves a look: here it measures a saturation of the plant, not the typical size of a violation, which is why a high quantile of the violations (<code>quantile=0.95</code>) or an engineering cost is often the better reference.</p>
 <h3>What This Case Study Shows</h3>
 <p>One might expect the model-based method with a physics prior to win on reward and the penalized method to win on safety. Measured over ten seeds, with intervals and paired comparisons, the picture is less tidy and more useful: the simple conservative method won among the methods that learn from data alone; the penalty added a small gain that only a paired comparison could detect; the hybrid model-based method was unreliable as configured; and the ablations showed that its uncertainty-based termination caused the failures at every setting tried, with the true dynamics as well as with the learned ones. Without HALT the agent is model-based SAC with no pessimism, and it beat CQL at its default α on both versions of the state and on fresh seeds – but so did SAC on the real data alone, and so nearly did CQL with a smaller α. The original logs were benign for offline value learning: they needed neither the model nor any pessimism, so the safeguard's cost was all that remained. Narrowed logs reversed that for model-free learning, and with long rollouts for model-based learning, where HALT with $\kappa$ from the data finally paid. That is a statement about this task, not a licence to drop pessimism. Pessimism is a component like any other: measure what it does, and check that the uncertainty it relies on actually tracks the error. Before trusting a comparison like this one, check four things: that the state is Markov, or that you know what it is missing; that physical quantities are computed in physical units; that the physics model beats persistence on the variables that matter; and that the result survives several seeds when compared pairwise.</p>

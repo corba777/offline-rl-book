@@ -17,6 +17,7 @@ RES = ROOT / "code" / "results"
 OUT_T = Path(__file__).resolve().parent / "tables"
 OUT_F = Path(__file__).resolve().parent / "figures"
 FAIL = -10.0          # a seed "fails" when its mean return over 200 steps is below this
+BOOT = 10_000         # bootstrap resamples for cells with a failing seed
 
 
 def load(name):
@@ -36,6 +37,36 @@ def per_seed(run_file, method, key="reward"):
 def paired(a_file, a_method, b_file, b_method, key="reward"):
     assert [r["seed"] for r in a_file["runs"]] == [r["seed"] for r in b_file["runs"]]
     return t_ci(np.array(per_seed(a_file, a_method, key)) - np.array(per_seed(b_file, b_method, key)))
+
+
+def boot_iqm(a, b=None):
+    """IQM of a (or IQM of a minus IQM of b, resampling seeds jointly) with a 95%
+    percentile bootstrap interval. Used where a failing seed makes a t-interval
+    meaningless: one seed at -224 can stretch it past zero, to returns that are impossible."""
+    rng = np.random.default_rng(0)
+    idx = rng.integers(0, len(a), (BOOT, len(a)))
+    a = np.asarray(a, dtype=float)
+    est = lambda i: stats.trim_mean(a[i], 0.25, axis=-1) - (0 if b is None else
+                                                             stats.trim_mean(np.asarray(b, float)[i], 0.25, axis=-1))
+    lo, hi = np.percentile(est(idx), [2.5, 97.5])
+    return est(np.arange(len(a))), lo, hi
+
+
+def ret_cells(run_file, method):
+    """Return and IQM columns. Each cell carries one interval: a t-interval on the mean
+    when no seed fails, a bootstrap interval on the IQM when one does."""
+    v = per_seed(run_file, method)
+    if n_fail(run_file, method):
+        return [f"${np.mean(v):.2f}$", fmt(boot_iqm(v))]
+    return [fmt(t_ci(v)), iqm(run_file, method)]
+
+
+def vs(a_file, a_method, b_file, b_method, d=2):
+    """Paired comparison: mean difference with a t-interval, or, if either arm has a
+    failing seed, the difference of IQMs with a paired bootstrap interval (marked with a dagger)."""
+    if n_fail(a_file, a_method) or n_fail(b_file, b_method):
+        return fmt(boot_iqm(per_seed(a_file, a_method), per_seed(b_file, b_method)), d=d, sign=True) + r"$^\dagger$"
+    return fmt(paired(a_file, a_method, b_file, b_method), d=d, sign=True)
 
 
 def iqm(run_file, method):
@@ -67,8 +98,7 @@ def benchmark_table():
                      ("HybridMOReL", "MOReL-style (HALT, $p_{80}$)")]:
         cells = [label]
         for f in (logged, lagged):
-            cells += [fmt(t_ci(per_seed(f, m))), iqm(f, m), f"{np.mean(per_seed(f, m, 'L_iae')):.3f}",
-                      str(n_fail(f, m))]
+            cells += ret_cells(f, m) + [f"{np.mean(per_seed(f, m, 'L_iae')):.3f}", str(n_fail(f, m))]
         rows.append(" & ".join(cells) + r" \\")
     write("benchmark.tex", "\n".join(rows) + "\n")
 
@@ -80,12 +110,11 @@ def factorial_table():
                          ("HybridMOReL-noHALT", "learned hybrid", "off"),
                          ("OracleMOReL-HALT", "true", "on"),
                          ("OracleMOReL", "true", "off")]:
-        rows.append(" & ".join([dyn, halt, fmt(t_ci(per_seed(o, m))), iqm(o, m),
+        rows.append(" & ".join([dyn, halt] + ret_cells(o, m) + [
                                 f"{np.mean(per_seed(o, m, 'L_iae')):.3f}", str(n_fail(o, m)),
-                                fmt(paired(o, m, lagged, "CQL"), sign=True)]) + r" \\")
+                                vs(o, m, lagged, "CQL")]) + r" \\")
     write("factorial.tex", "\n".join(rows) + "\n")
-    d = paired(o, "OracleMOReL", o, "HybridMOReL-noHALT")
-    write("factorial_true_vs_learned.tex", fmt(d, d=3, sign=True) + "%\n")
+    write("factorial_true_vs_learned.tex", vs(o, "OracleMOReL", o, "HybridMOReL-noHALT", d=3) + "%\n")
 
 
 def halt_table():
@@ -102,8 +131,7 @@ def halt_table():
                 key = {"HALT p80": "p80", "HALT p99": "p99", "no HALT": "HALT",
                        "HALT p99, data kappa": "p99 data kappa"}[m]
                 rate = np.mean([r["extra"][f"halt_rate {key}"] for r in h["runs"]])
-                cells += [fmt(t_ci(per_seed(h, m))), iqm(h, m), f"{100 * rate:.0f}\\%", str(n_fail(h, m)),
-                          fmt(paired(h, m, b, "CQL"), sign=True)]
+                cells += ret_cells(h, m) + [f"{100 * rate:.0f}\\%", str(n_fail(h, m)), vs(h, m, b, "CQL")]
             else:
                 cells += ["--"] * 5
         rows.append(" & ".join(cells) + r" \\")
@@ -111,7 +139,15 @@ def halt_table():
     kap = np.mean([r["extra"]["kappa"] for r in hl["runs"]])
     kd = np.mean([r["extra"]["kappa_data"] for r in hl["runs"]])
     write("kappa_values.tex", f"\\newcommand{{\\kappaworst}}{{{f'{kap:,.0f}'.replace(',', '{,}')}}}\n\\newcommand{{\\kappadata}}{{{kd:.0f}}}\n")
-    write("kappa_effect.tex", fmt(paired(hl, "HALT p99, data kappa", hl, "HALT p99"), sign=True) + "%\n")
+    write("kappa_effect.tex", vs(hl, "HALT p99, data kappa", hl, "HALT p99") + "%\n")
+    # The factorial argument rests on this pooled comparison: HALT at p80 against no HALT, learned
+    # model, Markov state, seeds 0-9 and the fresh seeds 10-19 (same study, same datasets per seed).
+    hf = load("ch10_halt_lagged_fresh.json")
+    k_on, k_off = n_fail(hl, "HALT p80") + n_fail(hf, "HALT p80"), n_fail(hl, "no HALT") + n_fail(hf, "no HALT")
+    n = len(hl["runs"]) + len(hf["runs"])
+    p = stats.fisher_exact([[k_on, n - k_on], [k_off, n - k_off]], alternative="greater").pvalue
+    write("halt_fisher.tex", f"\\newcommand{{\\haltonfails}}{{{k_on}}}\\newcommand{{\\haltofffails}}{{{k_off}}}"
+          f"\\newcommand{{\\haltseeds}}{{{n}}}\\newcommand{{\\haltfisherp}}{{{p:.3f}}}\n")
 
 
 def fresh_table():
@@ -122,8 +158,8 @@ def fresh_table():
                         (h, "HALT p99", r"MOReL-style, $p_{99}$, worst-case $\kappa$"),
                         (h, "HALT p99, data kappa", r"MOReL-style, $p_{99}$, data $\kappa$"),
                         (h, "no HALT", "model-based SAC (no HALT)")]:
-        vs = "--" if m == "CQL" else fmt(paired(f, m, b, "CQL"), sign=True)
-        rows.append(" & ".join([label, fmt(t_ci(per_seed(f, m))), iqm(f, m), str(n_fail(f, m)), vs]) + r" \\")
+        c = "--" if m == "CQL" else vs(f, m, b, "CQL")
+        rows.append(" & ".join([label] + ret_cells(f, m) + [str(n_fail(f, m)), c]) + r" \\")
     write("fresh.tex", "\n".join(rows) + "\n")
 
 
@@ -139,18 +175,20 @@ def baselines_table():
             (e, "true, 5% real", "true", "5\\%", "1$\\times$"),
             (e, "true, 5% real, 3x budget", "true", "5\\%", "3$\\times$"),
             (bs, "SAC, real data only", "none", "100\\%", "1$\\times$")]:
+        assert not n_fail(f, m)   # no IQM column here: every cell must take a t-interval
         rows.append(" & ".join([dyn, real, budget, fmt(t_ci(per_seed(f, m))), str(n_fail(f, m)),
-                                fmt(paired(f, m, b, "CQL"), sign=True), q(f, m)]) + r" \\")
+                                vs(f, m, b, "CQL"), q(f, m)]) + r" \\")
     write("baselines.tex", "\n".join(rows) + "\n")
     rows = []
     for a in ["0.1", "0.3", "1", "3", "10"]:
         f, m = (b, "CQL") if a == "1" else (bs, f"CQL alpha={a}")
-        vs = "--" if a == "1" else fmt(paired(f, m, b, "CQL"), sign=True)
-        rows.append(" & ".join([f"$\\alpha={a}$", fmt(t_ci(per_seed(f, m))), str(n_fail(f, m)), vs]) + r" \\")
+        assert not n_fail(f, m)
+        c = "--" if a == "1" else vs(f, m, b, "CQL")
+        rows.append(" & ".join([f"$\\alpha={a}$", fmt(t_ci(per_seed(f, m))), str(n_fail(f, m)), c]) + r" \\")
     write("cql_alpha.tex", "\n".join(rows) + "\n")
-    write("synthetic_effect.tex", fmt(paired(bs, "no HALT", bs, "SAC, real data only"), d=3, sign=True) + "%\n")
-    write("real_share_effect.tex", fmt(paired(e, "true, 5% real", e, "true, 50% real"), d=3, sign=True) + "%\n")
-    write("best_cql_gap.tex", fmt(paired(bs, "no HALT", bs, "CQL alpha=0.1"), d=3, sign=True) + "%\n")
+    write("synthetic_effect.tex", vs(bs, "no HALT", bs, "SAC, real data only", d=3) + "%\n")
+    write("real_share_effect.tex", vs(e, "true, 5% real", e, "true, 50% real", d=3) + "%\n")
+    write("best_cql_gap.tex", vs(bs, "no HALT", bs, "CQL alpha=0.1", d=3) + "%\n")
 
 
 COV_ARMS = [("SAC, real data only", "SAC, real data only"),
@@ -178,8 +216,8 @@ def coverage_tables():
     write("coverage_ext.tex", "\n".join(rows) + "\n")
     n10, n20 = load("ch10_coverage_normal_1-10_noise.json"), load("ch10_coverage_normal_1-10_noise_k20.json")
     nbb = load("ch10_coverage_normal_1-10_noise_blackbox.json")
-    write("cov_data_vs_cql.tex", fmt(paired(n20, "HALT p99, data kappa", n20, "CQL alpha=0.1"), sign=True) + "%\n")
-    write("cov_bb_vs_hybrid.tex", fmt(paired(nbb, "no pessimism", n10, "no pessimism"), sign=True) + "%\n")
+    write("cov_data_vs_cql.tex", vs(n20, "HALT p99, data kappa", n20, "CQL alpha=0.1") + "%\n")
+    write("cov_bb_vs_hybrid.tex", vs(nbb, "no pessimism", n10, "no pessimism") + "%\n")
     d = np.array(per_seed(n20, "HALT p99, data kappa")) - np.array(per_seed(n20, "no pessimism"))
     write("cov_data_wins.tex", f"{int((d > 0).sum())}%\n")
     q = lambda f, m: np.mean([r["extra"][f"q_data {m}"] for r in f["runs"]])
@@ -194,7 +232,7 @@ def coverage_fresh_table():
     a, b = load("ch10_coverage_normal_1-10_noise_k20.json"), load("ch10_coverage_normal_1-10_noise_k20_fresh.json")
     rows = [" & ".join([label, cov_cell(a, m), cov_cell(b, m)]) + r" \\" for m, label in COV_ARMS]
     write("coverage_fresh.tex", "\n".join(rows) + "\n")
-    write("cov_fresh_data_vs_cql.tex", fmt(paired(b, "HALT p99, data kappa", b, "CQL alpha=0.1"), sign=True) + "%\n")
+    write("cov_fresh_data_vs_cql.tex", vs(b, "HALT p99, data kappa", b, "CQL alpha=0.1") + "%\n")
     fails = lambda m: n_fail(a, m) + n_fail(b, m)
     ci = lambda k: stats.beta.ppf(0.975, k + 1, 20 - k) if k < 20 else 1.0
     lo = lambda k: stats.beta.ppf(0.025, k, 21 - k) if k > 0 else 0.0
