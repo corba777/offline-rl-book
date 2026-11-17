@@ -243,6 +243,152 @@ def coverage_fresh_table():
           f"\\newcommand{{\\pooldataci}}{{{100 * lo(k_dat):.0f}\\%--{100 * ci(k_dat):.0f}\\%}}\n")
 
 
+def factorial_contrasts():
+    """Per-seed contrasts of the 2x2 factorial: the effect of HALT with each dynamics,
+    as a difference of IQMs with a paired bootstrap interval, and their interaction."""
+    o = load("ch10_benchmark_oracle.json")
+    v = {m: np.array(per_seed(o, m)) for m in
+         ["HybridMOReL", "HybridMOReL-noHALT", "OracleMOReL-HALT", "OracleMOReL"]}
+    seeds = [r["seed"] for r in o["runs"]]
+    inter = (v["HybridMOReL"] - v["HybridMOReL-noHALT"]) - (v["OracleMOReL-HALT"] - v["OracleMOReL"])
+    fails = lambda m: ", ".join(str(s) for s, x in zip(seeds, v[m]) if x < FAIL)
+    write("factorial_contrasts.tex",
+          f"\\newcommand{{\\dhaltlearned}}{{{fmt(boot_iqm(v['HybridMOReL'], v['HybridMOReL-noHALT']), sign=True)}}}"
+          f"\\newcommand{{\\dhalttrue}}{{{fmt(boot_iqm(v['OracleMOReL-HALT'], v['OracleMOReL']), sign=True)}}}"
+          f"\\newcommand{{\\interactioniqm}}{{{fmt(boot_iqm(inter), sign=True)}}}"
+          f"\\newcommand{{\\interactionmedian}}{{{np.median(inter):+.2f}}}"
+          f"\\newcommand{{\\failslearned}}{{{fails('HybridMOReL')}}}\\newcommand{{\\failstrue}}{{{fails('OracleMOReL-HALT')}}}\n")
+
+
+def endpoint_inference():
+    """The narrow-log, 20-step end point: paired inference for HALT p99 with data kappa
+    against model-based SAC without pessimism and against CQL at alpha = 0.1, on the
+    exploratory seeds, the fresh seeds and pooled."""
+    a, b = load("ch10_coverage_normal_1-10_noise_k20.json"), load("ch10_coverage_normal_1-10_noise_k20_fresh.json")
+    get = lambda m: [np.array(per_seed(f, m)) for f in (a, b)]
+    dat, nop, cql = get("HALT p99, data kappa"), get("no pessimism"), get("CQL alpha=0.1")
+    rows = []
+    for label, sl in [("Seeds 0--9 (exploratory)", [0]), ("Seeds 10--19 (held out)", [1]), ("Pooled", [0, 1])]:
+        d, n, c = (np.concatenate([x[i] for i in sl]) for x in (dat, nop, cql))
+        fn, fd = n < FAIL, d < FAIL
+        b10, b01 = int((fn & ~fd).sum()), int((~fn & fd).sum())
+        p = stats.binomtest(b10, b10 + b01).pvalue if b10 + b01 else 1.0
+        rows.append(" & ".join([label, f"{int(fn.sum())} / {int(fd.sum())}", f"{b10} / {b01}", f"{p:.2f}",
+                                fmt(boot_iqm(d, n), sign=True), f"${np.median(d - n):+.2f}$",
+                                fmt(boot_iqm(d, c), sign=True)]) + r" \\")
+    write("endpoint.tex", "\n".join(rows) + "\n")
+    d, n = np.concatenate(dat), np.concatenate(nop)
+    b10 = int(((n < FAIL) & ~(d < FAIL)).sum())
+    write("endpoint_macros.tex",
+          f"\\newcommand{{\\mcnemartwo}}{{{stats.binomtest(b10, b10).pvalue:.2f}}}"
+          f"\\newcommand{{\\mcnemarone}}{{{stats.binomtest(b10, b10, alternative='greater').pvalue:.3f}}}"
+          + "".join(f"\\newcommand{{\\nopfails{w}}}{{{int((n < t).sum())}}}"
+                    f"\\newcommand{{\\datfails{w}}}{{{int((d < t).sum())}}}"
+                    for w, t in [("five", -5), ("ten", -10), ("twenty", -20)]) + "\n")
+
+
+def failure_vs_violations():
+    """Does a return-defined failure (mean return below -10) mean the process left its
+    bounds? Over every per-seed result in code/results, compare with the share of
+    disturbed-start steps with a constraint violated."""
+    fail, ok = [], []
+    for fn in sorted(RES.glob("ch10_*.json")):
+        for r in json.loads(fn.read_text())["runs"]:
+            for res in r["results"].values():
+                if "viol_rate_disturbed" in res:
+                    (fail if res["reward"] < FAIL else ok).append(res["viol_rate_disturbed"])
+    fail, ok = np.array(fail), np.array(ok)
+    write("failure_violations.tex",
+          f"\\newcommand{{\\nfailall}}{{{len(fail)}}}\\newcommand{{\\nokall}}{{{len(ok)}}}"
+          f"\\newcommand{{\\failviol}}{{{int((fail > 0.1).sum())}}}"
+          f"\\newcommand{{\\okviol}}{{{int((ok > 0.1).sum())}}}"
+          f"\\newcommand{{\\okviolmax}}{{{100 * ok.max():.0f}}}\n")
+
+
+def merge(*names):
+    """Merge result files run on the same seeds (an arm run on its own reproduces the
+    same arm of a full run exactly), and concatenate files on different seeds."""
+    by_seed = {}
+    for n in names:
+        for r in load(n)["runs"]:
+            d = by_seed.setdefault(r["seed"], {"seed": r["seed"], "results": {}, "extra": {}})
+            d["results"].update(r["results"]); d["extra"].update(r["extra"])
+    return {"runs": [by_seed[k] for k in sorted(by_seed)]}
+
+
+ARMS_2X2 = [("HALT p80, worst-case kappa", "p80", "worst"), ("HALT p80, data kappa", "p80", "data"),
+            ("HALT p99, worst-case kappa", "p99", "worst"), ("HALT p99, data kappa", "p99", "data")]
+
+
+def threshold_kappa_table():
+    """The full 2x2 of threshold (p80, p99) and penalty (worst-case, data) on the full logs
+    (5-step rollouts, seeds 0-9) and the narrowest logs (20-step rollouts, seeds 0-19)."""
+    full = merge("ch10_coverage_full.json", "ch10_coverage_full_2x2.json")
+    narrow = merge("ch10_coverage_normal_1-10_noise_k20.json", "ch10_coverage_normal_1-10_noise_k20_fresh.json",
+                   "ch10_coverage_normal_1-10_noise_k20_2x2.json", "ch10_coverage_normal_1-10_noise_k20_2x2_fresh.json")
+    cell = lambda f, m: (fmt(boot_iqm(per_seed(f, m))) if n_fail(f, m) else iqm(f, m)) + f" ({n_fail(f, m)})"
+    rows = []
+    for m, thr, kap in ARMS_2X2 + [("no pessimism", "none", "--")]:
+        rows.append(" & ".join([thr, kap, cell(full, m), cell(narrow, m)]) + r" \\")
+    write("threshold_kappa.tex", "\n".join(rows) + "\n")
+    macros = []
+    for tag, f in [("full", full), ("narrow", narrow)]:
+        v = {m: per_seed(f, m) for m, *_ in ARMS_2X2}
+        for name, a, b in [("kappaatpeighty", "HALT p80, data kappa", "HALT p80, worst-case kappa"),
+                           ("kappaatpninetynine", "HALT p99, data kappa", "HALT p99, worst-case kappa"),
+                           ("thratworst", "HALT p99, worst-case kappa", "HALT p80, worst-case kappa"),
+                           ("thratdata", "HALT p99, data kappa", "HALT p80, data kappa")]:
+            macros.append(f"\\newcommand{{\\{name}{tag}}}{{{fmt(boot_iqm(v[a], v[b]), sign=True)}}}")
+        for m, thr, kap in ARMS_2X2 + [("no pessimism", "none", "")]:
+            key = (thr + kap).replace("p80", "peighty").replace("p99", "pninetynine")
+            macros.append(f"\\newcommand{{\\fails{key}{tag}}}{{{n_fail(f, m)}}}")
+    macros.append(f"\\newcommand{{\\nnarrowseeds}}{{{len(narrow['runs'])}}}")
+    write("threshold_kappa_macros.tex", "".join(macros) + "\n")
+
+
+def blackbox_long_table():
+    """Hybrid against black-box ensemble on the narrowest logs with 20-step rollouts, seeds 0-19."""
+    hy = merge("ch10_coverage_normal_1-10_noise_k20.json", "ch10_coverage_normal_1-10_noise_k20_fresh.json")
+    bb = merge("ch10_coverage_normal_1-10_noise_k20_blackbox.json", "ch10_coverage_normal_1-10_noise_k20_blackbox_fresh.json")
+    cell = lambda f, m: (fmt(boot_iqm(per_seed(f, m))) if n_fail(f, m) else iqm(f, m)) + f" ({n_fail(f, m)})"
+    rows = [" & ".join([label, cell(hy, m), cell(bb, m), vs(bb, m, hy, m)]) + r" \\"
+            for m, label in [("no pessimism", "model-based SAC, no pessimism"),
+                             ("HALT p80, worst-case kappa", r"HALT $p_{80}$, worst-case $\kappa$"),
+                             ("HALT p99, data kappa", r"HALT $p_{99}$, data $\kappa$")]]
+    write("blackbox_long.tex", "\n".join(rows) + "\n")
+    write("blackbox_long_macros.tex",
+          f"\\newcommand{{\\bbnopfails}}{{{n_fail(bb, 'no pessimism')}}}"
+          f"\\newcommand{{\\bbdatafails}}{{{n_fail(bb, 'HALT p99, data kappa')}}}"
+          f"\\newcommand{{\\bbworstfails}}{{{n_fail(bb, 'HALT p80, worst-case kappa')}}}"
+          f"\\newcommand{{\\hynopfails}}{{{n_fail(hy, 'no pessimism')}}}\n")
+
+
+def value_check_table():
+    """Critic against Monte Carlo soft values on the real simulator, at the states reached
+    after k model-rollout steps from dataset states, for model-based SAC without pessimism.
+    Medians over seeds; 'extra' is the per-seed optimism at depth k minus that at the dataset
+    states themselves (k = 0), which edge-of-reach states would make positive at the last step."""
+    rows, macros = [], []
+    for tag, label, names in [("full", "Full logs, 5-step", ["ch10_coverage_full_2x2.json"]),
+                              ("narrow", "Narrowest logs, 20-step", ["ch10_coverage_normal_1-10_noise_k20_2x2.json",
+                                                                     "ch10_coverage_normal_1-10_noise_k20_2x2_fresh.json"])]:
+        runs = merge(*names)["runs"]
+        vc = [r["extra"]["value_check no pessimism"] for r in runs]
+        depths = sorted((k for k in vc[0] if k.isdigit()), key=int)
+        med = lambda k, q: np.median([x[k][q] for x in vc])
+        for i, k in enumerate(depths):
+            extra = np.array([x[k]["bias"] - x["0"]["bias"] for x in vc])
+            rel = np.median([x[k]["critic"] / x[k]["monte_carlo"] for x in vc])
+            rows.append(" & ".join([label if i == 0 else "", k, f"${med(k, 'critic'):.1f}$", f"${med(k, 'monte_carlo'):.1f}$",
+                                    f"{rel:.2f}", "--" if k == "0" else fmt(boot_iqm(extra), d=1, sign=True),
+                                    f"{med(k, 'nn_dist_median'):.2f}"]) + r" \\")
+        rows.append(r"\midrule")
+        macros.append(f"\\newcommand{{\\vcratio{tag}}}{{{np.median([x['0']['critic'] / x['0']['monte_carlo'] for x in vc]):.2f}}}"
+                      f"\\newcommand{{\\vcdatann{tag}}}{{{np.median([x['data_nn_dist_median'] for x in vc]):.2f}}}")
+    write("value_check.tex", "\n".join(rows[:-1]) + "\n")
+    write("value_check_macros.tex", "".join(macros) + "\n")
+
+
 def calibration_tables():
     o = load("ch10_benchmark_oracle.json")
     rows = []
@@ -299,5 +445,11 @@ if __name__ == "__main__":
     baselines_table()
     coverage_tables()
     coverage_fresh_table()
+    factorial_contrasts()
+    endpoint_inference()
+    failure_vs_violations()
+    threshold_kappa_table()
+    blackbox_long_table()
+    value_check_table()
     calibration_tables()
     rollout_figure()

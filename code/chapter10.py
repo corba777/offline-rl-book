@@ -1244,6 +1244,73 @@ def run_edge_study(seed: int = 0, device: str = 'cpu', n_train_ep: int = 400,
     return out
 
 
+@torch.no_grad()
+def critic_vs_monte_carlo(agent, units: 'Units', norm_dataset: Dict, s_mean: np.ndarray,
+                          s_std: np.ndarray, r_std: float, depths=(0, 1, 2, 5),
+                          n_starts: int = 100, n_mc: int = 2, horizon: int = 460,
+                          seed: int = 0) -> Dict[str, Dict[str, float]]:
+    """
+    Is the critic optimistic where model rollouts end? From n_starts dataset
+    states, roll the policy through the agent's model (no HALT) and keep the
+    states reached after each depth in `depths`. At each such state s, draw
+    a ~ pi(s), read the critic's min(Q1, Q2)(s, a), and estimate the same soft
+    value by Monte Carlo on the real simulator: start it in s, apply a, then
+    follow the stochastic policy for `horizon` steps (gamma^460 ~ 0.01),
+    summing gamma^t r_t / r_std - alpha * gamma^t log pi(a_t | s_t) for t >= 1,
+    which is exactly what the SAC target estimates. Also reports how far the
+    states are from the logged data (nearest dataset state, normalized units).
+    Edge-of-reach optimism (Sims et al., 2024) would show as a critic far above
+    the Monte Carlo value at the last depth.
+    """
+    g = torch.Generator().manual_seed(10_000 + seed)
+    data = torch.FloatTensor(norm_dataset['states'])
+    starts = data[torch.randint(0, len(data), (n_starts,), generator=g)].to(agent.device)
+    ref = data[torch.randperm(len(data), generator=g)[:20_000]]
+    gamma, alpha = agent.gamma, agent.alpha_ent
+    states, s = {0: starts.clone()}, starts.clone()
+    for k in range(1, max(depths) + 1):
+        a, _ = agent.policy.sample(s)
+        s = agent.ensemble.predict_with_uncertainty(s, a)[0].to(s.dtype)
+        if k in depths:
+            states[k] = s.clone()
+    out = {}
+    nn_data = torch.cdist(ref[:2000], ref).topk(2, largest=False).values[:, 1]   # excluding itself
+    for k in depths:
+        s0 = states[k]
+        a0, _ = agent.policy.sample(s0)
+        q = torch.min(agent.Q1(s0, a0), agent.Q2(s0, a0)).squeeze(-1).cpu().numpy()
+        raw = (s0.cpu().numpy() * s_std + s_mean)
+        envs = []
+        for i in range(n_starts):
+            for j in range(n_mc):
+                e = CoatingProcessEnv(seed=100_000 * (seed + 1) + 1_000 * k + n_mc * i + j, lagged_flow=True,
+                                      max_steps=horizon + 1)
+                e.reset()
+                T, f = float(np.clip(raw[i, 0], 0, 1)), float(np.clip(raw[i, 1], 0, 1))
+                e.state = np.array([T, f, e._viscosity(T, f), e._density(T, f),
+                                    float(np.clip(raw[i, 4], 0, 1))], dtype=np.float32)
+                e._filler_buffer = [float(np.clip(x, 0, 1)) for x in raw[i, 5:7]]
+                envs.append(e)
+        act = np.repeat(a0.cpu().numpy(), n_mc, axis=0)
+        G = np.zeros(len(envs))
+        for t in range(horizon):
+            obs = np.stack([e.step(a)[0] for e, a in zip(envs, act)])
+            r = np.array([e._reward(e.state, a) for e, a in zip(envs, act)]) / r_std
+            G += gamma ** t * r
+            st = torch.FloatTensor((obs - s_mean) / s_std).to(agent.device)
+            a_t, lp = agent.policy.sample(st)
+            G -= gamma ** (t + 1) * alpha * lp.squeeze(-1).cpu().numpy()
+            act = a_t.cpu().numpy()
+        mc = G.reshape(n_starts, n_mc).mean(1)
+        nn = torch.cdist(s0.cpu(), ref).min(1).values
+        out[str(k)] = {'critic': float(q.mean()), 'monte_carlo': float(mc.mean()),
+                       'bias': float((q - mc).mean()), 'bias_median': float(np.median(q - mc)),
+                       'share_optimistic': float((q > mc).mean()),
+                       'nn_dist_median': float(nn.median()), 'nn_dist_p90': float(nn.quantile(0.9))}
+    out['data_nn_dist_median'] = float(nn_data.median())
+    return out
+
+
 # Coverage ladder for the coverage study: (regime split, operator noise scale).
 # 'full' is the dataset of every other experiment; the others keep only normal
 # operation and shrink the operators' exploration, so the logs cover ever less
@@ -1259,7 +1326,8 @@ COVERAGE = {
 def run_coverage_study(seed: int = 0, device: str = 'cpu', coverage: str = 'full',
                        rollout_horizon: int = 5, physics: bool = True, n_train_ep: int = 400,
                        n_morel_iters: int = 15, n_cql_epochs: int = 80, n_eval_ep: int = 20,
-                       batch_size: int = 256, quick_test: bool = False) -> Dict[str, object]:
+                       batch_size: int = 256, arms: Optional[List[str]] = None,
+                       value_check: bool = False, quick_test: bool = False) -> Dict[str, object]:
     """
     One seed of the coverage study, on the Markov state: the same agents as the
     rest of the chapter on logs of decreasing coverage, to find where some form
@@ -1268,7 +1336,17 @@ def run_coverage_study(seed: int = 0, device: str = 'cpu', coverage: str = 'full
     configuration); HALT at p99 with kappa from the data; CQL at alpha = 1 and
     alpha = 0.1. All model-based arms share one hybrid ensemble. With
     physics=False the ensemble is black-box and only the model-based arms run.
+
+    `arms` runs only the named arms. Besides the default ones it can name the two
+    remaining cells of the threshold x kappa design, 'HALT p80, data kappa' and
+    'HALT p99, worst-case kappa'. Every arm reseeds before training, so an arm
+    run on its own reproduces the same arm of a full run, seed for seed.
+    With value_check, each model-based arm without HALT also compares its critic
+    with Monte Carlo values at the ends of model rollouts (critic_vs_monte_carlo).
     """
+    default = ['SAC, real data only', 'no pessimism', 'HALT p80, worst-case kappa',
+               'HALT p99, data kappa', 'CQL alpha=1', 'CQL alpha=0.1']
+    arms = default if arms is None else arms
     if quick_test:
         n_train_ep, n_morel_iters, n_cql_epochs, n_eval_ep = 40, 2, 2, 3
     split, noise = COVERAGE[coverage]
@@ -1306,8 +1384,10 @@ def run_coverage_study(seed: int = 0, device: str = 'cpu', coverage: str = 'full
             ('SAC, real data only', None, 1.0, float('inf'), kappa),
             ('no pessimism', ens, 0.5, float('inf'), kappa),
             ('HALT p80, worst-case kappa', ens, 0.5, eps['p80'], kappa),
-            ('HALT p99, data kappa', ens, 0.5, eps['p99'], kappa_data)]:
-        if model is None and not physics:
+            ('HALT p99, data kappa', ens, 0.5, eps['p99'], kappa_data),
+            ('HALT p80, data kappa', ens, 0.5, eps['p80'], kappa_data),
+            ('HALT p99, worst-case kappa', ens, 0.5, eps['p99'], kappa)]:
+        if (model is None and not physics) or name not in arms:
             continue
         print(f"\n[seed {seed}, {coverage}, k={rollout_horizon}] {name}")
         torch.manual_seed(seed + 1)
@@ -1323,10 +1403,17 @@ def run_coverage_study(seed: int = 0, device: str = 'cpu', coverage: str = 'full
         out['results'][name] = evaluator.evaluate(ag)
         out['extra'][f'q_data {name}'] = mean_q_on_data(ag, norm_dataset, device)
         out['extra'][f'halt_rate {name}'] = float(np.mean(ag.halt_rate_history))
+        if value_check and model is not None and epsilon == float('inf'):
+            out['extra'][f'value_check {name}'] = critic_vs_monte_carlo(
+                ag, units, norm_dataset, s_mean, s_std, units.r_std, seed=seed,
+                depths=sorted({0, 1, rollout_horizon // 2, rollout_horizon}),
+                n_starts=20 if quick_test else 100, horizon=30 if quick_test else 460)
 
     loader = make_dataloader(norm_dataset, batch_size, device)
     for alpha in ((1.0, 0.1) if physics else ()):
         name = f'CQL alpha={alpha:g}'
+        if name not in arms:
+            continue
         print(f"\n[seed {seed}, {coverage}] {name}")
         torch.manual_seed(seed + 2)
         cql = CQLAgent(S, A, alpha_cql=alpha, device=device)
@@ -1430,11 +1517,12 @@ def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                    lagged_flow: bool = False, oracle_ablation: bool = False,
                    halt_study: bool = False, baselines_study: bool = False,
                    edge_study: bool = False, coverage: Optional[str] = None,
-                   rollout_horizon: int = 5, physics: bool = True) -> Dict:
+                   rollout_horizon: int = 5, physics: bool = True,
+                   arms: Optional[List[str]] = None, value_check: bool = False) -> Dict:
     if coverage is not None:
         runs = [run_coverage_study(seed=s, device=device, coverage=coverage,
                                    rollout_horizon=rollout_horizon, physics=physics,
-                                   quick_test=quick_test)
+                                   arms=arms, value_check=value_check, quick_test=quick_test)
                 for s in seeds]
     elif edge_study:
         runs = [run_edge_study(seed=s, device=device, quick_test=quick_test) for s in seeds]
@@ -1485,6 +1573,10 @@ if __name__ == '__main__':
     p.add_argument('--horizon', type=int, default=5, help='rollout horizon for --coverage')
     p.add_argument('--black-box', action='store_true',
                    help='--coverage with a black-box ensemble (no physics), model-based arms only')
+    p.add_argument('--arms', nargs='+', default=None,
+                   help="--coverage: run only these arms, e.g. 'HALT p80, data kappa' (pass --out too)")
+    p.add_argument('--value-check', action='store_true',
+                   help='--coverage: compare the critic of agents without HALT with Monte Carlo values')
     p.add_argument('--out', default=None,
                    help='default: results/ch10_benchmark{,_lagged,_oracle}.json')
     p.add_argument('--device', default='cpu')
@@ -1504,4 +1596,4 @@ if __name__ == '__main__':
                    oracle_ablation=args.oracle_ablation, halt_study=args.halt_study,
                    baselines_study=args.baselines_study, edge_study=args.edge_study,
                    coverage=args.coverage, rollout_horizon=args.horizon,
-                   physics=not args.black_box)
+                   physics=not args.black_box, arms=args.arms, value_check=args.value_check)
