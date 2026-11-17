@@ -140,14 +140,18 @@ def halt_table():
     kd = np.mean([r["extra"]["kappa_data"] for r in hl["runs"]])
     write("kappa_values.tex", f"\\newcommand{{\\kappaworst}}{{{f'{kap:,.0f}'.replace(',', '{,}')}}}\n\\newcommand{{\\kappadata}}{{{kd:.0f}}}\n")
     write("kappa_effect.tex", vs(hl, "HALT p99, data kappa", hl, "HALT p99") + "%\n")
-    # The factorial argument rests on this pooled comparison: HALT at p80 against no HALT, learned
-    # model, Markov state, seeds 0-9 and the fresh seeds 10-19 (same study, same datasets per seed).
+    # The factorial argument rests on this comparison: HALT at p80 against no HALT, learned model,
+    # Markov state, seeds 0-9 and the fresh seeds 10-19. Both arms train on each seed's same data,
+    # so the test is paired: exact McNemar on the discordant seeds.
     hf = load("ch10_halt_lagged_fresh.json")
-    k_on, k_off = n_fail(hl, "HALT p80") + n_fail(hf, "HALT p80"), n_fail(hl, "no HALT") + n_fail(hf, "no HALT")
-    n = len(hl["runs"]) + len(hf["runs"])
-    p = stats.fisher_exact([[k_on, n - k_on], [k_off, n - k_off]], alternative="greater").pvalue
-    write("halt_fisher.tex", f"\\newcommand{{\\haltonfails}}{{{k_on}}}\\newcommand{{\\haltofffails}}{{{k_off}}}"
-          f"\\newcommand{{\\haltseeds}}{{{n}}}\\newcommand{{\\haltfisherp}}{{{p:.3f}}}\n")
+    on = np.r_[per_seed(hl, "HALT p80"), per_seed(hf, "HALT p80")] < FAIL
+    off = np.r_[per_seed(hl, "no HALT"), per_seed(hf, "no HALT")] < FAIL
+    b10, b01 = int((on & ~off).sum()), int((~on & off).sum())
+    two = stats.binomtest(b10, b10 + b01).pvalue
+    one = stats.binomtest(b10, b10 + b01, alternative="greater").pvalue
+    write("halt_mcnemar.tex", f"\\newcommand{{\\haltonfails}}{{{int(on.sum())}}}\\newcommand{{\\haltofffails}}{{{int(off.sum())}}}"
+          f"\\newcommand{{\\haltseeds}}{{{len(on)}}}\\newcommand{{\\haltdiscordant}}{{{b10} / {b01}}}"
+          f"\\newcommand{{\\haltmcnemartwo}}{{{two:.3f}}}\\newcommand{{\\haltmcnemarone}}{{{one:.4f}}}\n")
 
 
 def fresh_table():
@@ -291,11 +295,15 @@ def failure_vs_violations():
     """Does a return-defined failure (mean return below -10) mean the process left its
     bounds? Over every per-seed result in code/results, compare with the share of
     disturbed-start steps with a constraint violated."""
-    fail, ok = [], []
+    fail, ok, seen = [], [], set()
     for fn in sorted(RES.glob("ch10_*.json")):
         for r in json.loads(fn.read_text())["runs"]:
-            for res in r["results"].values():
-                if "viol_rate_disturbed" in res:
+            for m, res in r["results"].items():
+                # Arms rerun on their own (extra-arm and Monte Carlo files) reproduce the saved
+                # result exactly; count each evaluation once.
+                key = (r["seed"], m, res["reward"], res.get("viol_rate_disturbed"))
+                if "viol_rate_disturbed" in res and key not in seen:
+                    seen.add(key)
                     (fail if res["reward"] < FAIL else ok).append(res["viol_rate_disturbed"])
     fail, ok = np.array(fail), np.array(ok)
     write("failure_violations.tex",
@@ -383,10 +391,41 @@ def value_check_table():
                                     f"{rel:.2f}", "--" if k == "0" else fmt(boot_iqm(extra), d=1, sign=True),
                                     f"{med(k, 'nn_dist_median'):.2f}"]) + r" \\")
         rows.append(r"\midrule")
+        last = depths[-1]
+        extra_last = np.array([x[last]["bias"] - x["0"]["bias"] for x in vc])
+        macros.append(f"\\newcommand{{\\vcextralast{tag}}}{{{fmt(boot_iqm(extra_last), d=1, sign=True)}}}"
+                      f"\\newcommand{{\\vccritic{tag}}}{{{np.median([x[last]['critic'] for x in vc]):.0f}}}"
+                      f"\\newcommand{{\\vcgap{tag}}}{{{np.median([x[last]['bias'] for x in vc]):.0f}}}")
         macros.append(f"\\newcommand{{\\vcratio{tag}}}{{{np.median([x['0']['critic'] / x['0']['monte_carlo'] for x in vc]):.2f}}}"
                       f"\\newcommand{{\\vcdatann{tag}}}{{{np.median([x['data_nn_dist_median'] for x in vc]):.2f}}}")
     write("value_check.tex", "\n".join(rows[:-1]) + "\n")
     write("value_check_macros.tex", "".join(macros) + "\n")
+
+
+def value_check_precision():
+    """Is the Monte Carlo reference precise enough? The same agents (bit-identical reruns, seeds
+    0-9) with eight continuations per start state instead of two: the extra optimism at the last
+    rollout step, and the Monte Carlo standard error relative to the critic-Monte Carlo gap."""
+    macros = []
+    for tag, two, eight in [("full", ["ch10_coverage_full_2x2.json"],
+                             ["ch10_coverage_full_mc8_a.json", "ch10_coverage_full_mc8_b.json"]),
+                            ("narrow", ["ch10_coverage_normal_1-10_noise_k20_2x2.json"],
+                             ["ch10_coverage_normal_1-10_noise_k20_mc8_a.json",
+                              "ch10_coverage_normal_1-10_noise_k20_mc8_b.json"])]:
+        r8 = merge(*eight)["runs"]
+        seeds = [r["seed"] for r in r8]
+        r2 = [r for r in merge(*two)["runs"] if r["seed"] in seeds]
+        assert [r["results"]["no pessimism"]["reward"] for r in r2] == \
+               [r["results"]["no pessimism"]["reward"] for r in r8], "reruns must reproduce the agents"
+        vc8 = [r["extra"]["value_check no pessimism"] for r in r8]
+        vc2 = [r["extra"]["value_check no pessimism"] for r in r2]
+        last = sorted((k for k in vc8[0] if k.isdigit()), key=int)[-1]
+        ex = lambda vc: np.array([x[last]["bias"] - x["0"]["bias"] for x in vc])
+        se = np.median([x[last]["mc_se"] for x in vc8])
+        macros.append(f"\\newcommand{{\\vceight{tag}}}{{{fmt(boot_iqm(ex(vc8)), d=1, sign=True)}}}"
+                      f"\\newcommand{{\\vctwo{tag}}}{{{fmt(boot_iqm(ex(vc2)), d=1, sign=True)}}}"
+                      f"\\newcommand{{\\vcse{tag}}}{{{se:.1f}}}")
+    write("value_check_precision.tex", "".join(macros) + "\n")
 
 
 def calibration_tables():
@@ -451,5 +490,6 @@ if __name__ == "__main__":
     threshold_kappa_table()
     blackbox_long_table()
     value_check_table()
+    value_check_precision()
     calibration_tables()
     rollout_figure()

@@ -1301,9 +1301,14 @@ def critic_vs_monte_carlo(agent, units: 'Units', norm_dataset: Dict, s_mean: np.
             a_t, lp = agent.policy.sample(st)
             G -= gamma ** (t + 1) * alpha * lp.squeeze(-1).cpu().numpy()
             act = a_t.cpu().numpy()
-        mc = G.reshape(n_starts, n_mc).mean(1)
+        runs = G.reshape(n_starts, n_mc)
+        mc = runs.mean(1)
         nn = torch.cdist(s0.cpu(), ref).min(1).values
+        # Monte Carlo noise: spread of the continuations from one start state, and the
+        # standard error it leaves on the mean over start states.
+        within_sd = float(np.sqrt(runs.var(1, ddof=1).mean())) if n_mc > 1 else float('nan')
         out[str(k)] = {'critic': float(q.mean()), 'monte_carlo': float(mc.mean()),
+                       'mc_within_sd': within_sd, 'mc_se': within_sd / np.sqrt(n_starts * n_mc),
                        'bias': float((q - mc).mean()), 'bias_median': float(np.median(q - mc)),
                        'share_optimistic': float((q > mc).mean()),
                        'nn_dist_median': float(nn.median()), 'nn_dist_p90': float(nn.quantile(0.9))}
@@ -1327,7 +1332,8 @@ def run_coverage_study(seed: int = 0, device: str = 'cpu', coverage: str = 'full
                        rollout_horizon: int = 5, physics: bool = True, n_train_ep: int = 400,
                        n_morel_iters: int = 15, n_cql_epochs: int = 80, n_eval_ep: int = 20,
                        batch_size: int = 256, arms: Optional[List[str]] = None,
-                       value_check: bool = False, quick_test: bool = False) -> Dict[str, object]:
+                       value_check: bool = False, mc_runs: int = 2,
+                       quick_test: bool = False) -> Dict[str, object]:
     """
     One seed of the coverage study, on the Markov state: the same agents as the
     rest of the chapter on logs of decreasing coverage, to find where some form
@@ -1407,7 +1413,7 @@ def run_coverage_study(seed: int = 0, device: str = 'cpu', coverage: str = 'full
             out['extra'][f'value_check {name}'] = critic_vs_monte_carlo(
                 ag, units, norm_dataset, s_mean, s_std, units.r_std, seed=seed,
                 depths=sorted({0, 1, rollout_horizon // 2, rollout_horizon}),
-                n_starts=20 if quick_test else 100, horizon=30 if quick_test else 460)
+                n_starts=20 if quick_test else 100, n_mc=mc_runs, horizon=30 if quick_test else 460)
 
     loader = make_dataloader(norm_dataset, batch_size, device)
     for alpha in ((1.0, 0.1) if physics else ()):
@@ -1518,11 +1524,13 @@ def run_multi_seed(seeds=(0, 1, 2, 3, 4), out_path: Optional[str] = None,
                    halt_study: bool = False, baselines_study: bool = False,
                    edge_study: bool = False, coverage: Optional[str] = None,
                    rollout_horizon: int = 5, physics: bool = True,
-                   arms: Optional[List[str]] = None, value_check: bool = False) -> Dict:
+                   arms: Optional[List[str]] = None, value_check: bool = False,
+                   mc_runs: int = 2) -> Dict:
     if coverage is not None:
         runs = [run_coverage_study(seed=s, device=device, coverage=coverage,
                                    rollout_horizon=rollout_horizon, physics=physics,
-                                   arms=arms, value_check=value_check, quick_test=quick_test)
+                                   arms=arms, value_check=value_check, mc_runs=mc_runs,
+                                   quick_test=quick_test)
                 for s in seeds]
     elif edge_study:
         runs = [run_edge_study(seed=s, device=device, quick_test=quick_test) for s in seeds]
@@ -1577,6 +1585,8 @@ if __name__ == '__main__':
                    help="--coverage: run only these arms, e.g. 'HALT p80, data kappa' (pass --out too)")
     p.add_argument('--value-check', action='store_true',
                    help='--coverage: compare the critic of agents without HALT with Monte Carlo values')
+    p.add_argument('--mc-runs', type=int, default=2,
+                   help='--value-check: Monte Carlo continuations per start state')
     p.add_argument('--out', default=None,
                    help='default: results/ch10_benchmark{,_lagged,_oracle}.json')
     p.add_argument('--device', default='cpu')
@@ -1596,4 +1606,5 @@ if __name__ == '__main__':
                    oracle_ablation=args.oracle_ablation, halt_study=args.halt_study,
                    baselines_study=args.baselines_study, edge_study=args.edge_study,
                    coverage=args.coverage, rollout_horizon=args.horizon,
-                   physics=not args.black_box, arms=args.arms, value_check=args.value_check)
+                   physics=not args.black_box, arms=args.arms, value_check=args.value_check,
+                   mc_runs=args.mc_runs)
