@@ -1,0 +1,48 @@
+name: Zenodo
+
+# Each published GitHub release becomes a new version of the book's Zenodo record,
+# with the PDFs attached to the release and the source zip. This replaces Zenodo's
+# GitHub integration, which archives only the source; keep that integration
+# switched off for this repository, or every release is archived twice.
+# Needs the secret ZENODO_TOKEN (scopes deposit:write and deposit:actions).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to archive, e.g. v1.1.4"
+        required: true
+      draft:
+        description: "Leave the Zenodo version unpublished"
+        type: boolean
+        default: false
+
+jobs:
+  zenodo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Collect the release PDFs and the source zip
+        run: |
+          mkdir dist
+          # gh release create uploads the assets before it publishes; retry in case they lag.
+          for i in 1 2 3 4 5; do
+            gh release download "$TAG" --pattern '*.pdf' --dir dist --clobber && ls dist/*.pdf && break
+            sleep 20
+          done
+          ls dist/*.pdf
+          git archive --format=zip --prefix="offline-rl-book-${TAG#v}/" -o "dist/offline-rl-book-${TAG}-source.zip" "$TAG"
+          ls -l dist
+      - name: Publish the new Zenodo version
+        env:
+          ZENODO_TOKEN: ${{ secrets.ZENODO_TOKEN }}
+        run: |
+          python3 scripts/zenodo_release.py --version "${TAG#v}" ${{ inputs.draft && '--draft' || '' }} dist/*

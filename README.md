@@ -186,7 +186,7 @@ The cover is [`figures/readme/cover.svg`](figures/readme/cover.svg). Neither the
 
 ## How to cite
 
-Every release is archived on Zenodo; the DOI [10.5281/zenodo.24045871](https://doi.org/10.5281/zenodo.24045871) always resolves to the latest version. GitHub's "Cite this repository" button uses [`CITATION.cff`](CITATION.cff). In BibTeX:
+Every release is archived on Zenodo, with the book and paper PDFs and the source; the DOI [10.5281/zenodo.24045871](https://doi.org/10.5281/zenodo.24045871) always resolves to the latest version. The workflow [`zenodo.yml`](.github/workflows/zenodo.yml) uploads them when a GitHub release is published (it needs the `ZENODO_TOKEN` secret, and Zenodo's own GitHub integration switched off for this repository). GitHub's "Cite this repository" button uses [`CITATION.cff`](CITATION.cff). In BibTeX:
 
 ```bibtex
 @book{zvyagintsev2026offlinerl,
