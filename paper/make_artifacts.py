@@ -15,7 +15,7 @@ from scipy import stats
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "code"))
-from rl_stats import FAIL, boot_iqm, t_interval   # noqa: E402  (Appendix B; shared with the book)
+from rl_stats import FAIL, boot_iqm, iqm as iqm_value, mcnemar_exact, sign_test, t_interval  # noqa: E402  (Appendix B)
 RES = ROOT / "code" / "results"
 OUT_T = Path(__file__).resolve().parent / "tables"
 OUT_F = Path(__file__).resolve().parent / "figures"
@@ -57,7 +57,7 @@ def vs(a_file, a_method, b_file, b_method, d=2):
 def iqm(run_file, method):
     """Interquartile mean over seeds (Agarwal et al., 2021): with ten seeds, the
     mean of the middle six, robust to the one or two failing seeds."""
-    return f"${stats.trim_mean(per_seed(run_file, method), 0.25):.2f}$"
+    return f"${iqm_value(per_seed(run_file, method)):.2f}$"
 
 
 def fmt(ci, d=2, sign=False):
@@ -131,9 +131,7 @@ def halt_table():
     hf = load("ch10_halt_lagged_fresh.json")
     on = np.r_[per_seed(hl, "HALT p80"), per_seed(hf, "HALT p80")] < FAIL
     off = np.r_[per_seed(hl, "no HALT"), per_seed(hf, "no HALT")] < FAIL
-    b10, b01 = int((on & ~off).sum()), int((~on & off).sum())
-    two = stats.binomtest(b10, b10 + b01).pvalue
-    one = stats.binomtest(b10, b10 + b01, alternative="greater").pvalue
+    b10, b01, two, one = mcnemar_exact(on, off)
     write("halt_mcnemar.tex", f"\\newcommand{{\\haltonfails}}{{{int(on.sum())}}}\\newcommand{{\\haltofffails}}{{{int(off.sum())}}}"
           f"\\newcommand{{\\haltseeds}}{{{len(on)}}}\\newcommand{{\\haltdiscordant}}{{{b10} / {b01}}}"
           f"\\newcommand{{\\haltmcnemartwo}}{{{two:.3f}}}\\newcommand{{\\haltmcnemarone}}{{{one:.4f}}}\n")
@@ -191,7 +189,7 @@ def cov_cell(f, m):
     if m not in f["runs"][0]["results"]:
         return "--"
     v = per_seed(f, m)
-    return f"${np.mean(v):.2f}$ / ${stats.trim_mean(v, 0.25):.2f}$ ({n_fail(f, m)})"
+    return f"${np.mean(v):.2f}$ / ${iqm_value(v):.2f}$ ({n_fail(f, m)})"
 
 
 def coverage_tables():
@@ -212,9 +210,9 @@ def coverage_tables():
     q = lambda f, m: np.mean([r["extra"][f"q_data {m}"] for r in f["runs"]])
     write("cov_q.tex", f"\\newcommand{{\\qsacnarrow}}{{{q(n10, 'SAC, real data only'):+.1f}}}"
           f"\\newcommand{{\\qmbnarrow}}{{{q(n10, 'no pessimism'):.0f}}}"
-          f"\\newcommand{{\\iqmdatanarrow}}{{{stats.trim_mean(per_seed(n20, 'HALT p99, data kappa'), 0.25):.2f}}}"
-          f"\\newcommand{{\\iqmnopnarrow}}{{{stats.trim_mean(per_seed(n20, 'no pessimism'), 0.25):.2f}}}"
-          f"\\newcommand{{\\signp}}{{{stats.binomtest(int((d > 0).sum()), len(d)).pvalue:.2f}}}\n")
+          f"\\newcommand{{\\iqmdatanarrow}}{{{iqm_value(per_seed(n20, 'HALT p99, data kappa')):.2f}}}"
+          f"\\newcommand{{\\iqmnopnarrow}}{{{iqm_value(per_seed(n20, 'no pessimism')):.2f}}}"
+          f"\\newcommand{{\\signp}}{{{sign_test(per_seed(n20, 'HALT p99, data kappa'), per_seed(n20, 'no pessimism'))[2]:.2f}}}\n")
 
 
 def coverage_fresh_table():
@@ -260,17 +258,16 @@ def endpoint_inference():
     for label, sl in [("Seeds 0--9 (exploratory)", [0]), ("Seeds 10--19 (held out)", [1]), ("Pooled", [0, 1])]:
         d, n, c = (np.concatenate([x[i] for i in sl]) for x in (dat, nop, cql))
         fn, fd = n < FAIL, d < FAIL
-        b10, b01 = int((fn & ~fd).sum()), int((~fn & fd).sum())
-        p = stats.binomtest(b10, b10 + b01).pvalue if b10 + b01 else 1.0
+        b10, b01, p, _ = mcnemar_exact(fn, fd)
         rows.append(" & ".join([label, f"{int(fn.sum())} / {int(fd.sum())}", f"{b10} / {b01}", f"{p:.2f}",
                                 fmt(boot_iqm(d, n), sign=True), f"${np.median(d - n):+.2f}$",
                                 fmt(boot_iqm(d, c), sign=True)]) + r" \\")
     write("endpoint.tex", "\n".join(rows) + "\n")
     d, n = np.concatenate(dat), np.concatenate(nop)
-    b10 = int(((n < FAIL) & ~(d < FAIL)).sum())
+    _, _, two, one = mcnemar_exact(n < FAIL, d < FAIL)
     write("endpoint_macros.tex",
-          f"\\newcommand{{\\mcnemartwo}}{{{stats.binomtest(b10, b10).pvalue:.2f}}}"
-          f"\\newcommand{{\\mcnemarone}}{{{stats.binomtest(b10, b10, alternative='greater').pvalue:.3f}}}"
+          f"\\newcommand{{\\mcnemartwo}}{{{two:.2f}}}"
+          f"\\newcommand{{\\mcnemarone}}{{{one:.3f}}}"
           + "".join(f"\\newcommand{{\\nopfails{w}}}{{{int((n < t).sum())}}}"
                     f"\\newcommand{{\\datfails{w}}}{{{int((d < t).sum())}}}"
                     for w, t in [("five", -5), ("ten", -10), ("twenty", -20)]) + "\n")

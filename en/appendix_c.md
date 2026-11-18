@@ -64,7 +64,7 @@ The size of the effect is easy to compute. If $k$ configurations are in truth eq
 | 10 | 1.54 SE |
 | 20 | 1.87 SE |
 
-The table assumes independent, normally distributed measurement errors of equal size; configurations measured on the same seeds have correlated errors. Positively correlated errors – the usual case when configurations share data – tend to reduce the effect, but correlation as such does not: with two perfectly negatively correlated errors the expected optimism is $\mathbb{E}[\max(Z, -Z)] = \sqrt{2/\pi} \approx 0.80$ SE, more than the 0.57 for independent ones. With ten or twenty configurations – a modest hyperparameter sweep – the winner is expected to look about one and a half to two standard errors better than it is, even if all are equal. This is the *winner's curse*, and it does not depend on any test: it is built into choosing the maximum. Gelman and Loken (2014) call the broader version the *garden of forking paths*: the analysis that was run depends on the data, even when no single decision feels like cherry-picking.
+The table assumes independent, normally distributed measurement errors of equal size; configurations measured on the same seeds have correlated errors. Positively correlated errors – the usual case when configurations share data – tend to reduce the effect, but correlation as such does not: with two perfectly negatively correlated errors the expected optimism is $\mathbb{E}[\max(Z, -Z)] = \sqrt{2/\pi} \approx 0.80$ SE, more than the 0.57 for independent ones. Under the independent-error model, with ten or twenty configurations – a modest hyperparameter sweep – the winner is expected to look about one and a half to two standard errors better than it is, even if all are equal. This is the *winner's curse*, and it does not depend on any test: it is built into choosing the maximum. Gelman and Loken (2014) call the broader version the *garden of forking paths*: the analysis that was run depends on the data, even when no single decision feels like cherry-picking.
 
 The same mechanism biases baselines in the other direction. Chapter 10 chose CQL's weight on evaluation returns over a grid of five values – a search that favours CQL – and then transferred it unchanged to the narrowed logs, where the termination settings were explored more widely. Neither procedure is a fair basis for ranking algorithms; Chapter 10 therefore calls its comparisons comparisons of fixed configurations. A fair ranking needs one tuning protocol for every method, with tuning done on validation runs and the ranking on runs that took no part in it (Cawley and Talbot, 2010).
 
@@ -180,7 +180,7 @@ And the report itself:
 |---|---|---|
 | Unit of replication | Training seed; seeds fixed in advance | Episodes share a policy; a selected seed list is a selected sample |
 | Shared randomness | Same data, evaluation episodes and ensemble within a seed; arms reseed | Paired comparisons, 2.7 times narrower here; arms can be added later |
-| Search | Documented pilot; every configuration reported | The best of $k$ looks 1.5–2 SE too good for $k$ = 10–20 |
+| Search | Documented pilot; every configuration reported | With independent errors, the best of $k$ = 10–20 looks 1.5–2 SE too good |
 | Confirmation | Seeds 10–19, held out | Seeds that chose a configuration cannot confirm it |
 | Many comparisons | Borderline results called suggestive | A dozen independent tests give a 46% chance of a false hit |
 | Ablations | Full 2×2 designs with interactions | One-at-a-time ablations miss interactions |
