@@ -64,7 +64,7 @@ The size of the effect is easy to compute. If $k$ configurations are in truth eq
 | 10 | 1.54 SE |
 | 20 | 1.87 SE |
 
-The table assumes independent, normally distributed measurement errors of equal size; configurations measured on the same seeds have correlated errors, which makes the effect smaller but does not remove it. With ten or twenty configurations – a modest hyperparameter sweep – the winner is expected to look about one and a half to two standard errors better than it is, even if all are equal. This is the *winner's curse*, and it does not depend on any test: it is built into choosing the maximum. Gelman and Loken (2014) call the broader version the *garden of forking paths*: the analysis that was run depends on the data, even when no single decision feels like cherry-picking.
+The table assumes independent, normally distributed measurement errors of equal size; configurations measured on the same seeds have correlated errors. Positively correlated errors – the usual case when configurations share data – tend to reduce the effect, but correlation as such does not: with two perfectly negatively correlated errors the expected optimism is $\mathbb{E}[\max(Z, -Z)] = \sqrt{2/\pi} \approx 0.80$ SE, more than the 0.57 for independent ones. With ten or twenty configurations – a modest hyperparameter sweep – the winner is expected to look about one and a half to two standard errors better than it is, even if all are equal. This is the *winner's curse*, and it does not depend on any test: it is built into choosing the maximum. Gelman and Loken (2014) call the broader version the *garden of forking paths*: the analysis that was run depends on the data, even when no single decision feels like cherry-picking.
 
 The same mechanism biases baselines in the other direction. Chapter 10 chose CQL's weight on evaluation returns over a grid of five values – a search that favours CQL – and then transferred it unchanged to the narrowed logs, where the termination settings were explored more widely. Neither procedure is a fair basis for ranking algorithms; Chapter 10 therefore calls its comparisons comparisons of fixed configurations. A fair ranking needs one tuning protocol for every method, with tuning done on validation runs and the ranking on runs that took no part in it (Cawley and Talbot, 2010).
 
@@ -94,7 +94,7 @@ What to fix before the confirmation run, in writing if possible: the configurati
 
 ## Multiple Comparisons and Selective Inference
 
-Chapter 10's benchmark has about a dozen paired comparisons. If none of them reflected a real difference and the tests were independent, the chance that at least one would still clear $p < 0.05$ would be $1 - 0.95^{12} = 46\%$. Chapter 10's comparisons share seeds and baselines, so they are correlated and the true figure is lower, but of the same order. There are three honest responses (Bonferroni and Holm remain valid under any dependence):
+Chapter 10's benchmark has about a dozen paired comparisons. If none of them reflected a real difference and the tests were independent, the chance that at least one would still clear $p < 0.05$ would be $1 - 0.95^{12} = 46\%$. Chapter 10's comparisons share seeds and baselines, so they are dependent, and with dependent tests the figure differs from 46% – without knowing the dependence, not necessarily downwards. The 46% is an illustration of scale, not an estimate. There are three honest responses (Bonferroni and Holm remain valid under any dependence):
 
 - **Correct** for the number of tests. Bonferroni tests each of $k$ comparisons at $0.05/k$; Holm's step-down version (Holm, 1979) is uniformly more powerful and just as valid.
 - **Say it.** Chapter 10 notes that a borderline result among many – the constraint penalty on the logged state – is expected by chance, and treats it as suggestive.
@@ -112,7 +112,7 @@ $$\Delta_{\text{learned}} = R_{\text{learned, on}} - R_{\text{learned, off}}, \q
 
 HALT lowers the IQM by 3.4 [1.5, 10.8] with the learned model and by 2.5 [1.4, 39.8] with the true dynamics; the interaction has a median of +0.02 and an IQM of −0.37 [−3.40, +33.35]. The design establishes that transition error is *not necessary* for HALT to do damage. It does not establish that model error never contributes: an interaction this uncertain cannot be ruled out. Note what the oracle cell does and does not remove: the true dynamics remove transition error, but the halts are still decided by the learned ensemble's disagreement.
 
-**Threshold versus penalty.** The first experiments changed HALT's threshold and penalty together, which confounds them. The full 2×2 – both thresholds with both penalties – separates them: on the narrowest logs the penalty alone decides which runs fail (39 of 40 runs with the worst-case $\kappa$, none with the data-sized one, at either threshold), while the threshold's effect on typical return is +0.20 [−0.20, +0.48], an interval that does not rule out a modest effect in either direction. On the full logs neither change helps without the other – an interaction, which a one-at-a-time ablation would have missed.
+**Threshold versus penalty.** The first experiments changed HALT's threshold and penalty together, which confounds them. The full 2×2 – both thresholds with both penalties – separates them: on the narrowest logs the penalty alone decides which runs fail (39 of 40 runs with the worst-case $\kappa$, none with the data-sized one, at either threshold; the 40 runs are 20 seeds at two thresholds, sharing data and ensembles, so they are seed-configuration evaluations, not 40 independent replications), while the threshold's effect on typical return is +0.20 [−0.20, +0.48], an interval that does not rule out a modest effect in either direction. On the full logs neither change helps without the other – an interaction, which a one-at-a-time ablation would have missed.
 
 Two design rules follow. Change factors in all combinations, not one at a time, when they may interact. And build the experiment so that missing cells can be added later on the same seeds (see common random numbers above).
 
@@ -124,7 +124,7 @@ Before running, ask how many seeds the question needs. For a difference in **mea
 
 $$n \approx \left(\frac{(z_{1-\alpha/2} + z_{1-\beta})\,\sigma_d}{\Delta}\right)^2,$$
 
-corrected for the $t$ distribution at small $n$ (`paired_t_seeds` does it exactly). With Chapter 10's $\sigma_d = 0.047$, detecting $\Delta = 0.03$ with 80% power takes 22 seeds. This plans for a difference in means; the power for a difference of IQMs has no simple formula and is best simulated by resampling pilot seeds.
+corrected for the $t$ distribution at small $n$ (`paired_t_seeds` does it exactly, for normally distributed paired differences – a model, not a guarantee for RL returns). With Chapter 10's $\sigma_d = 0.047$, detecting $\Delta = 0.03$ with 80% power takes 22 seeds. This plans for a difference in means; the power for a difference of IQMs has no simple formula and is best simulated by resampling pilot seeds.
 
 **Rare failures** are much more expensive, and the marginal failure rates are not enough to plan for them. McNemar's test sees only discordant seeds, with probabilities
 
@@ -140,11 +140,7 @@ and two agents with the same failure rates can produce very different numbers of
 
 With ten seeds the power rounds to zero – about 0.001. Not because a significant result is impossible: six seeds on which only A fails, and four on which the agents agree, give $p = 2 \cdot 0.5^6 = 0.031$. But with these failure rates, six discordant seeds out of ten almost never occur. Twenty seeds – Chapter 10's pooled end point – give about 5%. Reaching 80% takes 60 to 80 seeds, depending on how the failures overlap. The rates here are illustrative, chosen to resemble Chapter 10's end point rather than estimated from it; this is a planning calculation, not a post hoc power for the observed result. Its message is the one Chapter 10 draws: a study of this size had little chance of establishing a benefit of this kind, so a replicated pattern is as far as it can go.
 
-The variance formula of Appendix B settles the other budget question, **seeds or episodes**, once costs are added. If training a seed costs $c_{\text{train}}$ and each evaluation episode $c_{\text{eval}}$, a budget $B = n\,(c_{\text{train}} + m\,c_{\text{eval}})$ buys $n$ seeds of $m$ episodes each, and minimizing
-
-$$\operatorname{Var}(\bar R) = \frac{\sigma^2_{\text{seed}}}{n} + \frac{\sigma^2_{\text{ep}}}{n\,m}$$
-
-under that budget gives the number of evaluation episodes per seed
+The variance formula of Appendix B settles the other budget question, **seeds or episodes**, once costs are added. If training a seed costs $c_{\text{train}}$ and each evaluation episode $c_{\text{eval}}$, a budget $B = n\,(c_{\text{train}} + m\,c_{\text{eval}})$ buys $n$ seeds of $m$ episodes each, and minimizing $\operatorname{Var}(\bar R) = \sigma^2_{\text{seed}}/n + \sigma^2_{\text{ep}}/(n\,m)$ under that budget gives the number of evaluation episodes per seed
 
 $$m^* = \sqrt{\frac{\sigma^2_{\text{ep}}\, c_{\text{train}}}{\sigma^2_{\text{seed}}\, c_{\text{eval}}}},$$
 
@@ -167,7 +163,7 @@ And the report itself:
 2. **What is shared within a seed** (data, evaluation episodes, models), so that readers know comparisons are paired.
 3. **The failure definition**, and whether the counts change when the line moves.
 4. **Typical performance, failure counts and the mean, separately.** Never a mean alone when a seed can fail.
-5. **One interval per cell, of the right kind**: a $t$-interval with no failing seed; otherwise a bootstrap interval on the IQM.
+5. **Estimands fixed before the analysis**, reported in every cell whatever the data show – not switched by whether a failure happened to be observed. (Chapter 10's tables switch between a $t$-interval and an IQM bootstrap as a compromise for compactness; Appendix B explains the cost.)
 6. **Paired differences** for every comparison of agents trained on the same data; joint resampling in a paired bootstrap.
 7. **Exact intervals for failure rates**, and exact McNemar tests for paired failure counts – not Fisher.
 8. **Which results are exploratory**, how the configuration was found, and which results were confirmed on held-out seeds.
@@ -186,7 +182,7 @@ And the report itself:
 | Shared randomness | Same data, evaluation episodes and ensemble within a seed; arms reseed | Paired comparisons, 2.7 times narrower here; arms can be added later |
 | Search | Documented pilot; every configuration reported | The best of $k$ looks 1.5–2 SE too good for $k$ = 10–20 |
 | Confirmation | Seeds 10–19, held out | Seeds that chose a configuration cannot confirm it |
-| Many comparisons | Borderline results called suggestive | A dozen tests give a 46% chance of a false hit |
+| Many comparisons | Borderline results called suggestive | A dozen independent tests give a 46% chance of a false hit |
 | Ablations | Full 2×2 designs with interactions | One-at-a-time ablations miss interactions |
 | Seed budget | 20 seeds at the end point – too few for rare failures | 80% power for 15% vs 2% failures needs 60–80 seeds |
 

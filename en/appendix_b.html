@@ -64,7 +64,7 @@
 <p><em>"Ten seeds can tell you that something happens. They rarely tell you how often."</em></p>
 </blockquote>
 <p>This appendix asks what can be concluded from the results of an offline RL experiment, and with how much uncertainty. It is written for a situation that general texts on statistics and on deep RL benchmarking rarely address together: <strong>one task, ten or twenty training seeds, paired data and rare catastrophic failures.</strong> That is the situation of most industrial offline RL studies, and of Chapter 10. <a href="/offline-rl-book/en/appendix_c.html">Appendix C</a> takes the other half of the question: how to design an experiment so that these conclusions are justified at all. A good test does not repair a bad design.</p>
-<p>Introductory hypothesis testing is not repeated here, and neither is off-policy evaluation, which Chapter 3 treats: there the task is to estimate one fixed policy from logged trajectories; here it is to describe the distribution of outcomes of a training procedure. Every number below comes from Chapter 10 and can be recomputed with the code.</p>
+<p>Introductory hypothesis testing is not repeated here, and neither is off-policy evaluation, which Chapter 3 treats: there the task is to estimate one fixed policy from logged trajectories; here it is to describe the distribution of outcomes of a training procedure. The numerical examples use either Chapter 10's results or simulations specified in the text, and all can be recomputed with the code.</p>
 <blockquote>
 <p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/rl_stats.py"><code>rl_stats.py</code></a> – the functions that produced every interval and test in Chapter 10; <code>python code/rl_stats.py</code> recomputes the examples of Appendices B and C.</p>
 </blockquote>
@@ -135,7 +135,7 @@
 </tr>
 </tbody>
 </table>
-<p>The $t$-interval reaches +24, a return this task cannot produce: every reward is a penalty. An interval that crosses the range of possible values is not wrong for that reason alone, but here it tells us almost nothing, and its normal-theory justification does not hold for a sample with one catastrophic seed. The rule used in Chapter 10 is therefore <strong>one interval per cell</strong>: a bootstrap interval on the IQM when a seed fails, with the mean shown alone as a description; and when no seed fails, a $t$-interval on the mean. Strictly, the latter is an interval for the mean, not for the IQM. It stands in for the typical return only because, without a failing seed, the two nearly coincide in these data (−1.24 and −1.23 for model-based SAC without pessimism), and because the $t$-interval is the better-behaved interval at $n = 10$.</p>
+<p>The $t$-interval reaches +24, a return this task cannot produce: every reward is a penalty. An interval that crosses the range of possible values is not wrong for that reason alone, but here it tells us almost nothing, and its normal-theory justification does not hold for a sample with one catastrophic seed. Chapter 10's tables use <strong>one interval per cell</strong>: a bootstrap interval on the IQM when a seed fails, with the mean shown alone as a description, and a $t$-interval on the mean when no seed fails. That is a compromise for compact tables, not a statistical protocol, and it has a flaw worth naming: the estimand changes with what was observed. Strictly, the $t$-interval is an interval for the mean, not for the IQM; it stands in for the typical return only because, without a failing seed, the two nearly coincide in these data (−1.24 and −1.23 for model-based SAC without pessimism). And "no failing seed among ten" does not mean the distribution has no failures – at a true rate of 5%, ten seeds show none 60% of the time. A protocol should fix its estimands <strong>before</strong> the analysis and report them in every cell, whatever the data turn out to be: for example, the IQM with a bootstrap interval and the failure count with an exact interval everywhere, and the mean as a description.</p>
 <p>The bootstrap for the IQM resamples seeds with replacement, 10,000 times, recomputes the IQM of each resample and takes the 2.5th and 97.5th percentiles. The end of the interval on the side of the failure is the fragile one. A resample that draws the failing seed three or four times pushes it into the middle half, and that end stretches towards the failure: in the example above it is the lower end, −41.1, while the upper end, −2.6, barely moves. For a difference in which the failing agent is subtracted, the same thing happens to the upper end. The steadier end is not guaranteed to be right either – the coverage of a bootstrap interval with ten seeds remains in question – but it is not hostage to one seed. Read such an interval together with the failure count, never alone. More refined bootstrap intervals (BCa, studentized) do not change this: no resampling scheme can show events that the ten seeds did not contain. With one task, the stratified bootstrap that Agarwal et al. (2021) recommend for aggregating over tasks reduces to this plain resampling of seeds.</p>
 <hr />
 <h2>Rare Failures</h2>
@@ -212,7 +212,7 @@
 <hr />
 <h2>Equivalence, Non-Inferiority and Risk</h2>
 <p>On the held-out seeds, HALT with a data-sized $\kappa$ and CQL at $\alpha = 0.1$ differ by −0.01 [−0.63, +0.62]. The interval contains zero, but it also contains differences of 0.6, which on this task is about a quarter of the return. "Not significantly different" means the data cannot tell the agents apart, not that they perform alike.</p>
-<p>A claim of <strong>equivalence</strong> needs a margin $\delta$, fixed before looking: the largest difference that would not matter in practice. The <em>two one-sided tests</em> procedure (TOST; Schuirmann, 1987) declares equivalence at the 5% level when the 90% interval of the difference lies entirely inside $(-\delta, +\delta)$. Here the 90% interval is [−0.51, +0.50]; with a margin of, say, 0.25 the agents are not shown to be equivalent. A claim of <strong>non-inferiority</strong> – the new method is not worse than the reference by more than $\delta$ – needs only the lower half: the lower end of the same 90% interval must lie above $-\delta$. That is the natural form for "a cheap safeguard costs little", and it too needs its margin before the data. Chapter 10 makes neither claim and writes "no resolved difference" instead of "level with".</p>
+<p>A claim of <strong>equivalence</strong> needs a margin $\delta$, fixed before looking: the largest difference that would not matter in practice. The <em>two one-sided tests</em> procedure (TOST; Schuirmann, 1987) declares equivalence at the 5% level when the 90% interval of the difference lies entirely inside $(-\delta, +\delta)$. Here the 90% $t$-interval of the mean paired difference is [−0.51, +0.50]; with a margin of, say, 0.25 the agents are not shown to be equivalent. This classical TOST is about the mean difference and rests on the $t$-interval's assumptions; equivalence in IQM would need an inference procedure calibrated for that estimand, which a ten-seed bootstrap is not. A claim of <strong>non-inferiority</strong> – the new method is not worse than the reference by more than $\delta$ – needs only the lower half: the lower end of the same 90% interval must lie above $-\delta$. That is the natural form for "a cheap safeguard costs little", and it too needs its margin before the data. Chapter 10 makes neither claim and writes "no resolved difference" instead of "level with".</p>
 <p>The IQM deliberately ignores the tail, and the failure count reduces the tail to a yes or no. <strong>Risk-sensitive summaries</strong> describe the tail itself: the worst seed, or the conditional value at risk – the mean of the worst fraction of seeds. Pooled over the twenty seeds of the end point:</p>
 <table>
 <thead>
@@ -269,12 +269,12 @@
 </thead>
 <tbody>
 <tr>
-<td>Interval for the typical return, no failing seed</td>
-<td>Student-$t$ on the mean, as a stand-in</td>
+<td>Interval for the mean</td>
+<td>Student-$t$ over per-seed means (Chapter 10's tables use it where no seed fails)</td>
 <td><code>t_interval</code></td>
 </tr>
 <tr>
-<td>Interval for the typical return, a failing seed</td>
+<td>Interval for the typical return</td>
 <td>IQM with percentile bootstrap over seeds</td>
 <td><code>iqm</code>, <code>boot_iqm</code></td>
 </tr>
@@ -299,7 +299,7 @@
 <td><code>sign_test</code></td>
 </tr>
 <tr>
-<td>Are two agents equivalent, or one no worse?</td>
+<td>Are two agents equivalent, or one no worse, in mean?</td>
 <td>TOST or non-inferiority with a margin fixed in advance</td>
 <td><code>t_interval(level=0.90)</code></td>
 </tr>
