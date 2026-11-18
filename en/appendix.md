@@ -1,16 +1,18 @@
 ---
 layout: default
-title: "Appendix: Algorithm Selection Guide"
+title: "Appendix A: Algorithm Selection Guide"
 lang: en
 ru_url: /ru/appendix/
 prev_chapter:
   url: /en/chapter13/
   title: "Conclusion and Future Directions"
-next_chapter: null
+next_chapter:
+  url: /en/appendix_b/
+  title: "Statistics for Comparing Agents"
 permalink: "/offline-rl-book/en/appendix/"
 ---
 
-# Appendix: Algorithm Selection Guide
+# Appendix A: Algorithm Selection Guide
 
 > *Methods mitigate specific failure modes under assumptions – they rarely “solve offline RL” outright.*
 
@@ -150,5 +152,7 @@ Short definitions of the book's core terms; the chapter in parentheses introduce
 4. Chapter 8 if you have a learnable dynamics model; Chapter 9 if you also have engineering knowledge of the physics
 5. Chapters 10–11 before any industrial rollout conversation
 6. Chapter 12 if the policy is a tool-using LLM agent
+
+Choosing an algorithm is only the start. Showing that it works – and how reliably – takes a comparison with the right statistics ([Appendix B](/offline-rl-book/en/appendix_b.html)) and an experiment designed so that the comparison can be trusted ([Appendix C](/offline-rl-book/en/appendix_c.html)).
 
 Return to [Table of Contents](/offline-rl-book/).

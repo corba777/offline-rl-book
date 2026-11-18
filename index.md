@@ -101,7 +101,19 @@ Each chapter: **idea → formalization → code → limitations**.
   </li>
   <li>
     <a href="/offline-rl-book/en/appendix.html">
-      <span><span class="ch-num">App.</span>Algorithm Selection Guide</span>
+      <span><span class="ch-num">App. A</span>Algorithm Selection Guide</span>
+      <span class="ch-status ready">ready</span>
+    </a>
+  </li>
+  <li>
+    <a href="/offline-rl-book/en/appendix_b.html">
+      <span><span class="ch-num">App. B</span>Statistical Inference for Offline RL Experiments</span>
+      <span class="ch-status ready">ready</span>
+    </a>
+  </li>
+  <li>
+    <a href="/offline-rl-book/en/appendix_c.html">
+      <span><span class="ch-num">App. C</span>Experimental Design and Validation in Offline RL</span>
       <span class="ch-status ready">ready</span>
     </a>
   </li>

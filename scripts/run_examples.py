@@ -44,6 +44,7 @@ SCRIPTS = [
     ("chapter11_toy_figures.py",  []),
     ("chapter11_causal_toy.py",   []),
     ("agentic_offline_rl_toy.py", []),
+    ("rl_stats.py",               []),
 ]
 TIMEOUT_S = 600
 

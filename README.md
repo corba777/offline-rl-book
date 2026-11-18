@@ -60,7 +60,9 @@ Created and maintained by **Artem Zvyagintsev**. These are practical notes, not 
 | 11 | Explainability in Offline RL | [read](https://corba777.github.io/offline-rl-book/en/chapter11.html) | [читать](https://corba777.github.io/offline-rl-book/ru/chapter11.html) | [`chapter11.py`](code/chapter11.py) |
 | 12 | Offline RL for Tool-Using LLM Agents | [read](https://corba777.github.io/offline-rl-book/en/chapter12.html) | [читать](https://corba777.github.io/offline-rl-book/ru/chapter12.html) | [`agentic_offline_rl_toy.py`](code/agentic_offline_rl_toy.py) |
 | 13 | Conclusion and Future Directions | [read](https://corba777.github.io/offline-rl-book/en/chapter13.html) | [читать](https://corba777.github.io/offline-rl-book/ru/chapter13.html) | – |
-| App. | Algorithm Selection Guide | [read](https://corba777.github.io/offline-rl-book/en/appendix.html) | [читать](https://corba777.github.io/offline-rl-book/ru/appendix.html) | – |
+| App. A | Algorithm Selection Guide | [read](https://corba777.github.io/offline-rl-book/en/appendix.html) | [читать](https://corba777.github.io/offline-rl-book/ru/appendix.html) | – |
+| App. B | Statistical Inference for Offline RL Experiments | [read](https://corba777.github.io/offline-rl-book/en/appendix_b.html) | [читать](https://corba777.github.io/offline-rl-book/ru/appendix_b.html) | [`rl_stats.py`](code/rl_stats.py) |
+| App. C | Experimental Design and Validation in Offline RL | [read](https://corba777.github.io/offline-rl-book/en/appendix_c.html) | [читать](https://corba777.github.io/offline-rl-book/ru/appendix_c.html) | [`rl_stats.py`](code/rl_stats.py) |
 
 Off-policy evaluation has its own chapter (3); value-based methods (CQL, IQL), policy constraints and actor-critic methods (TD3+BC, AWAC), Decision Transformers and model-based methods (MOPO, MOReL) each have one too. Chapter 2 maps the whole landscape with references. Chapters 9–12 move from algorithms to practice: physics priors, an industrial case study with multi-seed results, explainability, and tool-using LLM agents.
 
@@ -110,7 +112,7 @@ GitHub Actions runs both on every push, checks that the chapter HTML was rebuilt
 
 ```
 ├── index.md, index.html, ru.html   # English and Russian tables of contents
-├── en/, ru/                   # chapter1.md … chapter13.md, appendix.md and the built .html
+├── en/, ru/                   # chapter1.md … chapter13.md, appendix.md, appendix_b.md, appendix_c.md and the built .html
 ├── figures/                   # figures per chapter (ch1/, ch2/, …), README banner in readme/
 ├── code/
 │   ├── behavioral_cloning.py, extrapolation_error.py, fqe.py

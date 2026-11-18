@@ -219,7 +219,7 @@ def main():
         if not md_dir.is_dir():
             continue
         print(f"{folder}/")
-        for name in sorted(md_dir.glob("chapter*.md")) + sorted(md_dir.glob("appendix.md")):
+        for name in sorted(md_dir.glob("chapter*.md")) + sorted(md_dir.glob("appendix*.md")):
             md_path = name
             out_path = md_dir / md_path.name.replace(".md", ".html")
             convert_file(md_path, out_path)

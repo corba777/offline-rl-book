@@ -101,7 +101,19 @@ permalink: "/offline-rl-book/ru/"
   </li>
   <li>
     <a href="/offline-rl-book/ru/appendix.html">
-      <span><span class="ch-num">Прил.</span>Выбор алгоритма</span>
+      <span><span class="ch-num">Прил. A</span>Выбор алгоритма</span>
+      <span class="ch-status ready">готово</span>
+    </a>
+  </li>
+  <li>
+    <a href="/offline-rl-book/ru/appendix_b.html">
+      <span><span class="ch-num">Прил. B</span>Статистический вывод в экспериментах offline RL</span>
+      <span class="ch-status ready">готово</span>
+    </a>
+  </li>
+  <li>
+    <a href="/offline-rl-book/ru/appendix_c.html">
+      <span><span class="ch-num">Прил. C</span>Планирование и проверка экспериментов offline RL</span>
       <span class="ch-status ready">готово</span>
     </a>
   </li>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Appendix B: Statistical Inference for Offline RL Experiments</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    main img{display:block;max-width:100%;height:auto;margin:1.5rem auto}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right;margin-left:auto}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/ru/appendix_b.html">Русский</a>
+  </div>
+</header>
+<main>
+<h1>Appendix B: Statistical Inference for Offline RL Experiments</h1>
+<blockquote>
+<p><em>"Ten seeds can tell you that something happens. They rarely tell you how often."</em></p>
+</blockquote>
+<p>This appendix asks what can be concluded from the results of an offline RL experiment, and with how much uncertainty. It is written for a situation that general texts on statistics and on deep RL benchmarking rarely address together: <strong>one task, ten or twenty training seeds, paired data and rare catastrophic failures.</strong> That is the situation of most industrial offline RL studies, and of Chapter 10. <a href="/offline-rl-book/en/appendix_c.html">Appendix C</a> takes the other half of the question: how to design an experiment so that these conclusions are justified at all. A good test does not repair a bad design.</p>
+<p>Introductory hypothesis testing is not repeated here, and neither is off-policy evaluation, which Chapter 3 treats: there the task is to estimate one fixed policy from logged trajectories; here it is to describe the distribution of outcomes of a training procedure. Every number below comes from Chapter 10 and can be recomputed with the code.</p>
+<blockquote>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/rl_stats.py"><code>rl_stats.py</code></a> – the functions that produced every interval and test in Chapter 10; <code>python code/rl_stats.py</code> recomputes the examples of Appendices B and C.</p>
+</blockquote>
+<hr />
+<h2>Estimands and Replications</h2>
+<p>A <strong>seed</strong> in Chapter 10 fixes a whole training run: the logged dataset, the network initializations, the dynamics ensemble and the sampling inside SAC. Each trained policy is then evaluated on 20 episodes. The number that enters every comparison is the seed's mean return over those 20 episodes, and the seed is the unit of replication.</p>
+<p>It is tempting to treat the 200 episodes of ten seeds as 200 observations. They are not independent: the 20 episodes of a seed share one policy, and that policy carries all the randomness of its training run. If the return of episode $j$ in seed $i$ is</p>
+<p><div class="math-display">$$R_{ij} = \mu + s_i + e_{ij}, \qquad \operatorname{Var}(s_i) = \sigma^2_{\text{seed}}, \quad \operatorname{Var}(e_{ij}) = \sigma^2_{\text{ep}},$$</div></p>
+<p>then the mean over $n$ seeds with $m$ episodes each has variance</p>
+<p><div class="math-display">$$\operatorname{Var}(\bar R) = \frac{\sigma^2_{\text{seed}}}{n} + \frac{\sigma^2_{\text{ep}}}{n\,m}.$$</div></p>
+<p>Treating all $n\,m$ episodes as independent replaces this with $(\sigma^2_{\text{seed}} + \sigma^2_{\text{ep}})/(n\,m)$. When seed-to-seed variation dominates – the usual case in offline RL, where a different dataset and initialization can change the policy entirely – the interval comes out up to $\sqrt{m} \approx 4.5$ times too narrow for $m = 20$. Ecologists call this <em>pseudoreplication</em> (Hurlbert, 1984). More evaluation episodes shrink only the second term; only more seeds shrink the first.</p>
+<p>What is being estimated also has to be said, starting with what varies. A study can fix the logged data and repeat only the training, or draw new data as well:</p>
+<p><div class="math-display">$$\theta_A(D_0) = \mathbb{E}_U\big[J(A(D_0, U))\big] \qquad \text{or} \qquad \theta_A = \mathbb{E}_{D,\,U}\big[J(A(D, U))\big],$$</div></p>
+<p>where $A$ is the training procedure, $D$ the dataset, $U$ the rest of its randomness and $J$ the return of the trained policy. The first describes how stable training is on one set of logs; the second describes the algorithm on logs like these. In Chapter 10 every seed draws a new dataset from the same simulated operators, so its intervals are about $\theta_A$. In industrial practice the difference is large: retraining ten times on one plant's logs says little about how the method will do on another plant's.</p>
+<p>An agent that usually works and occasionally fails catastrophically has no single number that describes it, so Chapter 10 reports three <strong>estimands</strong>, each with its own uncertainty:</p>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Estimate</th>
+<th>Uncertainty</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>How well does the agent usually do?</td>
+<td>Interquartile mean (IQM) over seeds</td>
+<td>Bootstrap interval on the IQM; where no seed fails, the $t$-interval on the mean as a stand-in (below)</td>
+</tr>
+<tr>
+<td>How often does it fail?</td>
+<td>Number of failing seeds</td>
+<td>Exact (Clopper–Pearson) interval; exact paired test between agents</td>
+</tr>
+<tr>
+<td>What is the expected return?</td>
+<td>Mean over seeds</td>
+<td>Reported, but read descriptively</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Heavy-Tailed Returns and Robust Statistics</h2>
+<p>The reason the mean cannot serve alone is arithmetic. Suppose an agent returns about −2 on 95% of seeds and −224 on the other 5%. Its expected return is $0.95 \cdot (-2) + 0.05 \cdot (-224) = -13.1$. But the chance that ten seeds contain no failure at all is $0.95^{10} = 0.60$. In six experiments out of ten, every seed lands near −2, the sample mean is near −2, and a narrow interval around it excludes the true mean of −13.1. In the other four, one failing seed drags the mean down and inflates the interval. No interval over ten seeds can fix this: the information about a 5% event is simply not in most samples of ten.</p>
+<p>The <strong>interquartile mean</strong> – the mean of the middle half, the middle six of ten seeds – answers "how well does it usually do" well because it ignores the tails. The median does the same with even less efficiency. For the same reason both say nothing about failures, which are exactly the tail. A safeguard such as HALT exists to prevent failures, so judging it by IQM alone would miss its purpose; judging it by the mean alone lets one seed decide the verdict. Hence the three estimands, reported side by side. (With ten seeds, "the middle half" follows the convention of <code>scipy.stats.trim_mean(x, 0.25)</code> and of rliable: the number of seeds cut from each end is rounded down, so two of ten go from each side and six remain – strictly a 20% trim.)</p>
+<p>A failure needs a definition. In Chapter 10 a seed fails when its mean return is below −10, an order of magnitude below every stable configuration. Such a line is a choice, so two checks belong with it. First, does the count depend on where the line is drawn? At the end point of the coverage study, the agent without pessimism has 3, 3 and 2 failing seeds at lines of −5, −10 and −20, and the data-sized HALT none at any of them. Second, does a return-defined failure mean a physical one? Of the 136 return-defined failures among all of Chapter 10's evaluations, 131 violate a process bound on more than 10% of the steps from disturbed starts, against 6 of the 759 non-failing ones (at most 30% of the steps). These evaluations share seeds and datasets across configurations, so the proportions describe the data rather than estimate a probability.</p>
+<hr />
+<h2>Student-t, Bootstrap and Coverage</h2>
+<p>The <strong>Student-$t$ interval</strong> over $n$ per-seed values,</p>
+<p><div class="math-display">$$\bar x \pm t_{0.975,\,n-1}\, \frac{s}{\sqrt n},$$</div></p>
+<p>is exact when the seeds are normally distributed, and with ten seeds it is the better default. A simulation in <code>rl_stats.py</code> draws 4,000 experiments of ten seeds each. For well-behaved seeds the $t$-interval covers the true mean 95% of the time, as it should; the <strong>percentile bootstrap</strong> covers it 91% of the time, because with ten observations the resampled means are too concentrated. Bootstrap intervals are often presented as the assumption-free option; with ten seeds they are the optimistic one.</p>
+<p>Neither survives a catastrophic seed. With the 5% failure rate above, both intervals cover the true mean in only 42% of the experiments. Three different problems are at work here, and they should be kept apart: <strong>poor coverage</strong> (the interval misses the parameter more often than its nominal 5%), <strong>poor informativeness</strong> (it is too wide to say anything) and a <strong>wrong estimand</strong> (it describes the mean when the question is about typical performance or about failures). The true-dynamics agent with HALT in Chapter 10 has one seed at −224; the other nine lie between −5.7 and −1.8:</p>
+<table>
+<thead>
+<tr>
+<th>Summary</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mean, 95% $t$-interval</td>
+<td>−25.6 [−75.5, +24.3]</td>
+</tr>
+<tr>
+<td>IQM, 95% bootstrap interval</td>
+<td>−3.8 [−41.1, −2.6]</td>
+</tr>
+</tbody>
+</table>
+<p>The $t$-interval reaches +24, a return this task cannot produce: every reward is a penalty. An interval that crosses the range of possible values is not wrong for that reason alone, but here it tells us almost nothing, and its normal-theory justification does not hold for a sample with one catastrophic seed. The rule used in Chapter 10 is therefore <strong>one interval per cell</strong>: a bootstrap interval on the IQM when a seed fails, with the mean shown alone as a description; and when no seed fails, a $t$-interval on the mean. Strictly, the latter is an interval for the mean, not for the IQM. It stands in for the typical return only because, without a failing seed, the two nearly coincide in these data (−1.24 and −1.23 for model-based SAC without pessimism), and because the $t$-interval is the better-behaved interval at $n = 10$.</p>
+<p>The bootstrap for the IQM resamples seeds with replacement, 10,000 times, recomputes the IQM of each resample and takes the 2.5th and 97.5th percentiles. The end of the interval on the side of the failure is the fragile one. A resample that draws the failing seed three or four times pushes it into the middle half, and that end stretches towards the failure: in the example above it is the lower end, −41.1, while the upper end, −2.6, barely moves. For a difference in which the failing agent is subtracted, the same thing happens to the upper end. The steadier end is not guaranteed to be right either – the coverage of a bootstrap interval with ten seeds remains in question – but it is not hostage to one seed. Read such an interval together with the failure count, never alone. More refined bootstrap intervals (BCa, studentized) do not change this: no resampling scheme can show events that the ten seeds did not contain. With one task, the stratified bootstrap that Agarwal et al. (2021) recommend for aggregating over tasks reduces to this plain resampling of seeds.</p>
+<hr />
+<h2>Rare Failures</h2>
+<p>A count of failing seeds is an estimate of a failure rate, and with ten or twenty seeds it is a coarse one. The exact <strong>Clopper–Pearson</strong> interval for $k$ failures in $n$ seeds inverts the binomial test:</p>
+<table>
+<thead>
+<tr>
+<th>Failures</th>
+<th>95% interval for the failure rate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0 of 10</td>
+<td>0% – 30.8%</td>
+</tr>
+<tr>
+<td>2 of 10</td>
+<td>2.5% – 55.6%</td>
+</tr>
+<tr>
+<td>0 of 20</td>
+<td>0% – 16.8%</td>
+</tr>
+<tr>
+<td>3 of 20</td>
+<td>3.2% – 37.9%</td>
+</tr>
+</tbody>
+</table>
+<p>"No failures in ten seeds" is compatible with a failure rate of one in three. The <em>rule of three</em> gives the one-sided version quickly: after $n$ clean trials, the 95% upper bound on the rate is about $3/n$ (exactly 25.9% for $n = 10$ and 13.9% for $n = 20$).</p>
+<p>Comparing two agents' failure counts calls for a paired analysis, because the same seeds are used. Each seed falls into one of four cells, with probabilities</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Agent B fails</th>
+<th>Agent B does not fail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Agent A fails</strong></td>
+<td>$p_{11}$</td>
+<td>$p_{10}$ (only A)</td>
+</tr>
+<tr>
+<td><strong>Agent A does not fail</strong></td>
+<td>$p_{01}$ (only B)</td>
+<td>$p_{00}$</td>
+</tr>
+</tbody>
+</table>
+<p>The two failure rates differ by $(p_{11} + p_{10}) - (p_{11} + p_{01}) = p_{10} - p_{01}$: seeds where both or neither fail cancel. <strong>McNemar's test</strong> uses only the discordant seeds. Given $d = n_{10} + n_{01}$ of them, $n_{10}$ is binomial with success probability $\theta = p_{10}/(p_{10} + p_{01})$, and "the agents fail equally often" is $\theta = 1/2$. At the end point of Chapter 10's coverage study, all three failures without pessimism fell on seeds where HALT with a data-sized $\kappa$ did not fail: $n_{10} = 3$, $n_{01} = 0$, and</p>
+<p><div class="math-display">$$p_{\text{two-sided}} = 2 \cdot 0.5^3 = 0.25, \qquad p_{\text{one-sided}} = 0.125.$$</div></p>
+<p>The observed difference in failure rates, $(n_{10} - n_{01})/n = 3/20 = 15$ points, looks substantial; the test says it could easily be chance. The same conditional view gives an interval: the exact Clopper–Pearson interval for $\theta$ from 3 of 3 is [0.29, 1.00], and it contains $1/2$. An interval for the difference $p_{10} - p_{01}$ itself also exists (Newcombe, 1998), but with three discordant seeds it says the same thing less directly.</p>
+<p>The arithmetic also shows a hard limit: with fewer than six discordant seeds, an exact two-sided McNemar test cannot reach $p < 0.05$ however lopsided they are ($2 \cdot 0.5^5 = 0.0625$). Appendix C turns this into a seed budget.</p>
+<p>A tempting mistake is <strong>Fisher's exact test</strong> on "4 of 20 against 0 of 20", which treats the two agents' seeds as independent samples. For the comparison of HALT at the 80th percentile with no HALT in Chapter 10 it gives a one-sided $p = 0.053$; the correct paired test, with all four failures discordant, gives $p = 0.125$ two-sided and $0.0625$ one-sided. The conclusion – suggestive, not established – happens to survive, but the test must match the design.</p>
+<hr />
+<h2>Paired Comparisons</h2>
+<p>When two agents are trained on the same data, compare them seed by seed. For per-seed returns $a_i$ and $b_i$,</p>
+<p><div class="math-display">$$\operatorname{Var}(a_i - b_i) = \operatorname{Var}(a_i) + \operatorname{Var}(b_i) - 2\operatorname{Cov}(a_i, b_i),$$</div></p>
+<p>and the covariance is large exactly when the dataset drives much of the variation – a hard dataset is hard for both agents. The paired difference removes what the agents share.</p>
+<p>Chapter 10's constraint penalty is the textbook case. On the Markov state, CQL reaches −1.4 [−1.5, −1.4] and CQL with the bounds penalty −1.4 [−1.4, −1.3]: the two intervals overlap, and side by side the penalty looks like it does nothing. The two agents' returns correlate at 0.87 across seeds, so the per-seed differences have a standard deviation of 0.047, against about 0.09 for either agent alone. The paired interval is 2.7 times narrower than an unpaired one would be, and the penalty improves the return by +0.07 [+0.03, +0.10]. Overlapping intervals of two means are not evidence of no difference.</p>
+<p>The rules for paired data:</p>
+<ul>
+<li><strong>Intervals</strong> on the per-seed differences: a $t$-interval when neither agent has a failing seed, otherwise the difference of IQMs with a bootstrap that <strong>resamples seeds jointly</strong> – the same seed indices for both agents. Resampling the two agents independently throws the pairing away.</li>
+<li><strong>Wins</strong> can be counted with the exact <strong>sign test</strong>. Its null hypothesis is not "no difference" in general but that a positive difference is as likely as a negative one – the median of the per-seed differences is zero. Seven wins of ten give $p = 0.34$ – not evidence of anything on its own.</li>
+<li>The <strong>median paired difference</strong> is a robust companion to the mean difference when a seed or two misbehave.</li>
+</ul>
+<p>One trap deserves its own line. For robust statistics, the summary of the differences is not the difference of the summaries:</p>
+<p><div class="math-display">$$\operatorname{IQM}(a - b) \neq \operatorname{IQM}(a) - \operatorname{IQM}(b)$$</div></p>
+<p>in general, because the seeds that fall in the middle half of $a - b$ need not be those in the middle half of $a$ or of $b$. For the constraint penalty, $\operatorname{IQM}(a) - \operatorname{IQM}(b) = +0.086$, while the IQM of the per-seed differences is $+0.058$. Both use the pairing, but they answer different questions: the first compares the typical performance of the two agents, the second describes the typical gain on one seed. Chapter 10 reports the first, with a joint bootstrap; whichever is used, say which.</p>
+<hr />
+<h2>Equivalence, Non-Inferiority and Risk</h2>
+<p>On the held-out seeds, HALT with a data-sized $\kappa$ and CQL at $\alpha = 0.1$ differ by −0.01 [−0.63, +0.62]. The interval contains zero, but it also contains differences of 0.6, which on this task is about a quarter of the return. "Not significantly different" means the data cannot tell the agents apart, not that they perform alike.</p>
+<p>A claim of <strong>equivalence</strong> needs a margin $\delta$, fixed before looking: the largest difference that would not matter in practice. The <em>two one-sided tests</em> procedure (TOST; Schuirmann, 1987) declares equivalence at the 5% level when the 90% interval of the difference lies entirely inside $(-\delta, +\delta)$. Here the 90% interval is [−0.51, +0.50]; with a margin of, say, 0.25 the agents are not shown to be equivalent. A claim of <strong>non-inferiority</strong> – the new method is not worse than the reference by more than $\delta$ – needs only the lower half: the lower end of the same 90% interval must lie above $-\delta$. That is the natural form for "a cheap safeguard costs little", and it too needs its margin before the data. Chapter 10 makes neither claim and writes "no resolved difference" instead of "level with".</p>
+<p>The IQM deliberately ignores the tail, and the failure count reduces the tail to a yes or no. <strong>Risk-sensitive summaries</strong> describe the tail itself: the worst seed, or the conditional value at risk – the mean of the worst fraction of seeds. Pooled over the twenty seeds of the end point:</p>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>Worst seed</th>
+<th>Mean of worst 2 of 20</th>
+<th>Median</th>
+<th>IQM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model-based SAC, no pessimism</td>
+<td>−227.1</td>
+<td>−162.1</td>
+<td>−3.0</td>
+<td>−3.0</td>
+</tr>
+<tr>
+<td>HALT $p_{99}$, data $\kappa$</td>
+<td>−4.7</td>
+<td>−4.2</td>
+<td>−2.2</td>
+<td>−2.2</td>
+</tr>
+<tr>
+<td>CQL, $\alpha = 0.1$</td>
+<td>−2.7</td>
+<td>−2.7</td>
+<td>−2.5</td>
+<td>−2.5</td>
+</tr>
+</tbody>
+</table>
+<p>The table says something the IQM column does not: CQL has the best worst case even where it does not have the best typical return. With twenty seeds, "the worst 10%" is two seeds, so such summaries are descriptions of the sample, with no useful interval. They belong next to the three estimands, not instead of them.</p>
+<hr />
+<h2>Diagnostics: Critic Checks and Rank Correlation</h2>
+<p>Diagnostics are estimates too, and they need the same care: a defined estimand and a measured noise.</p>
+<p><strong>A critic against a simulator.</strong> A SAC critic estimates a <em>soft</em> value: the TD target is $r + \gamma\big(\min Q'(s', a') - \alpha \log \pi(a' \mid s')\big)$. Its Monte Carlo counterpart, for a state $s$ and an action $a_0 \sim \pi(\cdot \mid s)$, starts the simulator in $s$, applies $a_0$, follows the stochastic policy, and averages</p>
+<p><div class="math-display">$$\hat Q(s, a_0) = \sum_{t=0}^{H-1} \gamma^t r_t \;-\; \alpha \sum_{t=1}^{H-1} \gamma^t \log \pi(a_t \mid s_t)$$</div></p>
+<p>over several continuations – with the same $\gamma$, entropy weight, reward normalization and termination as in training. Dropping the entropy term, or using the deterministic policy, compares the critic with a different quantity. A finite horizon $H$ drops the terms beyond it, each discounted by at least $\gamma^H$ – about 0.01 for $H = 460$ at $\gamma = 0.99$. If every discounted term (reward and entropy) is bounded by $G_{\max}$ in magnitude, the truncation error is at most $\gamma^H G_{\max}/(1-\gamma)$; how large it is relative to the value depends on the trajectory, and it is small here because the far terms are strongly suppressed, not because it is exactly 1%. The estimate has its own noise: in Chapter 10 the spread of continuations from one start state, divided by the square root of the number of continuations and start states, gives a standard error of about 0.1 normalized units on the full logs, and rerunning the same agents with eight continuations instead of two moved the critic's extra optimism at the rollout end from +0.2 [−0.0, +0.4] to +0.2 [+0.1, +0.3].</p>
+<p>Compare <strong>differences</strong> rather than levels. The critic in Chapter 10 is optimistic everywhere, by a factor of about five on the full logs; the question about edge-of-reach states is whether it is <em>more</em> optimistic at the end of rollouts than on the data. Subtracting each seed's gap at the dataset states from its gap at the rollout end cancels the overall bias, and the result is a paired comparison like any other.</p>
+<p><strong>Does uncertainty track error?</strong> The check needs a measure of association that does not depend on scale – disagreement and error are in different units and need not be linearly related – so Chapter 10 uses <strong>Spearman's rank correlation</strong> between the ensemble's disagreement and the true error, step by step along a rollout. It falls from about 0.4 at the first step to 0.05 by step 20 in closed loop: one step ahead the ranking is weakly informative, twenty steps ahead it is noise. Two companion summaries make it concrete: the error in the highest-uncertainty quintile against the lowest, and the error of transitions labelled KNOWN against UNKNOWN at the threshold actually used.</p>
+<hr />
+<h2>Summary</h2>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Method</th>
+<th>In <code>rl_stats.py</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Interval for the typical return, no failing seed</td>
+<td>Student-$t$ on the mean, as a stand-in</td>
+<td><code>t_interval</code></td>
+</tr>
+<tr>
+<td>Interval for the typical return, a failing seed</td>
+<td>IQM with percentile bootstrap over seeds</td>
+<td><code>iqm</code>, <code>boot_iqm</code></td>
+</tr>
+<tr>
+<td>Difference between two agents on the same data</td>
+<td>Paired $t$, or difference of IQMs with joint bootstrap</td>
+<td><code>t_interval</code>, <code>boot_iqm(a, b)</code></td>
+</tr>
+<tr>
+<td>How often does an agent fail?</td>
+<td>Clopper–Pearson interval</td>
+<td><code>clopper_pearson</code></td>
+</tr>
+<tr>
+<td>Do two agents fail equally often?</td>
+<td>Exact McNemar on discordant seeds</td>
+<td><code>mcnemar_exact</code></td>
+</tr>
+<tr>
+<td>How often does one agent win?</td>
+<td>Exact sign test</td>
+<td><code>sign_test</code></td>
+</tr>
+<tr>
+<td>Are two agents equivalent, or one no worse?</td>
+<td>TOST or non-inferiority with a margin fixed in advance</td>
+<td><code>t_interval(level=0.90)</code></td>
+</tr>
+<tr>
+<td>How reliable are these intervals at all?</td>
+<td>Coverage simulation</td>
+<td><code>coverage_demo</code></td>
+</tr>
+</tbody>
+</table>
+<p>The methods are standard; what this appendix argues for is the combination. With few seeds and rare failures, the honest report is not one number with an interval but three – how well the agent usually does, how often it fails, and what its mean is – each with the uncertainty that fits it. Whether those numbers mean what they seem to depends on how the experiment was designed, which is the subject of Appendix C.</p>
+<hr />
+<h2>References</h2>
+<ul>
+<li>Hurlbert, S.H. (1984). <em>Pseudoreplication and the Design of Ecological Field Experiments.</em> Ecological Monographs, 54(2), 187–211.</li>
+<li>Clopper, C.J., &amp; Pearson, E.S. (1934). <em>The Use of Confidence or Fiducial Limits Illustrated in the Case of the Binomial.</em> Biometrika, 26(4), 404–413.</li>
+<li>McNemar, Q. (1947). <em>Note on the Sampling Error of the Difference between Correlated Proportions or Percentages.</em> Psychometrika, 12(2), 153–157.</li>
+<li>Newcombe, R.G. (1998). <em>Improved Confidence Intervals for the Difference between Binomial Proportions Based on Paired Data.</em> Statistics in Medicine, 17(22), 2635–2650.</li>
+<li>Hanley, J.A., &amp; Lippman-Hand, A. (1983). <em>If Nothing Goes Wrong, Is Everything All Right? Interpreting Zero Numerators.</em> JAMA, 249(13), 1743–1745. <em>(the rule of three)</em></li>
+<li>Schuirmann, D.J. (1987). <em>A Comparison of the Two One-Sided Tests Procedure and the Power Approach for Assessing the Equivalence of Average Bioavailability.</em> Journal of Pharmacokinetics and Biopharmaceutics, 15(6), 657–680.</li>
+<li>Efron, B., &amp; Tibshirani, R.J. (1993). <em>An Introduction to the Bootstrap.</em> Chapman &amp; Hall.</li>
+<li>Agarwal, R., Schwarzer, M., Castro, P.S., Courville, A., &amp; Bellemare, M.G. (2021). <em>Deep Reinforcement Learning at the Edge of the Statistical Precipice.</em> NeurIPS. <a href="https://arxiv.org/abs/2108.13264">arXiv:2108.13264</a>.</li>
+</ul></main>
+<nav class="chapter-nav">
+<a href="/offline-rl-book/en/appendix.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Algorithm Selection Guide</span></a>
+    <a href="/offline-rl-book/en/appendix_c.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">Experimental Design and Validation in Offline RL</span></a>
+</nav>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice<br>
+    Created and maintained by Artem Zvyagintsev ·
+    <a href="https://github.com/corba777/offline-rl-book">GitHub</a><br>
+    <span style="font-size:0.75rem;margin-top:0.5rem;display:block">© 2026 Artem Zvyagintsev. Educational notes on offline deep reinforcement learning.</span>
+  </div>
+</footer>
+</body>
+</html>

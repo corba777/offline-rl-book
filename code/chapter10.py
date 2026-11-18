@@ -1430,17 +1430,7 @@ def run_coverage_study(seed: int = 0, device: str = 'cpu', coverage: str = 'full
     return out
 
 
-def t_interval(values, alpha: float = 0.05):
-    """Mean and Student-t confidence interval over per-seed values. With few
-    seeds this is more honest than a percentile bootstrap, which undercovers."""
-    from scipy import stats
-    v = np.asarray([x for x in values if not np.isnan(x)], dtype=float)
-    if len(v) == 0:
-        return float('nan'), float('nan'), float('nan')
-    if len(v) == 1:
-        return float(v[0]), float('nan'), float('nan')
-    half = stats.t.ppf(1 - alpha / 2, len(v) - 1) * v.std(ddof=1) / np.sqrt(len(v))
-    return float(v.mean()), float(v.mean() - half), float(v.mean() + half)
+from rl_stats import t_interval   # noqa: E402  (Appendix B)
 
 
 PAIRS = [('CQL', 'BC'), ('CQL+Physics', 'CQL'), ('HybridMOReL', 'BC')]

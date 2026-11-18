@@ -58,7 +58,8 @@ LANG = {
 
 
 def chapters(lang):
-    return [f"{lang}/chapter{i}.md" for i in range(1, 14)] + [f"{lang}/appendix.md"]
+    return [f"{lang}/chapter{i}.md" for i in range(1, 14)] + [f"{lang}/appendix.md", f"{lang}/appendix_b.md",
+                                                          f"{lang}/appendix_c.md"]
 
 
 def edition():
@@ -82,9 +83,10 @@ def need(tool):
 
 
 def chapter_id(rel):
-    """Anchor for a chapter file: en/chapter4.md -> ch4, en/appendix.md -> appendix."""
+    """Anchor for a chapter file: en/chapter4.md -> ch4, en/appendix.md -> appendix,
+    en/appendix_b.md -> appendix_b."""
     stem = Path(rel).stem
-    return "appendix" if stem == "appendix" else "ch" + stem.removeprefix("chapter")
+    return stem if stem.startswith("appendix") else "ch" + stem.removeprefix("chapter")
 
 
 def preprocess(text, figdir, anchor, epub=False, raster_svg=False, lang="en"):
@@ -92,7 +94,7 @@ def preprocess(text, figdir, anchor, epub=False, raster_svg=False, lang="en"):
     raster_svg: diagrams as 300 dpi PNGs instead of vector PDFs (see build_pdf)."""
     text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.S)                  # front matter
     # "Приложение: выбор алгоритма" loses its prefix, so the title gets its capital letter.
-    text = re.sub(r"^# (?:Chapter \d+|Appendix|Глава \d+|Приложение): (.*)$",
+    text = re.sub(r"^# (?:Chapter \d+|Appendix(?: [A-Z])?|Глава \d+|Приложение(?: [A-ZА-Я])?): (.*)$",
                   lambda m: f"# {m.group(1)[:1].upper()}{m.group(1)[1:]} {{#{anchor}}}", text, count=1, flags=re.M)
     text = re.sub(r"^---\s*$", "", text, flags=re.M)                          # horizontal rules
     text = text.replace("📄 ", "")
@@ -143,7 +145,7 @@ def preprocess(text, figdir, anchor, epub=False, raster_svg=False, lang="en"):
 
     text = re.sub(r"!\[([^\]]*)\]\((\.\./figures/[^)]+)\)", figure, text)
     # Links to other chapters jump inside the PDF; other site links stay absolute.
-    text = re.sub(rf"\]\(/offline-rl-book/{lang}/((?:chapter\d+|appendix))\.html(?:#[^)]*)?\)",
+    text = re.sub(rf"\]\(/offline-rl-book/{lang}/((?:chapter\d+|appendix(?:_[bc])?))\.html(?:#[^)]*)?\)",
                   lambda m: f"](#{chapter_id(m.group(1) + '.md')})", text)
     text = re.sub(r"\]\((/offline-rl-book/[^)]*)\)", lambda m: f"]({SITE}{m.group(1)})", text)
     return text
@@ -191,14 +193,15 @@ def leanpub_toc(lang="en"):
     items = []
     for k, rel in enumerate(chapters(lang), start=1):
         text = re.sub(r"```.*?```", "", (ROOT / rel).read_text(encoding="utf-8"), flags=re.S)
-        title = re.search(r"^# (?:Chapter \d+|Appendix|Глава \d+|Приложение): (.*)$", text, flags=re.M).group(1)
+        title = re.search(r"^# (?:Chapter \d+|Appendix(?: [A-Z])?|Глава \d+|Приложение(?: [A-ZА-Я])?): (.*)$",
+                          text, flags=re.M).group(1)
         title = title[:1].upper() + title[1:]
-        num = "A" if rel.endswith("appendix.md") else str(k)
+        num = {"appendix.md": "A", "appendix_b.md": "B", "appendix_c.md": "C"}.get(Path(rel).name, str(k))
         subs = [f'      <li>\n        <span class="section-number">{num}.{j} </span>{html.escape(h.strip())}\n      </li>'
                 for j, h in enumerate(re.findall(r"^## (.+)$", text, flags=re.M), start=1)
                 if h.strip() not in skip]
         sub = ("\n    <ul>\n" + "\n".join(subs) + "\n    </ul>") if subs else ""
-        items.append(f'  <li>\n    <span class="section-number">{num}{"" if num == "A" else "."} </span>'
+        items.append(f'  <li>\n    <span class="section-number">{num}{"" if num.isalpha() else "."} </span>'
                      f'{html.escape(title)}{sub}\n  </li>')
     return '<ul class="toc no-parts">\n' + "\n".join(items) + "\n</ul>\n"
 

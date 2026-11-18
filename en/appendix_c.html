@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Appendix C: Experimental Design and Validation in Offline RL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$$','$$']],processEscapes:false},options:{skipHtmlTags:['script','noscript','style','textarea','pre']}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded',()=>hljs.highlightAll())</script>
+  <style>
+    :root{--text:#1a1a2e;--text-light:#555570;--bg:#fafaf8;--bg-code:#f4f4f0;--accent:#2563eb;--border:#e2e2dc;--serif:'Source Serif 4',Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--max-width:720px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:18px;scroll-behavior:smooth}
+    body{font-family:var(--serif);background:var(--bg);color:var(--text);line-height:1.75;padding:0 1rem}
+    .site-header{border-bottom:1px solid var(--border);padding:1.2rem 0;margin-bottom:3rem}
+    .site-header-inner{max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+    .site-title{font-family:var(--sans);font-weight:600;font-size:0.95rem;color:var(--text);text-decoration:none}
+    .lang-switch{font-family:var(--sans);font-size:0.82rem;color:var(--text-light);text-decoration:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:4px}
+    .lang-switch:hover{border-color:var(--accent);color:var(--accent)}
+    main{max-width:var(--max-width);margin:0 auto 6rem}
+    main img{display:block;max-width:100%;height:auto;margin:1.5rem auto}
+    h1{font-size:2rem;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin-bottom:1rem}
+    h2{font-family:var(--sans);font-size:1.15rem;font-weight:600;margin:3rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border)}
+    h3{font-family:var(--sans);font-size:1rem;font-weight:600;margin:2rem 0 0.5rem}
+    p{margin-bottom:1.2rem}
+    strong{font-weight:600}
+    em{font-style:italic}
+    a{color:var(--accent);text-underline-offset:2px}
+    blockquote{border-left:3px solid var(--accent);margin:2rem 0;padding:0.75rem 0 0.75rem 1.5rem;color:var(--text-light);font-style:italic}
+    blockquote p{margin:0}
+    code{font-family:var(--mono);font-size:0.84em;background:var(--bg-code);padding:0.15em 0.35em;border-radius:3px;border:1px solid var(--border)}
+    pre{background:var(--bg-code)!important;border:1px solid var(--border);border-radius:6px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.5rem 0 2rem;font-size:0.82rem;line-height:1.6}
+    pre code{background:none;border:none;padding:0;font-size:inherit}
+    table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:0.88rem;margin:1.5rem 0 2rem}
+    th{background:var(--bg-code);font-weight:600;text-align:left;padding:0.6rem 1rem;border-bottom:2px solid var(--border)}
+    td{padding:0.55rem 1rem;border-bottom:1px solid var(--border)}
+    hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+    .chapter-nav{display:flex;justify-content:space-between;margin-top:4rem;padding-top:2rem;border-top:1px solid var(--border);font-family:var(--sans);font-size:0.85rem}
+    .chapter-nav a{color:var(--text-light);text-decoration:none;display:flex;flex-direction:column;gap:0.2rem;max-width:45%}
+    .chapter-nav a:hover{color:var(--accent)}
+    .nav-label{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .nav-title{font-weight:500}
+    .next{text-align:right;margin-left:auto}
+    .site-footer{border-top:1px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--sans);font-size:0.8rem;color:var(--text-light)}
+    .site-footer a{color:var(--accent)}
+    @media(max-width:600px){html{font-size:16px}h1{font-size:1.6rem}pre{font-size:0.78rem;padding:1rem}}
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-title" href="/offline-rl-book/">Offline RL</a>
+    <a class="lang-switch" href="/offline-rl-book/ru/appendix_c.html">Русский</a>
+  </div>
+</header>
+<main>
+<h1>Appendix C: Experimental Design and Validation in Offline RL</h1>
+<blockquote>
+<p><em>"A good test does not repair a bad design."</em></p>
+</blockquote>
+<p><a href="/offline-rl-book/en/appendix_b.html">Appendix B</a> asks what can be concluded from the data an experiment produced. This appendix asks the earlier question: how to set up the experiment so that those conclusions deserve trust. The two are different levels of reasoning. Take Chapter 10's end point, three failures without pessimism against none with a data-sized safeguard. The statistical question is why an exact paired test gives $p = 0.25$ for a difference that looks large. The design question is what it means that the configuration was found by searching on the first ten seeds, and why those seeds cannot then confirm it.</p>
+<p>This is not a course in the design of experiments. It covers the few design decisions that offline RL studies actually face – paired seeds, factorial ablations, adaptive search, many comparisons, confirmation runs and seed budgets – with Chapter 10 as the running example.</p>
+<blockquote>
+<p>📄 Full code: <a href="https://github.com/corba777/offline-rl-book/blob/main/code/rl_stats.py"><code>rl_stats.py</code></a> – including the power simulator for failure counts (<code>mcnemar_power</code>), the seed budget for paired comparisons (<code>paired_t_seeds</code>) and the winner's curse (<code>winners_curse</code>).</p>
+</blockquote>
+<hr />
+<h2>Experimental Units and Randomization</h2>
+<p>The experimental unit in offline RL is the <strong>training run</strong>, identified by its seed. One seed fixes everything random about the run: the logged dataset, the initializations, the model ensemble, the minibatch order and the sampling inside the learner. Evaluation episodes are measurements of that unit, not new units (Appendix B shows how much interval width is at stake).</p>
+<p>Three habits make the units honest:</p>
+<ul>
+<li><strong>Fix the seeds before running.</strong> Chapter 10 uses seeds 0–9 for every study and 10–19 for confirmation. A seed list chosen after seeing which seeds behave is a selected sample.</li>
+<li><strong>Never drop a seed.</strong> A seed that fails is a result, often the most important one. Chapter 10 reports every failing seed and names them where it matters (seeds 6 and 7 under HALT with the learned model; seed 6 with the true dynamics).</li>
+<li><strong>Keep the seed sets of different purposes disjoint.</strong> Seeds that helped choose a configuration cannot confirm it (below).</li>
+</ul>
+<p>Randomization in this setting is cheap: every source of randomness comes from the seed. What matters is to know which sources are randomized <em>per run</em> and which are <em>shared</em> between the agents being compared.</p>
+<hr />
+<h2>Common Random Numbers and Paired Designs</h2>
+<p>Simulation studies have long used <strong>common random numbers</strong>: when comparing two systems, drive both with the same random inputs, so that the comparison is not drowned by noise both share. In offline RL the shared inputs are the dataset and the evaluation conditions. In Chapter 10, within a seed:</p>
+<ul>
+<li>every agent trains on the <strong>same logged dataset</strong>;</li>
+<li>every agent is evaluated on the <strong>same 20 episodes</strong> – the same start states and the same process noise;</li>
+<li>the model-based agents share <strong>one dynamics ensemble</strong>;</li>
+<li>each agent reseeds its own initialization and sampling from the seed before training, so an agent's result does not depend on which agents ran before it.</li>
+</ul>
+<p>The last point has a practical payoff. Because every arm reseeds, an arm can be rerun on its own later – a new threshold, a new penalty – and it reproduces exactly what it would have produced in the full run. Chapter 10 checked this: an arm rerun alone matched the stored result bit for bit. New cells of a factorial design can then be added without losing the pairing. It is worth checking before relying on it; a single library update can break it.</p>
+<p>The payoff in precision is large. For the constraint penalty in Chapter 10, the two agents' returns correlate at 0.87 across seeds. The paired interval is 2.7 times narrower than an unpaired one, and the seed budget follows: detecting a true improvement of 0.03 with 80% power takes about 22 paired seeds, against roughly 140 per agent if the agents were trained on independent data.</p>
+<hr />
+<h2>Adaptive Search and the Winner's Curse</h2>
+<p>Much real research is a search: try a configuration, look, adjust. Chapter 10's coverage study is one. The logs were narrowed and the rollouts lengthened until the agent without pessimism failed. Any search that stops at the most interesting result selects for noise in that direction.</p>
+<p>The size of the effect is easy to compute. If $k$ configurations are in truth equally good and each is measured with the same standard error, the best-looking one is, on average, this many standard errors too optimistic:</p>
+<table>
+<thead>
+<tr>
+<th>Configurations compared</th>
+<th>Expected optimism of the best</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>0.57 SE</td>
+</tr>
+<tr>
+<td>5</td>
+<td>1.17 SE</td>
+</tr>
+<tr>
+<td>10</td>
+<td>1.54 SE</td>
+</tr>
+<tr>
+<td>20</td>
+<td>1.87 SE</td>
+</tr>
+</tbody>
+</table>
+<p>The table assumes independent, normally distributed measurement errors of equal size; configurations measured on the same seeds have correlated errors, which makes the effect smaller but does not remove it. With ten or twenty configurations – a modest hyperparameter sweep – the winner is expected to look about one and a half to two standard errors better than it is, even if all are equal. This is the <em>winner's curse</em>, and it does not depend on any test: it is built into choosing the maximum. Gelman and Loken (2014) call the broader version the <em>garden of forking paths</em>: the analysis that was run depends on the data, even when no single decision feels like cherry-picking.</p>
+<p>The same mechanism biases baselines in the other direction. Chapter 10 chose CQL's weight on evaluation returns over a grid of five values – a search that favours CQL – and then transferred it unchanged to the narrowed logs, where the termination settings were explored more widely. Neither procedure is a fair basis for ranking algorithms; Chapter 10 therefore calls its comparisons comparisons of fixed configurations. A fair ranking needs one tuning protocol for every method, with tuning done on validation runs and the ranking on runs that took no part in it (Cawley and Talbot, 2010).</p>
+<hr />
+<h2>Exploration, Validation and Confirmation</h2>
+<p>The remedy for the winner's curse is to separate the runs that choose from the runs that judge. A complete design has three sets of seeds:</p>
+<ol>
+<li><strong>Exploration</strong> – pilots and searches, as free as needed, and documented. Chapter 10's coverage study started with a pilot on seeds 0–2 at two coverage levels; everything run after it is reported.</li>
+<li><strong>Validation</strong> – where settings are tuned, for every method under the same protocol.</li>
+<li><strong>Confirmation</strong> – fresh seeds, decided in advance, on which the chosen configuration is run once and judged.</li>
+</ol>
+<p>Chapter 10 merges the first two and keeps the third: seeds 0–9 explored and selected, seeds 10–19 confirmed. The confirmation is then the only evidence that counts as confirmatory:</p>
+<table>
+<thead>
+<tr>
+<th>Seeds</th>
+<th>IQM difference, data-sized HALT − no pessimism</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0–9 (used in the search)</td>
+<td>+0.81 [+0.19, +38.35]</td>
+</tr>
+<tr>
+<td>10–19 (held out)</td>
+<td>+1.08 [−0.46, +20.17]</td>
+</tr>
+<tr>
+<td>Pooled</td>
+<td>+0.80 [+0.12, +3.34]</td>
+</tr>
+</tbody>
+</table>
+<p>The pooled interval excludes zero and the held-out one does not. Pooling looks like more data, but half of it chose the end point; the pooled row is a description, not a confirmation. And confirmation covers only what was repeated. Chapter 10 repeated the end point of its search on fresh seeds, not the boundaries between the regimes it passed through, so the regime map stays exploratory.</p>
+<p>What to fix before the confirmation run, in writing if possible: the configuration, the seeds, the outcome measures, the failure line and the comparisons to be made. That is a light version of preregistration, and it is what makes the confirmation more than a second look.</p>
+<hr />
+<h2>Multiple Comparisons and Selective Inference</h2>
+<p>Chapter 10's benchmark has about a dozen paired comparisons. If none of them reflected a real difference and the tests were independent, the chance that at least one would still clear $p < 0.05$ would be $1 - 0.95^{12} = 46\%$. Chapter 10's comparisons share seeds and baselines, so they are correlated and the true figure is lower, but of the same order. There are three honest responses (Bonferroni and Holm remain valid under any dependence):</p>
+<ul>
+<li><strong>Correct</strong> for the number of tests. Bonferroni tests each of $k$ comparisons at $0.05/k$; Holm's step-down version (Holm, 1979) is uniformly more powerful and just as valid.</li>
+<li><strong>Say it.</strong> Chapter 10 notes that a borderline result among many – the constraint penalty on the logged state – is expected by chance, and treats it as suggestive.</li>
+<li><strong>Report everything that was run.</strong> The quieter form of the problem is selective reporting: showing only the cells that came out interesting. Intervals computed after such a selection no longer have their nominal coverage; <em>selective inference</em> (Taylor and Tibshirani, 2015) studies how to correct them, but the simple defence is to report every configuration, including the dull and the failed.</li>
+</ul>
+<hr />
+<h2>Factorial Ablations and Interaction Effects</h2>
+<p>An ablation that removes one component at a time cannot tell whether two components matter jointly. A <strong>factorial design</strong> runs all combinations, and the effect of each factor is measured with the others held fixed. Chapter 10 uses two.</p>
+<p><strong>Model versus termination.</strong> Dynamics (learned or true) crossed with HALT (on or off), on the same seeds. The effect of HALT is measured within each dynamics, seed by seed, and the <strong>interaction</strong> is the difference between those effects:</p>
+<p><div class="math-display">$$\Delta_{\text{learned}} = R_{\text{learned, on}} - R_{\text{learned, off}}, \qquad \Delta_{\text{true}} = R_{\text{true, on}} - R_{\text{true, off}}, \qquad I = \Delta_{\text{learned}} - \Delta_{\text{true}}.$$</div></p>
+<p>HALT lowers the IQM by 3.4 [1.5, 10.8] with the learned model and by 2.5 [1.4, 39.8] with the true dynamics; the interaction has a median of +0.02 and an IQM of −0.37 [−3.40, +33.35]. The design establishes that transition error is <em>not necessary</em> for HALT to do damage. It does not establish that model error never contributes: an interaction this uncertain cannot be ruled out. Note what the oracle cell does and does not remove: the true dynamics remove transition error, but the halts are still decided by the learned ensemble's disagreement.</p>
+<p><strong>Threshold versus penalty.</strong> The first experiments changed HALT's threshold and penalty together, which confounds them. The full 2×2 – both thresholds with both penalties – separates them: on the narrowest logs the penalty alone decides which runs fail (39 of 40 runs with the worst-case $\kappa$, none with the data-sized one, at either threshold), while the threshold's effect on typical return is +0.20 [−0.20, +0.48], an interval that does not rule out a modest effect in either direction. On the full logs neither change helps without the other – an interaction, which a one-at-a-time ablation would have missed.</p>
+<p>Two design rules follow. Change factors in all combinations, not one at a time, when they may interact. And build the experiment so that missing cells can be added later on the same seeds (see common random numbers above).</p>
+<hr />
+<h2>Power and Seed Budgets</h2>
+<p>Before running, ask how many seeds the question needs. For a difference in <strong>mean</strong> return, the paired $t$-test gives the answer from two numbers: the smallest difference worth detecting, $\Delta$, and the standard deviation of per-seed differences, $\sigma_d$, which a pilot can estimate:</p>
+<p><div class="math-display">$$n \approx \left(\frac{(z_{1-\alpha/2} + z_{1-\beta})\,\sigma_d}{\Delta}\right)^2,$$</div></p>
+<p>corrected for the $t$ distribution at small $n$ (<code>paired_t_seeds</code> does it exactly). With Chapter 10's $\sigma_d = 0.047$, detecting $\Delta = 0.03$ with 80% power takes 22 seeds. This plans for a difference in means; the power for a difference of IQMs has no simple formula and is best simulated by resampling pilot seeds.</p>
+<p><strong>Rare failures</strong> are much more expensive, and the marginal failure rates are not enough to plan for them. McNemar's test sees only discordant seeds, with probabilities</p>
+<p><div class="math-display">$$p_{10} = P(F_A = 1, F_B = 0), \qquad p_{01} = P(F_A = 0, F_B = 1),$$</div></p>
+<p>and two agents with the same failure rates can produce very different numbers of discordant seeds, depending on whether they tend to fail on the same seeds. Suppose agent A fails on 15% of seeds and agent B on 2%. The power of the exact two-sided test at the 5% level, from <code>mcnemar_power</code>:</p>
+<table>
+<thead>
+<tr>
+<th>How the failures relate</th>
+<th>$p_{10}$</th>
+<th>$p_{01}$</th>
+<th>10 seeds</th>
+<th>20</th>
+<th>40</th>
+<th>60</th>
+<th>80</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Independent</td>
+<td>0.147</td>
+<td>0.017</td>
+<td>0.00</td>
+<td>0.05</td>
+<td>0.37</td>
+<td>0.65</td>
+<td>0.81</td>
+</tr>
+<tr>
+<td>B fails only where A fails</td>
+<td>0.130</td>
+<td>0</td>
+<td>0.00</td>
+<td>0.04</td>
+<td>0.42</td>
+<td>0.81</td>
+<td>0.96</td>
+</tr>
+<tr>
+<td>Never on the same seed</td>
+<td>0.150</td>
+<td>0.020</td>
+<td>0.00</td>
+<td>0.05</td>
+<td>0.36</td>
+<td>0.63</td>
+<td>0.79</td>
+</tr>
+</tbody>
+</table>
+<p>With ten seeds the power rounds to zero – about 0.001. Not because a significant result is impossible: six seeds on which only A fails, and four on which the agents agree, give $p = 2 \cdot 0.5^6 = 0.031$. But with these failure rates, six discordant seeds out of ten almost never occur. Twenty seeds – Chapter 10's pooled end point – give about 5%. Reaching 80% takes 60 to 80 seeds, depending on how the failures overlap. The rates here are illustrative, chosen to resemble Chapter 10's end point rather than estimated from it; this is a planning calculation, not a post hoc power for the observed result. Its message is the one Chapter 10 draws: a study of this size had little chance of establishing a benefit of this kind, so a replicated pattern is as far as it can go.</p>
+<p>The variance formula of Appendix B settles the other budget question, <strong>seeds or episodes</strong>, once costs are added. If training a seed costs $c_{\text{train}}$ and each evaluation episode $c_{\text{eval}}$, a budget $B = n\,(c_{\text{train}} + m\,c_{\text{eval}})$ buys $n$ seeds of $m$ episodes each, and minimizing</p>
+<p><div class="math-display">$$\operatorname{Var}(\bar R) = \frac{\sigma^2_{\text{seed}}}{n} + \frac{\sigma^2_{\text{ep}}}{n\,m}$$</div></p>
+<p>under that budget gives the number of evaluation episodes per seed</p>
+<p><div class="math-display">$$m^* = \sqrt{\frac{\sigma^2_{\text{ep}}\, c_{\text{train}}}{\sigma^2_{\text{seed}}\, c_{\text{eval}}}},$$</div></p>
+<p>rounded and kept above whatever minimum the evaluation design needs (Chapter 10 needs an even number, half from disturbed starts). Expensive training and cheap evaluation favour more episodes per seed; large seed-to-seed variation favours more seeds. In offline RL training usually costs far more than an episode of evaluation in simulation, so $m^*$ can be large – but every episode beyond it is better spent on another seed. A pilot with a few seeds and many episodes estimates both variances.</p>
+<hr />
+<h2>Reproducibility and Reporting</h2>
+<p>A result can be trusted only if it can be checked, and checking begins with the raw numbers. Chapter 10 and the companion paper follow a few rules worth copying:</p>
+<ul>
+<li><strong>Save per-seed results</strong>, not only summaries. Every table is generated from JSON files of per-seed metrics by a script, with no manual transcription, so a reader can recompute any interval with another method.</li>
+<li><strong>Make runs reproducible bit for bit</strong> where the platform allows, and check it.</li>
+<li><strong>Run the code continuously.</strong> Every script runs with reduced settings on each change, so the published code is the code that ran.</li>
+<li><strong>Version the release</strong> that a paper or chapter describes, with a citable archive.</li>
+</ul>
+<p>And the report itself:</p>
+<ol>
+<li><strong>The unit of replication</strong> – seeds, not episodes – and how many.</li>
+<li><strong>What is shared within a seed</strong> (data, evaluation episodes, models), so that readers know comparisons are paired.</li>
+<li><strong>The failure definition</strong>, and whether the counts change when the line moves.</li>
+<li><strong>Typical performance, failure counts and the mean, separately.</strong> Never a mean alone when a seed can fail.</li>
+<li><strong>One interval per cell, of the right kind</strong>: a $t$-interval with no failing seed; otherwise a bootstrap interval on the IQM.</li>
+<li><strong>Paired differences</strong> for every comparison of agents trained on the same data; joint resampling in a paired bootstrap.</li>
+<li><strong>Exact intervals for failure rates</strong>, and exact McNemar tests for paired failure counts – not Fisher.</li>
+<li><strong>Which results are exploratory</strong>, how the configuration was found, and which results were confirmed on held-out seeds.</li>
+<li><strong>The number of comparisons</strong>, or a correction for it, and every configuration that was run.</li>
+<li><strong>The tuning protocol of every method</strong>, and whether it was the same for all.</li>
+<li><strong>Interactions</strong> in factorial designs, not only main effects, and the seed identities behind any failure.</li>
+<li><strong>The power of the comparisons that matter</strong>, planned before the study, or at least whether the seed budget could have detected the effect claimed.</li>
+</ol>
+<hr />
+<h2>Summary</h2>
+<table>
+<thead>
+<tr>
+<th>Design decision</th>
+<th>Chapter 10</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unit of replication</td>
+<td>Training seed; seeds fixed in advance</td>
+<td>Episodes share a policy; a selected seed list is a selected sample</td>
+</tr>
+<tr>
+<td>Shared randomness</td>
+<td>Same data, evaluation episodes and ensemble within a seed; arms reseed</td>
+<td>Paired comparisons, 2.7 times narrower here; arms can be added later</td>
+</tr>
+<tr>
+<td>Search</td>
+<td>Documented pilot; every configuration reported</td>
+<td>The best of $k$ looks 1.5–2 SE too good for $k$ = 10–20</td>
+</tr>
+<tr>
+<td>Confirmation</td>
+<td>Seeds 10–19, held out</td>
+<td>Seeds that chose a configuration cannot confirm it</td>
+</tr>
+<tr>
+<td>Many comparisons</td>
+<td>Borderline results called suggestive</td>
+<td>A dozen tests give a 46% chance of a false hit</td>
+</tr>
+<tr>
+<td>Ablations</td>
+<td>Full 2×2 designs with interactions</td>
+<td>One-at-a-time ablations miss interactions</td>
+</tr>
+<tr>
+<td>Seed budget</td>
+<td>20 seeds at the end point – too few for rare failures</td>
+<td>80% power for 15% vs 2% failures needs 60–80 seeds</td>
+</tr>
+</tbody>
+</table>
+<p>Appendix A helps choose an algorithm; Appendix B says what a comparison of algorithms can conclude; this appendix is about making that comparison worth concluding from.</p>
+<hr />
+<h2>References</h2>
+<ul>
+<li>Gelman, A., &amp; Loken, E. (2014). <em>The Statistical Crisis in Science.</em> American Scientist, 102(6), 460–465. <em>(the garden of forking paths)</em></li>
+<li>Holm, S. (1979). <em>A Simple Sequentially Rejective Multiple Test Procedure.</em> Scandinavian Journal of Statistics, 6(2), 65–70.</li>
+<li>Taylor, J., &amp; Tibshirani, R.J. (2015). <em>Statistical Learning and Selective Inference.</em> Proceedings of the National Academy of Sciences, 112(25), 7629–7634.</li>
+<li>Cawley, G.C., &amp; Talbot, N.L.C. (2010). <em>On Over-fitting in Model Selection and Subsequent Selection Bias in Performance Evaluation.</em> Journal of Machine Learning Research, 11, 2079–2107.</li>
+<li>Henderson, P., Islam, R., Bachman, P., Pineau, J., Precup, D., &amp; Meger, D. (2018). <em>Deep Reinforcement Learning That Matters.</em> AAAI. <a href="https://arxiv.org/abs/1709.06560">arXiv:1709.06560</a>.</li>
+<li>Colas, C., Sigaud, O., &amp; Oudeyer, P.-Y. (2018). <em>How Many Random Seeds? Statistical Power Analysis in Deep Reinforcement Learning Experiments.</em> <a href="https://arxiv.org/abs/1806.08295">arXiv:1806.08295</a>.</li>
+<li>Patterson, A., Neumann, S., White, M., &amp; White, A. (2024). <em>Empirical Design in Reinforcement Learning.</em> Journal of Machine Learning Research. <a href="https://arxiv.org/abs/2304.01315">arXiv:2304.01315</a>.</li>
+</ul></main>
+<nav class="chapter-nav">
+<a href="/offline-rl-book/en/appendix_b.html" class="prev"><span class="nav-label">← Previous</span><span class="nav-title">Statistical Inference for Offline RL Experiments</span></a>
+    
+</nav>
+<footer class="site-footer">
+  <div style="max-width:720px;margin:0 auto">
+    Offline RL: From Theory to Industrial Practice<br>
+    Created and maintained by Artem Zvyagintsev ·
+    <a href="https://github.com/corba777/offline-rl-book">GitHub</a><br>
+    <span style="font-size:0.75rem;margin-top:0.5rem;display:block">© 2026 Artem Zvyagintsev. Educational notes on offline deep reinforcement learning.</span>
+  </div>
+</footer>
+</body>
+</html>

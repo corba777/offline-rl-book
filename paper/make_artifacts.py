@@ -7,27 +7,25 @@ Usage (from the repo root):  python paper/make_artifacts.py
 Writes paper/tables/*.tex and paper/figures/rollout_error.pdf
 """
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 from scipy import stats
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "code"))
+from rl_stats import FAIL, boot_iqm, t_interval   # noqa: E402  (Appendix B; shared with the book)
 RES = ROOT / "code" / "results"
 OUT_T = Path(__file__).resolve().parent / "tables"
 OUT_F = Path(__file__).resolve().parent / "figures"
-FAIL = -10.0          # a seed "fails" when its mean return over 200 steps is below this
-BOOT = 10_000         # bootstrap resamples for cells with a failing seed
 
 
 def load(name):
     return json.loads((RES / name).read_text())
 
 
-def t_ci(values):
-    v = np.asarray(values, dtype=float)
-    half = stats.t.ppf(0.975, len(v) - 1) * v.std(ddof=1) / np.sqrt(len(v))
-    return v.mean(), v.mean() - half, v.mean() + half
+t_ci = t_interval
 
 
 def per_seed(run_file, method, key="reward"):
@@ -37,19 +35,6 @@ def per_seed(run_file, method, key="reward"):
 def paired(a_file, a_method, b_file, b_method, key="reward"):
     assert [r["seed"] for r in a_file["runs"]] == [r["seed"] for r in b_file["runs"]]
     return t_ci(np.array(per_seed(a_file, a_method, key)) - np.array(per_seed(b_file, b_method, key)))
-
-
-def boot_iqm(a, b=None):
-    """IQM of a (or IQM of a minus IQM of b, resampling seeds jointly) with a 95%
-    percentile bootstrap interval. Used where a failing seed makes a t-interval
-    meaningless: one seed at -224 can stretch it past zero, to returns that are impossible."""
-    rng = np.random.default_rng(0)
-    idx = rng.integers(0, len(a), (BOOT, len(a)))
-    a = np.asarray(a, dtype=float)
-    est = lambda i: stats.trim_mean(a[i], 0.25, axis=-1) - (0 if b is None else
-                                                             stats.trim_mean(np.asarray(b, float)[i], 0.25, axis=-1))
-    lo, hi = np.percentile(est(idx), [2.5, 97.5])
-    return est(np.arange(len(a))), lo, hi
 
 
 def ret_cells(run_file, method):
